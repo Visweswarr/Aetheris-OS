@@ -1,0 +1,45 @@
+[package]
+name = "polymera-kernel"
+version = "0.3.0"
+edition = "2021"
+authors = ["Polymera OS Team"]
+description = "The Ultimate Operating System Kernel - Combining the best of all open-source OS features"
+license = "MIT"
+repository = "https://github.com/Visweswarr/Aetheris-OS"
+keywords = ["operating-system", "kernel", "microkernel", "security", "performance", "ai", "xr", "iot"]
+categories = ["operating-systems", "system", "embedded"]
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+log = "0.4"
+env_logger = "0.10"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[features]
+default = ["full"]
+full = ["redox", "genode", "fuchsia", "riot", "tock", "zfs", "ipfs", "godot", "opensim", "mycroft", "opencog", "zephyr"]
+redox = []
+genode = []
+fuchsia = []
+riot = []
+tock = []
+zfs = []
+ipfs = []
+godot = []
+opensim = []
+mycroft = []
+opencog = []
+zephyr = []
+
+[[bin]]
+name = "polymera-kernel"
+path = "src/main.rs"
+
+[lib]
+name = "polymera_kernel"
+path = "src/lib.rs"
