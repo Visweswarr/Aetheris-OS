@@ -1,0 +1,37 @@
+[package]
+name = "polymera-posix"
+version = "0.1.0"
+edition = "2021"
+authors = ["Polymera OS Team"]
+description = "POSIX Surface & Userland Bootstrap for Polymera OS"
+license = "MIT"
+repository = "https://github.com/Visweswarr/Aetheris-OS"
+keywords = ["posix", "filesystem", "syscall", "shell", "operating-system"]
+categories = ["operating-systems", "system", "filesystems"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+log = "0.4"
+env_logger = "0.10"
+tokio = { version = "1.0", features = ["full"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[features]
+default = ["full"]
+full = ["broker", "vfs", "shims", "shell"]
+broker = []
+vfs = []
+shims = []
+shell = []
+
+[[bin]]
+name = "posix-service"
+path = "src/main.rs"
+
+[lib]
+name = "polymera_posix"
+path = "src/lib.rs"
