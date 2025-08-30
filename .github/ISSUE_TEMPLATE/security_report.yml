@@ -1,0 +1,149 @@
+name: 🚨 Security Report
+description: Report a security vulnerability in Polymera OS
+title: "[SECURITY] "
+labels: ["security", "needs-triage"]
+assignees: ["@security-team"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **⚠️ SECURITY VULNERABILITY REPORT ⚠️**
+
+        **IMPORTANT**: This template is for reporting security vulnerabilities.
+
+        **For non-security issues, please use the appropriate template:**
+        - 🐛 Bug Report for non-security bugs
+        - ✨ Feature Request for new features
+
+        **Security Contact**: security@polymera-os.org
+
+  - type: markdown
+    attributes:
+      value: |
+        ## 🚨 Security Vulnerability Report
+
+        **Before submitting, please:**
+        1. **DO NOT** include sensitive information in this public issue
+        2. **DO NOT** include proof-of-concept code or exploit details
+        3. **DO NOT** include personal or confidential information
+        4. **DO** provide a high-level description of the issue
+        5. **DO** contact security@polymera-os.org for detailed reports
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Vulnerability Severity
+      description: How severe is this security vulnerability?
+      options:
+        - "Critical - Remote code execution, privilege escalation, data breach"
+        - "High - Significant security impact with limited scope"
+        - "Medium - Moderate security impact with limited scope"
+        - "Low - Minor security impact or best practice violation"
+    validations:
+      required: true
+
+  - type: input
+    id: component
+    attributes:
+      label: Affected Component
+      description: Which component is affected by this vulnerability?
+      placeholder: "e.g., kernel, crypto, services, runtime, ui, tooling"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Vulnerability Description
+      description: A high-level description of the security vulnerability (NO sensitive details)
+      placeholder: "Provide a high-level description without sensitive technical details..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Potential Impact
+      description: What is the potential security impact of this vulnerability?
+      placeholder: "Describe the potential security impact (e.g., data exposure, privilege escalation)..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected_versions
+    attributes:
+      label: Affected Versions
+      description: Which versions of Polymera OS are affected?
+      placeholder: "e.g., 0.1.0, 0.1.1, main branch, specific commit range"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps (High Level)
+      description: High-level steps to reproduce (NO technical exploit details)
+      placeholder: |
+        Provide high-level reproduction steps without technical exploit details:
+        1. [High-level step 1]
+        2. [High-level step 2]
+        3. [High-level step 3]
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: What environment was this vulnerability discovered in?
+      placeholder: |
+        - OS: [e.g., Ubuntu 22.04, macOS 14.0, Windows 11]
+        - Architecture: [e.g., x86_64, ARM64]
+        - Polymera OS Version: [e.g., 0.1.0, main branch]
+
+  - type: textarea
+    id: discovery
+    attributes:
+      label: Discovery Method
+      description: How was this vulnerability discovered?
+      placeholder: |
+        - Manual testing
+        - Automated security scanning
+        - Code review
+        - Bug bounty program
+        - Other: [describe]
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other relevant information (NO sensitive details)
+      placeholder: "Add any other relevant context without sensitive technical details..."
+
+  - type: markdown
+    attributes:
+      value: |
+        ## 🔐 Detailed Report
+
+        **For detailed technical reports, please contact:**
+        - **Email**: security@polymera-os.org
+        - **PGP**: PGP key available for encrypted communications
+        - **Response Time**: Initial response within 48 hours
+
+        **Please include in your detailed report:**
+        - Complete technical details
+        - Proof-of-concept code (if available)
+        - Exploit details
+        - Suggested fixes
+        - Disclosure preferences
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Security Reporting Agreement
+      description: By submitting this security report, you agree to responsible disclosure
+      options:
+        - label: I agree to responsible disclosure practices
+          required: true
+        - label: I will not publicly disclose details until coordinated release
+          required: true
+        - label: I agree to follow this project's Code of Conduct
+          required: true

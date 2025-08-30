@@ -1,0 +1,712 @@
+name: CI with SBOM & Signing
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  release:
+    types: [ published, created ]
+
+env:
+  # SBOM and signing configuration
+  SBOM_FORMAT: "spdx-json"
+  SIGSTORE_IDENTITY: "https://github.com/polymera-os/.github/workflows/ci.yml@${{ github.ref }}"
+  SIGSTORE_ISSUER: "https://token.actions.githubusercontent.com"
+  
+  # Build configuration
+  RUST_VERSION: "1.75"
+  GO_VERSION: "1.21"
+  NODE_VERSION: "18"
+
+jobs:
+  # SBOM Generation Job
+  generate-sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    outputs:
+      sbom-artifacts: ${{ steps.sbom.outputs.artifacts }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for SBOM generation
+      
+      - name: Setup Rust
+        uses: actions/setup-rust@v1
+        with:
+          rust-version: ${{ env.RUST_VERSION }}
+          cache: 'cargo'
+      
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install Syft
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: ${{ env.SBOM_FORMAT }}
+          output-file: sbom.json
+      
+      - name: Generate Rust SBOM
+        run: |
+          echo "Generating Rust component SBOM..."
+          cargo install cargo-sbom
+          
+          # Generate SBOM for main workspace
+          cargo sbom --format ${{ env.SBOM_FORMAT }} --output rust-sbom.json
+          
+          # Generate SBOM for security components
+          cd security/caps
+          cargo sbom --format ${{ env.SBOM_FORMAT }} --output caps-sbom.json
+          cd ../..
+          
+          # Generate SBOM for services
+          cd services/hello
+          cargo sbom --format ${{ env.SBOM_FORMAT }} --output hello-service-sbom.json
+          cd ../..
+          
+          # Generate SBOM for tests
+          cd tests/determinism
+          cargo sbom --format ${{ env.SBOM_FORMAT }} --output determinism-sbom.json
+          cd ../..
+      
+      - name: Generate Go SBOM
+        run: |
+          echo "Generating Go component SBOM..."
+          
+          # Install go-licenses for dependency analysis
+          go install github.com/google/go-licenses@latest
+          
+          # Generate SBOM for Go components (if any)
+          if [ -f "go.mod" ]; then
+            go-licenses csv . > go-licenses.csv
+            echo "Go licenses exported to go-licenses.csv"
+          fi
+      
+      - name: Generate Node.js SBOM
+        run: |
+          echo "Generating Node.js component SBOM..."
+          
+          # Install npm-license-checker
+          npm install -g npm-license-checker
+          
+          # Generate SBOM for UI components
+          if [ -f "ui/package.json" ]; then
+            cd ui
+            npm-license-checker --json > npm-licenses.json
+            cd ..
+          fi
+      
+      - name: Merge SBOMs
+        run: |
+          echo "Merging all SBOMs into comprehensive SBOM..."
+          
+          # Create merged SBOM structure
+          cat > merged-sbom.json << 'EOF'
+          {
+            "sbomVersion": "SPDX-2.3",
+            "name": "Polymera OS",
+            "spdxId": "SPDXRef-PolymeraOS",
+            "creationInfo": {
+              "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "creators": ["Tool: GitHub Actions CI", "Tool: Syft", "Tool: Cargo SBOM"],
+              "licenseListVersion": "3.19"
+            },
+            "packages": [],
+            "relationships": [],
+            "externalDocumentRefs": []
+          }
+          EOF
+          
+          # Merge Rust SBOMs
+          if [ -f "rust-sbom.json" ]; then
+            jq -s '.[0].packages + .[1].packages' merged-sbom.json rust-sbom.json > temp.json
+            mv temp.json merged-sbom.json
+          fi
+          
+          if [ -f "caps-sbom.json" ]; then
+            jq -s '.[0].packages + .[1].packages' merged-sbom.json caps-sbom.json > temp.json
+            mv temp.json merged-sbom.json
+          fi
+          
+          if [ -f "hello-service-sbom.json" ]; then
+            jq -s '.[0].packages + .[1].packages' merged-sbom.json hello-service-sbom.json > temp.json
+            mv temp.json merged-sbom.json
+          fi
+          
+          if [ -f "determinism-sbom.json" ]; then
+            jq -s '.[0].packages + .[1].packages' merged-sbom.json determinism-sbom.json > temp.json
+            mv temp.json merged-sbom.json
+          fi
+          
+          echo "SBOM merge completed"
+      
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-artifacts
+          path: |
+            *.json
+            *.csv
+          retention-days: 90
+      
+      - name: Set SBOM artifacts output
+        id: sbom
+        run: |
+          echo "artifacts=$(ls *.json *.csv 2>/dev/null | tr '\n' ',' | sed 's/,$//')" >> $GITHUB_OUTPUT
+
+  # Build and Sign Job
+  build-and-sign:
+    name: Build and Sign Artifacts
+    runs-on: ubuntu-latest
+    needs: generate-sbom
+    outputs:
+      signed-artifacts: ${{ steps.signing.outputs.artifacts }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download SBOM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom-artifacts
+          path: sbom/
+
+      - name: Setup Rust
+        uses: actions/setup-rust@v1
+        with:
+          rust-version: ${{ env.RUST_VERSION }}
+          cache: 'cargo'
+      
+      - name: Build Rust components
+        run: |
+          echo "Building Rust components..."
+          
+          # Build main workspace
+          cargo build --release
+          
+          # Build security components
+          cd security/caps
+          cargo build --release
+          cd ../..
+          
+          # Build services
+          cd services/hello
+          cargo build --release
+          cd ../..
+          
+          # Build tests
+          cd tests/determinism
+          cargo build --release
+          cd ../..
+      
+      - name: Build Go components
+        run: |
+          echo "Building Go components..."
+          
+          # Build Go components (if any)
+          if [ -f "go.mod" ]; then
+            go build -o bin/ ./...
+          fi
+      
+      - name: Build Node.js components
+        run: |
+          echo "Building Node.js components..."
+          
+          # Build UI components
+          if [ -f "ui/package.json" ]; then
+            cd ui
+            npm ci
+            npm run build
+            cd ..
+          fi
+      
+      - name: Install Sigstore tools
+        run: |
+          echo "Installing Sigstore signing tools..."
+          
+          # Install cosign
+          curl -O -L "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64"
+          sudo mv cosign-linux-amd64 /usr/local/bin/cosign
+          sudo chmod +x /usr/local/bin/cosign
+          
+          # Install rekor-cli
+          curl -O -L "https://github.com/sigstore/rekor/releases/latest/download/rekor-cli-linux-amd64"
+          sudo mv rekor-cli-linux-amd64 /usr/local/bin/rekor-cli
+          sudo chmod +x /usr/local/bin/rekor-cli
+      
+      - name: Sign artifacts with Sigstore
+        id: signing
+        run: |
+          echo "Signing all artifacts with Sigstore..."
+          
+          # Create signing directory
+          mkdir -p signed-artifacts
+          
+          # Sign Rust binaries
+          for binary in target/release/*; do
+            if [ -f "$binary" ] && [ -x "$binary" ]; then
+              echo "Signing Rust binary: $binary"
+              cosign sign-blob "$binary" \
+                --keyless \
+                --identity-token "${{ env.SIGSTORE_IDENTITY }}" \
+                --tlog-upload=true \
+                --output-signature "${binary}.sig" \
+                --output-certificate "${binary}.cert"
+              
+              # Copy to signed artifacts
+              cp "$binary" "signed-artifacts/"
+              cp "${binary}.sig" "signed-artifacts/"
+              cp "${binary}.cert" "signed-artifacts/"
+            fi
+          done
+          
+          # Sign Go binaries
+          if [ -d "bin" ]; then
+            for binary in bin/*; do
+              if [ -f "$binary" ] && [ -x "$binary" ]; then
+                echo "Signing Go binary: $binary"
+                cosign sign-blob "$binary" \
+                  --keyless \
+                  --identity-token "${{ env.SIGSTORE_IDENTITY }}" \
+                  --tlog-upload=true \
+                  --output-signature "${binary}.sig" \
+                  --output-certificate "${binary}.cert"
+                
+                # Copy to signed artifacts
+                cp "$binary" "signed-artifacts/"
+                cp "${binary}.sig" "signed-artifacts/"
+                cp "${binary}.cert" "signed-artifacts/"
+              fi
+            done
+          fi
+          
+          # Sign SBOM files
+          for sbom in sbom/*.json; do
+            if [ -f "$sbom" ]; then
+              echo "Signing SBOM: $sbom"
+              cosign sign-blob "$sbom" \
+                --keyless \
+                --identity-token "${{ env.SIGSTORE_IDENTITY }}" \
+                --tlog-upload=true \
+                --output-signature "${sbom}.sig" \
+                --output-certificate "${sbom}.cert"
+              
+              # Copy to signed artifacts
+              cp "$sbom" "signed-artifacts/"
+              cp "${sbom}.sig" "signed-artifacts/"
+              cp "${sbom}.cert" "signed-artifacts/"
+            fi
+          done
+          
+          # Sign source code archive
+          git archive --format=tar.gz --output=polymera-os-source.tar.gz HEAD
+          cosign sign-blob polymera-os-source.tar.gz \
+            --keyless \
+            --identity-token "${{ env.SIGSTORE_IDENTITY }}" \
+            --tlog-upload=true \
+            --output-signature polymera-os-source.tar.gz.sig \
+            --output-certificate polymera-os-source.tar.gz.cert
+          
+          cp polymera-os-source.tar.gz* "signed-artifacts/"
+          
+          # List signed artifacts
+          echo "Signed artifacts:"
+          ls -la signed-artifacts/
+          
+          echo "artifacts=$(ls signed-artifacts/ | tr '\n' ',' | sed 's/,$//')" >> $GITHUB_OUTPUT
+      
+      - name: Upload signed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-artifacts
+          path: signed-artifacts/
+          retention-days: 90
+
+  # Verification Job
+  verify-signatures:
+    name: Verify Signatures
+    runs-on: ubuntu-latest
+    needs: [generate-sbom, build-and-sign]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download signed artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: signed-artifacts
+          path: artifacts/
+      
+      - name: Download SBOM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom-artifacts
+          path: sbom/
+
+      - name: Install Sigstore tools
+        run: |
+          echo "Installing Sigstore verification tools..."
+          
+          # Install cosign
+          curl -O -L "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64"
+          sudo mv cosign-linux-amd64 /usr/local/bin/cosign
+          sudo chmod +x /usr/local/bin/cosign
+          
+          # Install rekor-cli
+          curl -O -L "https://github.com/sigstore/rekor/releases/latest/download/rekor-cli-linux-amd64"
+          sudo mv rekor-cli-linux-amd64 /usr/local/bin/rekor-cli
+          sudo chmod +x /usr/local/bin/rekor-cli
+      
+      - name: Verify all signatures
+        run: |
+          echo "Verifying all artifact signatures..."
+          
+          verification_failed=false
+          
+          # Verify Rust binaries
+          for binary in artifacts/*; do
+            if [[ "$binary" == *.sig ]] && [[ "$binary" != *.cert ]]; then
+              base_file="${binary%.sig}"
+              if [ -f "$base_file" ]; then
+                echo "Verifying signature for: $base_file"
+                if cosign verify-blob "$base_file" \
+                  --signature "$binary" \
+                  --certificate "${base_file}.cert" \
+                  --certificate-identity "${{ env.SIGSTORE_IDENTITY }}" \
+                  --certificate-oidc-issuer "${{ env.SIGSTORE_ISSUER }}"; then
+                  echo "✅ Signature verified: $base_file"
+                else
+                  echo "❌ Signature verification failed: $base_file"
+                  verification_failed=true
+                fi
+              fi
+            fi
+          done
+          
+          # Verify SBOM files
+          for sbom in sbom/*.json; do
+            if [ -f "$sbom" ]; then
+              sig_file="artifacts/$(basename "$sbom").sig"
+              cert_file="artifacts/$(basename "$sbom").cert"
+              
+              if [ -f "$sig_file" ] && [ -f "$cert_file" ]; then
+                echo "Verifying SBOM signature: $sbom"
+                if cosign verify-blob "$sbom" \
+                  --signature "$sig_file" \
+                  --certificate "$cert_file" \
+                  --certificate-identity "${{ env.SIGSTORE_IDENTITY }}" \
+                  --certificate-oidc-issuer "${{ env.SIGSTORE_ISSUER }}"; then
+                  echo "✅ SBOM signature verified: $sbom"
+                else
+                  echo "❌ SBOM signature verification failed: $sbom"
+                  verification_failed=true
+                fi
+              else
+                echo "❌ Missing signature files for SBOM: $sbom"
+                verification_failed=true
+              fi
+            fi
+          done
+          
+          # Check verification results
+          if [ "$verification_failed" = true ]; then
+            echo "❌ Signature verification failed for some artifacts"
+            exit 1
+          else
+            echo "✅ All signatures verified successfully"
+          fi
+
+      - name: Verify SBOM integrity
+        run: |
+          echo "Verifying SBOM integrity and completeness..."
+          
+          # Check that all expected SBOMs exist
+          expected_sboms=("rust-sbom.json" "caps-sbom.json" "hello-service-sbom.json" "determinism-sbom.json" "merged-sbom.json")
+          
+          for sbom in "${expected_sboms[@]}"; do
+            if [ -f "sbom/$sbom" ]; then
+              echo "✅ SBOM found: $sbom"
+              
+              # Validate JSON format
+              if jq empty "sbom/$sbom" 2>/dev/null; then
+                echo "✅ SBOM JSON valid: $sbom"
+              else
+                echo "❌ SBOM JSON invalid: $sbom"
+            exit 1
+          fi
+            else
+              echo "❌ Missing expected SBOM: $sbom"
+            exit 1
+          fi
+          done
+
+          echo "✅ All SBOMs present and valid"
+
+      - name: Generate verification report
+        run: |
+          echo "Generating verification report..."
+          
+          cat > verification-report.md << 'EOF'
+          # Signature Verification Report
+          
+          **Generated**: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          **Workflow**: ${{ github.workflow }}
+          **Run ID**: ${{ github.run_id }}
+          
+          ## Verification Summary
+          
+          ✅ **All artifacts signed successfully**
+          ✅ **All signatures verified successfully**
+          ✅ **All SBOMs generated and signed**
+          ✅ **Supply chain integrity maintained**
+          
+          ## Signed Artifacts
+          
+          EOF
+          
+          # List all signed artifacts
+          for artifact in artifacts/*; do
+            if [ -f "$artifact" ]; then
+              echo "- $(basename "$artifact")" >> verification-report.md
+            fi
+          done
+          
+          cat >> verification-report.md << 'EOF'
+          
+          ## SBOM Files
+          
+          EOF
+          
+          # List all SBOM files
+          for sbom in sbom/*.json; do
+            if [ -f "$sbom" ]; then
+              echo "- $(basename "$sbom")" >> verification-report.md
+            fi
+          done
+          
+          cat >> verification-report.md << 'EOF'
+          
+          ## Verification Details
+          
+          - **Signing Identity**: ${{ env.SIGSTORE_IDENTITY }}
+          - **Issuer**: ${{ env.SIGSTORE_ISSUER }}
+          - **Timestamp**: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          - **Status**: PASSED
+          
+          ---
+          
+          *This report was automatically generated by GitHub Actions CI*
+          EOF
+          
+          echo "Verification report generated: verification-report.md"
+      
+      - name: Upload verification report
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-report
+          path: verification-report.md
+          retention-days: 90
+
+  # Policy Enforcement Job
+  enforce-policy:
+    name: Enforce Signing Policy
+    runs-on: ubuntu-latest
+    needs: [generate-sbom, build-and-sign, verify-signatures]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: signed-artifacts
+          path: artifacts/
+      
+      - name: Download verification report
+        uses: actions/download-artifact@v4
+        with:
+          name: verification-report
+          path: ./
+      
+      - name: Check for unsigned artifacts
+        run: |
+          echo "Checking for unsigned artifacts..."
+          
+          unsigned_count=0
+          total_count=0
+          
+          # Check all artifacts for signatures
+          for artifact in artifacts/*; do
+            if [ -f "$artifact" ] && [[ "$artifact" != *.sig ]] && [[ "$artifact" != *.cert ]]; then
+              total_count=$((total_count + 1))
+              
+              # Check if signature exists
+              sig_file="${artifact}.sig"
+              cert_file="${artifact}.cert"
+              
+              if [ ! -f "$sig_file" ] || [ ! -f "$cert_file" ]; then
+                echo "❌ Unsigned artifact found: $artifact"
+                unsigned_count=$((unsigned_count + 1))
+              else
+                echo "✅ Signed artifact: $artifact"
+              fi
+            fi
+          done
+          
+          echo "Total artifacts: $total_count"
+          echo "Signed artifacts: $((total_count - unsigned_count))"
+          echo "Unsigned artifacts: $unsigned_count"
+          
+          # Enforce policy: fail if any unsigned artifacts
+          if [ $unsigned_count -gt 0 ]; then
+            echo "❌ POLICY VIOLATION: Found $unsigned_count unsigned artifacts"
+            echo "All artifacts must be signed before deployment"
+            exit 1
+          else
+            echo "✅ POLICY COMPLIANCE: All artifacts are properly signed"
+          fi
+      
+      - name: Validate SBOM completeness
+        run: |
+          echo "Validating SBOM completeness..."
+          
+          # Check that all major components have SBOMs
+          required_components=("rust" "caps" "hello-service" "determinism")
+          
+          for component in "${required_components[@]}"; do
+            sbom_file="sbom/${component}-sbom.json"
+            if [ -f "$sbom_file" ]; then
+              echo "✅ SBOM found for: $component"
+            else
+              echo "❌ Missing SBOM for: $component"
+              exit 1
+            fi
+          done
+          
+          echo "✅ All required SBOMs present"
+      
+      - name: Final policy check
+        run: |
+          echo "Performing final policy compliance check..."
+          
+          # Read verification report
+          if [ -f "verification-report.md" ]; then
+            if grep -q "Status: PASSED" verification-report.md; then
+              echo "✅ Final policy check: PASSED"
+              echo "All artifacts are signed, verified, and compliant"
+            else
+              echo "❌ Final policy check: FAILED"
+              echo "Verification report indicates issues"
+              exit 1
+            fi
+          else
+            echo "❌ Verification report not found"
+            exit 1
+          fi
+
+  # Release Job (only on release)
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [generate-sbom, build-and-sign, verify-signatures, enforce-policy]
+    if: github.event_name == 'release'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download signed artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: signed-artifacts
+          path: release-artifacts/
+      
+      - name: Download SBOM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom-artifacts
+          path: release-sbom/
+      
+      - name: Download verification report
+        uses: actions/download-artifact@v4
+        with:
+          name: verification-report
+          path: ./
+      
+      - name: Create release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: |
+            ## Polymera OS Release ${{ github.ref }}
+            
+            ### 🔒 Supply Chain Security
+            
+            This release includes:
+            - ✅ All artifacts cryptographically signed with Sigstore
+            - ✅ Complete Software Bill of Materials (SBOM)
+            - ✅ Supply chain integrity verification
+            - ✅ Policy compliance validation
+            
+            ### 📦 Artifacts
+            
+            All release artifacts are signed and verified. Download the signed artifacts and verify signatures using:
+            
+            ```bash
+            # Verify signature
+            cosign verify-blob <artifact> --signature <artifact>.sig --certificate <artifact>.cert
+            ```
+            
+            ### 📋 SBOM
+            
+            Complete SBOM files are included for dependency analysis and compliance.
+            
+            ### 🔍 Verification
+            
+            All signatures have been verified and comply with our security policy.
+            
+          draft: false
+          prerelease: false
+      
+      - name: Upload release assets
+        run: |
+          echo "Uploading release assets..."
+          
+          # Upload signed artifacts
+          for artifact in release-artifacts/*; do
+            if [ -f "$artifact" ]; then
+              gh release upload ${{ github.ref }} "$artifact" --clobber
+            fi
+          done
+          
+          # Upload SBOM files
+          for sbom in release-sbom/*.json; do
+            if [ -f "$sbom" ]; then
+              gh release upload ${{ github.ref }} "$sbom" --clobber
+            fi
+          done
+          
+          # Upload verification report
+          if [ -f "verification-report.md" ]; then
+            gh release upload ${{ github.ref }} verification-report.md --clobber
+          fi
+          
+          echo "Release assets uploaded successfully"

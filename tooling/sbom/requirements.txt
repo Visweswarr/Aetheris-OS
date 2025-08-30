@@ -1,0 +1,45 @@
+# Polymera OS SBOM & Signing Tools Requirements
+# Core dependencies for SBOM generation, Sigstore signing, and policy enforcement
+
+# Core dependencies
+PyYAML>=6.0
+pathlib2>=2.3.7; python_version < "3.4"
+
+# Optional dependencies for enhanced functionality
+# Uncomment if you need additional features
+
+# For enhanced JSON processing
+# jsonschema>=4.0.0
+
+# For enhanced YAML processing
+# ruamel.yaml>=0.17.0
+
+# For dependency analysis
+# pipdeptree>=2.0.0
+
+# For license detection
+# license-expression>=21.0.0
+
+# For vulnerability scanning
+# safety>=2.0.0
+
+# For package metadata extraction
+# packaging>=21.0.0
+
+# For enhanced file type detection
+# python-magic>=0.4.0
+
+# For hash calculation optimization
+# hashlib-compat>=1.0.0
+
+# For progress bars
+# tqdm>=4.60.0
+
+# For colored output
+# colorama>=0.4.4
+
+# For configuration management
+# configparser>=5.0.0
+
+# For logging enhancement
+# structlog>=21.0.0

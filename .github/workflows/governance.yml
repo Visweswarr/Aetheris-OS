@@ -1,0 +1,471 @@
+name: Repository Governance & Hygiene
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run governance checks weekly
+    - cron: '0 0 * * 1'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUST_LOG: info
+
+jobs:
+  # Governance file validation
+  governance-files:
+    name: Governance Files Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate required governance files
+        run: |
+          echo "🔍 Validating required governance files..."
+
+          # Check for required governance files
+          required_files=(
+            "LICENSE"
+            "CODE_OF_CONDUCT.md"
+            "CONTRIBUTING.md"
+            "SECURITY.md"
+            ".github/CODEOWNERS"
+            ".github/PULL_REQUEST_TEMPLATE.md"
+            ".editorconfig"
+            ".commitlintrc.js"
+          )
+
+          missing_files=()
+          for file in "${required_files[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              missing_files+=("$file")
+            fi
+          done
+
+          if [[ ${#missing_files[@]} -gt 0 ]]; then
+            echo "❌ Missing required governance files:"
+            printf '%s\n' "${missing_files[@]}"
+            exit 1
+          fi
+
+          echo "✅ All required governance files present"
+
+      - name: Validate LICENSE content
+        run: |
+          echo "🔍 Validating LICENSE file content..."
+
+          # Check if LICENSE contains Apache 2.0
+          if ! grep -q "Apache License" LICENSE; then
+            echo "❌ LICENSE file does not contain Apache License"
+            exit 1
+          fi
+
+          # Check if LICENSE contains Polymera OS copyright
+          if ! grep -q "Polymera OS" LICENSE; then
+            echo "❌ LICENSE file does not contain Polymera OS copyright"
+            exit 1
+          fi
+
+          echo "✅ LICENSE file content valid"
+
+      - name: Validate SECURITY.md content
+        run: |
+          echo "🔍 Validating SECURITY.md content..."
+
+          # Check if SECURITY.md contains security contact
+          if ! grep -q "security@polymera-os.org" SECURITY.md; then
+            echo "❌ SECURITY.md does not contain security contact"
+            exit 1
+          fi
+
+          # Check if SECURITY.md contains disclosure timeline
+          if ! grep -q "90-day" SECURITY.md; then
+            echo "❌ SECURITY.md does not contain disclosure timeline"
+            exit 1
+          fi
+
+          echo "✅ SECURITY.md content valid"
+
+  # Conventional commit validation
+  conventional-commits:
+    name: Conventional Commit Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install commitlint
+        run: |
+          npm install -g @commitlint/cli @commitlint/config-conventional
+
+      - name: Validate commit messages
+        run: |
+          echo "🔍 Validating commit messages..."
+
+          # Get commits in this PR
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # For PRs, check commits since base branch
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            head_sha="${{ github.event.pull_request.head.sha }}"
+            commits=$(git log --oneline $base_sha..$head_sha --format="%H")
+          else
+            # For pushes, check last commit
+            commits=$(git log --oneline -1 --format="%H")
+          fi
+
+          # Validate each commit
+          for commit in $commits; do
+            echo "Validating commit: $commit"
+            git log --format=%B -n 1 $commit | commitlint
+          done
+
+          echo "✅ All commit messages valid"
+
+  # License header validation
+  license-headers:
+    name: License Header Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install license header checker
+        run: |
+          pip install licenseheaders
+
+      - name: Validate license headers
+        run: |
+          echo "🔍 Validating license headers in source files..."
+
+          # Create license header template
+          cat > license_template.txt << 'EOF'
+          // Copyright 2024 Polymera OS Contributors
+          //
+          // Licensed under the Apache License, Version 2.0 (the "License");
+          // you may not use this file except in compliance with the License.
+          // You may obtain a copy of the License at
+          //
+          //     http://www.apache.org/licenses/LICENSE-2.0
+          //
+          // Unless required by applicable law or agreed to in writing, software
+          // distributed under the License is distributed on an "AS IS" BASIS,
+          // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+          // See the License for the specific language governing permissions and
+          // limitations under the License.
+          EOF
+
+          # Check source files for license headers
+          source_extensions=("rs" "cpp" "hpp" "c" "h" "ts" "tsx" "js" "jsx" "py")
+          missing_headers=()
+
+          for ext in "${source_extensions[@]}"; do
+            while IFS= read -r -d '' file; do
+              # Skip generated files and vendor directories
+              if [[ "$file" == *"/target/"* ]] || [[ "$file" == *"/node_modules/"* ]] || [[ "$file" == *"/vendor/"* ]]; then
+                continue
+              fi
+
+              # Check if file has license header
+              if ! head -20 "$file" | grep -q "Copyright 2024 Polymera OS Contributors"; then
+                missing_headers+=("$file")
+              fi
+            done < <(find . -name "*.${ext}" -type f -print0)
+          done
+
+          if [[ ${#missing_headers[@]} -gt 0 ]]; then
+            echo "❌ Source files missing license headers:"
+            printf '%s\n' "${missing_headers[@]}"
+            echo ""
+            echo "Please add the license header to these files:"
+            echo "// Copyright 2024 Polymera OS Contributors"
+            echo "// Licensed under the Apache License, Version 2.0 (the \"License\");"
+            echo "// ..."
+            exit 1
+          fi
+
+          echo "✅ All source files have license headers"
+
+  # CODEOWNERS validation
+  codeowners-validation:
+    name: CODEOWNERS Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate CODEOWNERS coverage
+        run: |
+          echo "🔍 Validating CODEOWNERS coverage..."
+
+          # Check if CODEOWNERS file exists
+          if [[ ! -f ".github/CODEOWNERS" ]]; then
+            echo "❌ CODEOWNERS file not found"
+            exit 1
+          fi
+
+          # Check if CODEOWNERS has content
+          if [[ ! -s ".github/CODEOWNERS" ]]; then
+            echo "❌ CODEOWNERS file is empty"
+            exit 1
+          fi
+
+          # Check for global ownership
+          if ! grep -q "^\\*" .github/CODEOWNERS; then
+            echo "❌ CODEOWNERS missing global ownership rule"
+            exit 1
+          fi
+
+          # Check for component-specific ownership
+          components=("kernel" "services" "runtime" "ui" "tooling" "docs")
+          for component in "${components[@]}"; do
+            if ! grep -q "/${component}/" .github/CODEOWNERS; then
+              echo "⚠️  Warning: CODEOWNERS missing ownership for /${component}/"
+            fi
+          done
+
+          echo "✅ CODEOWNERS validation passed"
+
+  # Editor configuration validation
+  editor-config:
+    name: Editor Configuration Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate .editorconfig
+        run: |
+          echo "🔍 Validating .editorconfig..."
+
+          # Check if .editorconfig exists
+          if [[ ! -f ".editorconfig" ]]; then
+            echo "❌ .editorconfig file not found"
+            exit 1
+          fi
+
+          # Check if .editorconfig has content
+          if [[ ! -s ".editorconfig" ]]; then
+            echo "❌ .editorconfig file is empty"
+            exit 1
+          fi
+
+          # Check for root declaration
+          if ! grep -q "^root = true" .editorconfig; then
+            echo "❌ .editorconfig missing root declaration"
+            exit 1
+          fi
+
+          # Check for language-specific rules
+          languages=("*.rs" "*.cpp" "*.ts" "*.py" "*.md")
+          for lang in "${languages[@]}"; do
+            if ! grep -q "\\[${lang}\\]" .editorconfig; then
+              echo "⚠️  Warning: .editorconfig missing rules for ${lang}"
+            fi
+          done
+
+          echo "✅ .editorconfig validation passed"
+
+  # Issue template validation
+  issue-templates:
+    name: Issue Template Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate issue templates
+        run: |
+          echo "🔍 Validating issue templates..."
+
+          # Check if issue templates directory exists
+          if [[ ! -d ".github/ISSUE_TEMPLATE" ]]; then
+            echo "❌ Issue templates directory not found"
+            exit 1
+          fi
+
+          # Check for required templates
+          required_templates=(
+            "bug_report.yml"
+            "feature_request.yml"
+            "security_report.yml"
+            "documentation.yml"
+          )
+
+          missing_templates=()
+          for template in "${required_templates[@]}"; do
+            if [[ ! -f ".github/ISSUE_TEMPLATE/${template}" ]]; then
+              missing_templates+=("$template")
+            fi
+          done
+
+          if [[ ${#missing_templates[@]} -gt 0 ]]; then
+            echo "❌ Missing required issue templates:"
+            printf '%s\n' "${missing_templates[@]}"
+            exit 1
+          fi
+
+          # Validate YAML syntax for each template
+          for template in "${required_templates[@]}"; do
+            echo "Validating ${template}..."
+            python -c "import yaml; yaml.safe_load(open('.github/ISSUE_TEMPLATE/${template}'))"
+          done
+
+          echo "✅ All issue templates valid"
+
+  # Pull request template validation
+  pr-template:
+    name: Pull Request Template Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate PR template
+        run: |
+          echo "🔍 Validating pull request template..."
+
+          # Check if PR template exists
+          if [[ ! -f ".github/PULL_REQUEST_TEMPLATE.md" ]]; then
+            echo "❌ Pull request template not found"
+            exit 1
+          fi
+
+          # Check if PR template has content
+          if [[ ! -s ".github/PULL_REQUEST_TEMPLATE.md" ]]; then
+            echo "❌ Pull request template is empty"
+            exit 1
+          fi
+
+          # Check for required sections
+          required_sections=(
+            "Description"
+            "Testing"
+            "Documentation"
+            "Breaking Changes"
+            "Security Considerations"
+            "Performance Impact"
+            "Code Quality"
+            "Review Checklist"
+          )
+
+          missing_sections=()
+          for section in "${required_sections[@]}"; do
+            if ! grep -q "## ${section}" .github/PULL_REQUEST_TEMPLATE.md; then
+              missing_sections+=("$section")
+            fi
+          done
+
+          if [[ ${#missing_sections[@]} -gt 0 ]]; then
+            echo "❌ Pull request template missing required sections:"
+            printf '%s\n' "${missing_sections[@]}"
+            exit 1
+          fi
+
+          echo "✅ Pull request template validation passed"
+
+  # Governance compliance report
+  compliance-report:
+    name: Governance Compliance Report
+    runs-on: ubuntu-latest
+    needs: [governance-files, conventional-commits, license-headers, codeowners-validation, editor-config, issue-templates, pr-template]
+    steps:
+      - name: Generate compliance report
+        run: |
+          echo "📊 Generating governance compliance report..."
+
+          echo "## 🎯 Polymera OS Governance Compliance Report" >> compliance_report.md
+          echo "" >> compliance_report.md
+          echo "**Generated**: $(date)" >> compliance_report.md
+          echo "**Repository**: ${{ github.repository }}" >> compliance_report.md
+          echo "**Branch**: ${{ github.ref_name }}" >> compliance_report.md
+          echo "" >> compliance_report.md
+
+          echo "### ✅ Governance Files" >> compliance_report.md
+          echo "- [x] LICENSE (Apache 2.0)" >> compliance_report.md
+          echo "- [x] CODE_OF_CONDUCT.md" >> compliance_report.md
+          echo "- [x] CONTRIBUTING.md" >> compliance_report.md
+          echo "- [x] SECURITY.md" >> compliance_report.md
+          echo "" >> compliance_report.md
+
+          echo "### ✅ GitHub Configuration" >> compliance_report.md
+          echo "- [x] CODEOWNERS" >> compliance_report.md
+          echo "- [x] Pull Request Template" >> compliance_report.md
+          echo "- [x] Issue Templates" >> compliance_report.md
+          echo "" >> compliance_report.md
+
+          echo "### ✅ Development Configuration" >> compliance_report.md
+          echo "- [x] .editorconfig" >> compliance_report.md
+          echo "- [x] .commitlintrc.js" >> compliance_report.md
+          echo "- [x] Conventional Changelog" >> compliance_report.md
+          echo "" >> compliance_report.md
+
+          echo "### ✅ Validation Results" >> compliance_report.md
+          echo "- [x] Governance files present and valid" >> compliance_report.md
+          echo "- [x] Conventional commit validation" >> compliance_report.md
+          echo "- [x] License header validation" >> compliance_report.md
+          echo "- [x] CODEOWNERS validation" >> compliance_report.md
+          echo "- [x] Editor configuration validation" >> compliance_report.md
+          echo "- [x] Issue template validation" >> compliance_report.md
+          echo "- [x] Pull request template validation" >> compliance_report.md
+          echo "" >> compliance_report.md
+
+          echo "### 📈 Compliance Score: 100%" >> compliance_report.md
+          echo "" >> compliance_report.md
+          echo "**Status**: ✅ All governance requirements satisfied" >> compliance_report.md
+          echo "" >> compliance_report.md
+          echo "---" >> compliance_report.md
+          echo "*This report is automatically generated by the governance CI workflow*" >> compliance_report.md
+
+      - name: Upload compliance report
+        uses: actions/upload-artifact@v3
+        with:
+          name: governance-compliance-report
+          path: compliance_report.md
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('compliance_report.md', 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: report
+            });
+
+  # Final validation
+  final-validation:
+    name: Final Governance Validation
+    runs-on: ubuntu-latest
+    needs: [compliance-report]
+    steps:
+      - name: Governance validation complete
+        run: |
+          echo "🎉 Repository governance validation complete!"
+          echo "✅ All governance requirements satisfied"
+          echo "✅ Repository hygiene standards met"
+          echo "✅ Community contribution workflow established"
+          echo "✅ Security reporting process operational"
+          echo ""
+          echo "Polymera OS is ready for community contributions!"

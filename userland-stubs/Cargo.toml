@@ -1,0 +1,57 @@
+[package]
+name = "userland-stubs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "userland_stubs"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+# No external dependencies for no_std userland stubs
+
+[features]
+default = []
+# Feature for testing under kernel
+kernel-test = []
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true
+panic = "abort"
+name = "userland-stubs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "userland_stubs"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+# No external dependencies for no_std userland stubs
+
+[features]
+default = []
+# Feature for testing under kernel
+kernel-test = []
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true
+panic = "abort"
+
+

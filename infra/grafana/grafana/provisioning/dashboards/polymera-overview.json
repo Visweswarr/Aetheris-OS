@@ -1,0 +1,102 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Polymera OS Overview",
+    "tags": ["polymera", "overview", "system"],
+    "style": "dark",
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "System Overview",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "polymera_requests_total",
+            "legendFormat": "Total Requests"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "displayMode": "list"
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Request Rate (RED)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(polymera_requests_total[5m])",
+            "legendFormat": "{{service}} - {{endpoint}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Error Rate (RED)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(polymera_errors_total[5m])",
+            "legendFormat": "{{service}} - {{error_type}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Request Duration p95 (RED)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "polymera_request_duration_p95_seconds",
+            "legendFormat": "{{service}} - {{endpoint}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      },
+      {
+        "id": 5,
+        "title": "Resource Utilization (USE)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "polymera_resource_utilization",
+            "legendFormat": "{{resource_type}} - {{resource_name}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 6,
+        "title": "Business Metrics",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "polymera_active_users",
+            "legendFormat": "Active Users"
+          },
+          {
+            "expr": "polymera_transactions_total",
+            "legendFormat": "Total Transactions"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "30s"
+  }
+}

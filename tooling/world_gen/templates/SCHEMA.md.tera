@@ -1,0 +1,92 @@
+# World Model v0 Schema
+
+{{ schema.description }}
+
+## Version
+
+Schema version: {{ schema.version }}
+
+## Field Tags
+
+The following field tags are used for CBOR encoding:
+
+{% for (field, tag) in schema.field_tags %}
+- `{{ field }}`: {{ tag }}
+{% endfor %}
+
+## Entity Types
+
+{% for (name, id) in schema.entity_types %}
+- `{{ name }}`: {{ id }}
+{% endfor %}
+
+## Predicate Types
+
+{% for (name, id) in schema.predicate_types %}
+- `{{ name }}`: {{ id }}
+{% endfor %}
+
+## Value Types
+
+{% for (name, id) in schema.value_types %}
+- `{{ name }}`: {{ id }}
+{% endfor %}
+
+## Limits
+
+{% for (name, value) in schema.limits %}
+- `{{ name }}`: {{ value }}
+{% endfor %}
+
+## CBOR Options
+
+- Version field: {{ schema.cbor.version_field }}
+- Field tags: {{ schema.cbor.field_tags }}
+- Deterministic: {{ schema.cbor.deterministic }}
+- Sorted fields: {{ schema.cbor.sorted_fields }}
+
+## Validation Rules
+
+{% for (field, rule) in schema.validation %}
+- `{{ field }}`: {{ rule }}
+{% endfor %}
+
+## Data Structures
+
+### FactV1
+
+The core fact structure representing a subject-predicate-object triple:
+
+```rust
+pub struct FactV1 {
+    pub subject: EntityId,      // Entity identifier
+    pub predicate: PredId,      // Predicate identifier  
+    pub object: ValueAtom,      // Value (typed)
+    pub ts_vclock: u64,        // Virtual clock timestamp
+    pub provenance: String,     // Source/provenance info
+}
+```
+
+### ValueAtom
+
+Typed value storage supporting multiple data types:
+
+```rust
+pub enum ValueAtom {
+    U64(u64),
+    I64(i64), 
+    F64(f64),
+    Bool(bool),
+    Bytes(Vec<u8>),
+    String(String),
+}
+```
+
+### EntityId and PredId
+
+Strongly typed identifiers for entities and predicates:
+
+```rust
+pub struct EntityId(pub u128);
+pub struct PredId(pub u64);
+```

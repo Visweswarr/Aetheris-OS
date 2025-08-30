@@ -1,0 +1,170 @@
+# Rust formatting configuration for Polymera OS
+# This file configures rustfmt for consistent code formatting
+
+# Edition to use
+edition = "2021"
+
+# Maximum line length
+max_width = 100
+
+# Tab size
+tab_spaces = 4
+
+# Use spaces for indentation
+hard_tabs = false
+
+# Remove trailing whitespace
+trim_trailing_whitespace = true
+
+# Remove trailing blank lines
+remove_nested_parens = true
+
+# Format string literals
+format_strings = true
+
+# Format comments
+format_code_in_doc_comments = true
+
+# Format macro calls
+format_macro_matchers = true
+
+# Format match expressions
+format_match_arm_blocks = true
+
+# Format function calls
+format_function_params = true
+
+# Format struct literals
+format_struct_literals = true
+
+# Format array literals
+format_array_literals = true
+
+# Format tuple literals
+format_tuple_literals = true
+
+# Format closure expressions
+format_closure_expressions = true
+
+# Format control flow
+format_control_flow = true
+
+# Format expressions
+format_expressions = true
+
+# Format items
+format_items = true
+
+# Format statements
+format_statements = true
+
+# Format type expressions
+format_type_expressions = true
+
+# Format patterns
+format_patterns = true
+
+# Format paths
+format_paths = true
+
+# Format literals
+format_literals = true
+
+# Format operators
+format_operators = true
+
+# Format punctuation
+format_punctuation = true
+
+# Format whitespace
+format_whitespace = true
+
+# Format comments
+format_comments = true
+
+# Format attributes
+format_attributes = true
+
+# Format visibility
+format_visibility = true
+
+# Format generics
+format_generics = true
+
+# Format where clauses
+format_where_clauses = true
+
+# Format function signatures
+format_function_signatures = true
+
+# Format struct definitions
+format_struct_definitions = true
+
+# Format enum definitions
+format_enum_definitions = true
+
+# Format trait definitions
+format_trait_definitions = true
+
+# Format impl blocks
+format_impl_blocks = true
+
+# Format modules
+format_modules = true
+
+# Format use statements
+format_use_statements = true
+
+# Format extern blocks
+format_extern_blocks = true
+
+# Format const items
+format_const_items = true
+
+# Format static items
+format_static_items = true
+
+# Format type aliases
+format_type_aliases = true
+
+# Format macro definitions
+format_macro_definitions = true
+
+# Format macro rules
+format_macro_rules = true
+
+# Format macro invocations
+format_macro_invocations = true
+
+# Format attributes on items
+format_attributes_on_items = true
+
+# Format attributes on expressions
+format_attributes_on_expressions = true
+
+# Format attributes on statements
+format_attributes_on_statements = true
+
+# Format attributes on patterns
+format_attributes_on_patterns = true
+
+# Format attributes on types
+format_attributes_on_types = true
+
+# Format attributes on paths
+format_attributes_on_paths = true
+
+# Format attributes on literals
+format_attributes_on_literals = true
+
+# Format attributes on operators
+format_attributes_on_operators = true
+
+# Format attributes on punctuation
+format_attributes_on_punctuation = true
+
+# Format attributes on whitespace
+format_attributes_on_whitespace = true
+
+# Format attributes on comments
+format_attributes_on_comments = true

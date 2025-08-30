@@ -1,0 +1,392 @@
+syntax = "proto3";
+
+package polymera.session;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+option go_package = "github.com/polymera-os/proto/session";
+option java_multiple_files = true;
+option java_package = "com.polymera.session";
+option java_outer_classname = "SessionProto";
+
+// Session key types with purpose, time, and amount limits
+message SessionKey {
+  string id = 1;
+  string keystore_key_id = 2;
+  SessionType session_type = 3;
+  SessionScope scope = 4;
+  TimeConstraints time_constraints = 5;
+  AmountConstraints amount_constraints = 6;
+  SecurityInfo security_info = 7;
+  SessionMetadata metadata = 8;
+  SessionState state = 9;
+}
+
+// Session key types and purposes
+enum SessionType {
+  SESSION_TYPE_UNSPECIFIED = 0;
+  SESSION_TYPE_AUTH = 1;
+  SESSION_TYPE_API_READ = 2;
+  SESSION_TYPE_API_WRITE = 3;
+  SESSION_TYPE_DATA_ACCESS = 4;
+  SESSION_TYPE_NETWORK = 5;
+  SESSION_TYPE_DEVICE = 6;
+  SESSION_TYPE_CUSTOM = 7;
+}
+
+// Session scope and access control
+message SessionScope {
+  repeated string resources = 1;
+  repeated string actions = 2;
+  GeographicConstraints geographic = 3;
+  NetworkConstraints network = 4;
+  DeviceConstraints device = 5;
+  DataConstraints data = 6;
+  map<string, string> custom_attributes = 7;
+}
+
+// Geographic constraints
+message GeographicConstraints {
+  repeated string allowed_countries = 1;
+  repeated string allowed_regions = 2;
+  repeated string allowed_cities = 3;
+  optional GeographicRadius radius_constraint = 4;
+  repeated string allowed_timezones = 5;
+}
+
+// Geographic radius constraint
+message GeographicRadius {
+  double latitude = 1;
+  double longitude = 2;
+  double radius_km = 3;
+}
+
+// Network constraints
+message NetworkConstraints {
+  repeated string allowed_ip_ranges = 1;
+  repeated NetworkType allowed_network_types = 2;
+  repeated string allowed_domains = 3;
+  optional VpnRequirement vpn_requirement = 4;
+}
+
+// Network types
+enum NetworkType {
+  NETWORK_TYPE_UNSPECIFIED = 0;
+  NETWORK_TYPE_WIFI = 1;
+  NETWORK_TYPE_ETHERNET = 2;
+  NETWORK_TYPE_MOBILE = 3;
+  NETWORK_TYPE_VPN = 4;
+  NETWORK_TYPE_CORPORATE = 5;
+}
+
+// VPN requirements
+message VpnRequirement {
+  string vpn_provider = 1;
+  string vpn_location = 2;
+  VpnProtocol vpn_protocol = 3;
+}
+
+// VPN protocols
+enum VpnProtocol {
+  VPN_PROTOCOL_UNSPECIFIED = 0;
+  VPN_PROTOCOL_OPENVPN = 1;
+  VPN_PROTOCOL_WIREGUARD = 2;
+  VPN_PROTOCOL_IKEV2 = 3;
+}
+
+// Device constraints
+message DeviceConstraints {
+  repeated DeviceType allowed_device_types = 1;
+  repeated string allowed_manufacturers = 2;
+  repeated DeviceSecurityFeature required_security_features = 3;
+}
+
+// Device types
+enum DeviceType {
+  DEVICE_TYPE_UNSPECIFIED = 0;
+  DEVICE_TYPE_DESKTOP = 1;
+  DEVICE_TYPE_LAPTOP = 2;
+  DEVICE_TYPE_MOBILE = 3;
+  DEVICE_TYPE_SERVER = 4;
+}
+
+// Device security features
+enum DeviceSecurityFeature {
+  DEVICE_SECURITY_FEATURE_UNSPECIFIED = 0;
+  DEVICE_SECURITY_FEATURE_BIOMETRIC = 1;
+  DEVICE_SECURITY_FEATURE_TEE = 2;
+  DEVICE_SECURITY_FEATURE_SECURE_BOOT = 3;
+}
+
+// Data constraints
+message DataConstraints {
+  repeated DataType allowed_data_types = 1;
+  repeated DataClassification allowed_classifications = 2;
+  repeated string allowed_data_sources = 3;
+}
+
+// Data types
+enum DataType {
+  DATA_TYPE_UNSPECIFIED = 0;
+  DATA_TYPE_PERSONAL = 1;
+  DATA_TYPE_FINANCIAL = 2;
+  DATA_TYPE_HEALTH = 3;
+  DATA_TYPE_TECHNICAL = 4;
+}
+
+// Data classifications
+enum DataClassification {
+  DATA_CLASSIFICATION_UNSPECIFIED = 0;
+  DATA_CLASSIFICATION_PUBLIC = 1;
+  DATA_CLASSIFICATION_INTERNAL = 2;
+  DATA_CLASSIFICATION_CONFIDENTIAL = 3;
+  DATA_CLASSIFICATION_RESTRICTED = 4;
+}
+
+// Time-based constraints
+message TimeConstraints {
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
+  google.protobuf.Duration max_duration = 3;
+  repeated TimeWindow allowed_windows = 4;
+  string required_timezone = 5;
+}
+
+// Time windows for allowed access
+message TimeWindow {
+  int32 day_of_week = 1;
+  string start_time = 2;
+  string end_time = 3;
+  string timezone = 4;
+}
+
+// Amount-based constraints
+message AmountConstraints {
+  uint64 max_operations = 1;
+  uint64 max_data_volume = 2;
+  uint64 max_financial_amount = 3;
+  uint32 max_sessions = 4;
+  RateLimit rate_limit = 5;
+  repeated UsageQuota usage_quotas = 6;
+}
+
+// Rate limiting configuration
+message RateLimit {
+  uint32 requests_per_window = 1;
+  google.protobuf.Duration window_duration = 2;
+  uint32 burst_allowance = 3;
+  RateLimitAlgorithm algorithm = 4;
+}
+
+// Rate limiting algorithms
+enum RateLimitAlgorithm {
+  RATE_LIMIT_ALGORITHM_UNSPECIFIED = 0;
+  RATE_LIMIT_ALGORITHM_TOKEN_BUCKET = 1;
+  RATE_LIMIT_ALGORITHM_LEAKY_BUCKET = 2;
+  RATE_LIMIT_ALGORITHM_FIXED_WINDOW = 3;
+}
+
+// Usage quota configuration
+message UsageQuota {
+  QuotaType quota_type = 1;
+  uint64 limit = 2;
+  google.protobuf.Duration period = 3;
+}
+
+// Quota types
+enum QuotaType {
+  QUOTA_TYPE_UNSPECIFIED = 0;
+  QUOTA_TYPE_OPERATIONS = 1;
+  QUOTA_TYPE_DATA_VOLUME = 2;
+  QUOTA_TYPE_FINANCIAL_AMOUNT = 3;
+  QUOTA_TYPE_SESSIONS = 4;
+}
+
+// Security information
+message SecurityInfo {
+  string algorithm = 1;
+  uint32 key_strength = 2;
+  PostQuantumSecurityLevel pq_security_level = 3;
+  repeated AuthenticationFactor required_factors = 4;
+  repeated string security_policies = 5;
+}
+
+// Post-quantum security levels
+enum PostQuantumSecurityLevel {
+  POST_QUANTUM_SECURITY_LEVEL_UNSPECIFIED = 0;
+  POST_QUANTUM_SECURITY_LEVEL_NONE = 1;
+  POST_QUANTUM_SECURITY_LEVEL_LEVEL_1 = 2;
+  POST_QUANTUM_SECURITY_LEVEL_LEVEL_3 = 3;
+  POST_QUANTUM_SECURITY_LEVEL_LEVEL_5 = 4;
+}
+
+// Authentication factors
+enum AuthenticationFactor {
+  AUTHENTICATION_FACTOR_UNSPECIFIED = 0;
+  AUTHENTICATION_FACTOR_PASSWORD = 1;
+  AUTHENTICATION_FACTOR_BIOMETRIC = 2;
+  AUTHENTICATION_FACTOR_HARDWARE_TOKEN = 3;
+  AUTHENTICATION_FACTOR_SOFTWARE_TOKEN = 4;
+}
+
+// Session metadata
+message SessionMetadata {
+  string name = 1;
+  repeated string tags = 2;
+  string created_by = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp modified_at = 5;
+  string version = 6;
+  map<string, string> custom_metadata = 7;
+}
+
+// Session state
+message SessionState {
+  SessionStatus status = 1;
+  UsageStats current_usage = 2;
+  google.protobuf.Timestamp last_activity = 3;
+  repeated SessionError errors = 4;
+}
+
+// Session status
+enum SessionStatus {
+  SESSION_STATUS_UNSPECIFIED = 0;
+  SESSION_STATUS_ACTIVE = 1;
+  SESSION_STATUS_PAUSED = 2;
+  SESSION_STATUS_SUSPENDED = 3;
+  SESSION_STATUS_EXPIRED = 4;
+  SESSION_STATUS_REVOKED = 5;
+}
+
+// Usage statistics
+message UsageStats {
+  uint64 operations_count = 1;
+  uint64 data_volume_used = 2;
+  uint64 financial_amount_used = 3;
+  google.protobuf.Duration session_duration = 4;
+}
+
+// Session errors
+message SessionError {
+  string error_code = 1;
+  string error_message = 2;
+  string error_field = 3;
+  ValidationErrorSeverity severity = 4;
+}
+
+// Validation error severity
+enum ValidationErrorSeverity {
+  VALIDATION_ERROR_SEVERITY_UNSPECIFIED = 0;
+  VALIDATION_ERROR_SEVERITY_INFO = 1;
+  VALIDATION_ERROR_SEVERITY_WARNING = 2;
+  VALIDATION_ERROR_SEVERITY_ERROR = 3;
+  VALIDATION_ERROR_SEVERITY_CRITICAL = 4;
+}
+
+// Session key validation request
+message ValidateSessionKeyRequest {
+  SessionKey session_key = 1;
+  ValidationContext context = 2;
+  ValidationOptions options = 3;
+}
+
+// Validation context
+message ValidationContext {
+  google.protobuf.Timestamp current_time = 1;
+  GeographicLocation current_location = 2;
+  NetworkInfo current_network = 3;
+  DeviceInfo current_device = 4;
+}
+
+// Geographic location
+message GeographicLocation {
+  double latitude = 1;
+  double longitude = 2;
+  string country_code = 3;
+  string region = 4;
+  string city = 5;
+  string timezone = 6;
+}
+
+// Network information
+message NetworkInfo {
+  string ip_address = 1;
+  NetworkType network_type = 2;
+  bool is_vpn = 3;
+  string vpn_provider = 4;
+}
+
+// Device information
+message DeviceInfo {
+  DeviceType device_type = 1;
+  string manufacturer = 2;
+  string model = 3;
+  string operating_system = 4;
+  repeated DeviceSecurityFeature security_features = 5;
+}
+
+// Validation options
+message ValidationOptions {
+  bool strict_mode = 1;
+  bool allow_expired = 2;
+  bool allow_quota_exceeded = 3;
+  google.protobuf.Duration timeout = 4;
+}
+
+// Session key validation response
+message ValidateSessionKeyResponse {
+  ValidationResult result = 1;
+  ValidationDetails details = 2;
+  repeated ValidationError errors = 3;
+}
+
+// Validation result
+enum ValidationResult {
+  VALIDATION_RESULT_UNSPECIFIED = 0;
+  VALIDATION_RESULT_VALID = 1;
+  VALIDATION_RESULT_INVALID = 2;
+  VALIDATION_RESULT_WARNING = 3;
+}
+
+// Validation details
+message ValidationDetails {
+  TimeValidationResult time_validation = 1;
+  ScopeValidationResult scope_validation = 2;
+  AmountValidationResult amount_validation = 3;
+  uint32 validation_score = 4;
+}
+
+// Time validation result
+message TimeValidationResult {
+  bool is_valid = 1;
+  google.protobuf.Duration time_remaining = 2;
+  repeated string violations = 3;
+}
+
+// Scope validation result
+message ScopeValidationResult {
+  bool is_valid = 1;
+  repeated string violations = 2;
+  repeated string allowed_operations = 3;
+}
+
+// Amount validation result
+message AmountValidationResult {
+  bool is_valid = 1;
+  uint64 remaining_quota = 2;
+  repeated string violations = 3;
+}
+
+// Validation error
+message ValidationError {
+  string error_code = 1;
+  string error_message = 2;
+  string error_field = 3;
+  ValidationErrorSeverity severity = 4;
+}
+
+// Session key service
+service SessionKeyService {
+  rpc ValidateSessionKey(ValidateSessionKeyRequest) returns (ValidateSessionKeyResponse);
+}

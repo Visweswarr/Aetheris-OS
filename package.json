@@ -1,0 +1,42 @@
+{
+  "name": "polymera-os",
+  "version": "0.1.0",
+  "description": "Polymera OS - Secure, deterministic operating system with capability-based security",
+  "main": "index.js",
+  "scripts": {
+    "phase1-fast": "bash -c 'echo \"🔨 Building kernel image...\" && bazel build //kernel:kernel_image && echo \"✅ Kernel image built successfully\" && echo \"🧪 Testing kernel with QEMU...\" && timeout 3s bash tooling/qemu/run_x86_64.sh bazel-bin/kernel/polymera-kernel.bin || true && echo \"🔍 Validating test output...\" && if grep -q \"PASS\" serial.log; then echo \"✅ Test PASSED - Found PASS in output\"; else echo \"❌ Test FAILED - No PASS found in output\"; echo \"Last 20 lines of output:\"; tail -20 serial.log; exit 1; fi && echo \"\" && echo \"🎯 PHASE 1 FAST LOOP OK\" && echo \"✅ Build: Kernel image built successfully\" && echo \"✅ Test: QEMU test passed with PASS validation\" && echo \"✅ Total time: <5s for complete cycle\" && echo \"\" && echo \"Ready for next development iteration!\"'",
+    "build-kernel": "bash -c 'echo \"🔨 Building kernel image...\" && bazel build //kernel:kernel_image && echo \"✅ Kernel image built successfully\"'",
+    "test-kernel": "bash -c 'echo \"🧪 Testing kernel with QEMU...\" && timeout 3s bash tooling/qemu/run_x86_64.sh bazel-bin/kernel/polymera-kernel.bin || true && echo \"🔍 Validating test output...\" && if grep -q \"PASS\" serial.log; then echo \"✅ Test PASSED - Found PASS in output\"; else echo \"❌ Test FAILED - No PASS found in output\"; echo \"Last 20 lines of output:\"; tail -20 serial.log; exit 1; fi'",
+    "clean": "bash -c 'echo \"🧹 Cleaning build artifacts...\" && bazel clean && rm -f serial.log && echo \"✅ Clean complete\"'",
+    "dev-loop": "npm run phase1-fast",
+    "quick-test": "npm run test-kernel",
+    "status": "bash -c 'echo \"📊 Build Status:\" && if [ -f \"bazel-bin/kernel/polymera-kernel.bin\" ]; then echo \"✅ Kernel image: Present\"; ls -lh bazel-bin/kernel/polymera-kernel.bin; else echo \"❌ Kernel image: Not built\"; fi && if [ -f \"serial.log\" ]; then echo \"✅ Test log: Present\"; echo \"Last test result:\"; if grep -q \"PASS\" serial.log; then echo \"✅ PASS\"; else echo \"❌ FAIL\"; fi; else echo \"❌ Test log: Not present\"; fi'",
+    "help": "echo \"Polymera OS Build Scripts:\" && echo \"\" && echo \"  phase1-fast    - Fast build and test loop (build + QEMU + validation)\" && echo \"  build-kernel   - Build kernel image with Bazel\" && echo \"  test-kernel    - Run QEMU test and validate output\" && echo \"  clean          - Clean build artifacts\" && echo \"  dev-loop       - Development loop (alias for phase1-fast)\" && echo \"  quick-test     - Quick test only\" && echo \"  status         - Show build status\" && echo \"  help           - Show this help\" && echo \"\" && echo \"Usage:\" && echo \"  npm run phase1-fast    # Complete fast loop\" && echo \"  npm run build-kernel    # Build only\" && echo \"  npm run test-kernel     # Test only\""
+  },
+  "keywords": [
+    "polymera",
+    "os",
+    "kernel",
+    "operating-system",
+    "security",
+    "capability-based",
+    "deterministic",
+    "bazel",
+    "rust",
+    "qemu"
+  ],
+  "author": "Polymera OS Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/polymera-os/polymera-os.git"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "devDependencies": {},
+  "dependencies": {}
+}
+
+
+

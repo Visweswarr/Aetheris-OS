@@ -1,0 +1,111 @@
+# EditorConfig is awesome: https://EditorConfig.org
+# top-most EditorConfig file
+root = true
+
+# Unix-style newlines with a newline ending every file
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Rust files
+[*.rs]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+
+# C++ files
+[*.{cpp,hpp,cc,hh,cxx,hxx}]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+
+# C files
+[*.{c,h}]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+
+# TypeScript/JavaScript files
+[*.{ts,tsx,js,jsx}]
+indent_style = space
+indent_size = 2
+max_line_length = 100
+
+# Python files
+[*.py]
+indent_style = space
+indent_size = 4
+max_line_length = 88
+
+# Markdown files
+[*.md]
+indent_style = space
+indent_size = 2
+max_line_length = off
+trim_trailing_whitespace = false
+
+# YAML files
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+max_line_length = 100
+
+# JSON files
+[*.json]
+indent_style = space
+indent_size = 2
+max_line_length = 100
+
+# TOML files
+[*.toml]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+
+# Protocol Buffer files
+[*.proto]
+indent_style = space
+indent_size = 2
+max_line_length = 100
+
+# Shell scripts
+[*.sh]
+indent_style = space
+indent_size = 2
+max_line_length = 100
+
+# Makefiles
+[Makefile]
+indent_style = tab
+
+# CMake files
+[CMakeLists.txt]
+indent_style = space
+indent_size = 2
+max_line_length = 100
+
+# Bazel files
+[BUILD]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+
+[WORKSPACE]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+
+# Configuration files
+[*.{cfg,conf,config}]
+indent_style = space
+indent_size = 2
+max_line_length = 100
+
+# Documentation files
+[*.{txt,adoc,asciidoc}]
+indent_style = space
+indent_size = 2
+max_line_length = off
+trim_trailing_whitespace = false

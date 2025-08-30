@@ -1,0 +1,14 @@
+{
+  "operation": "set",
+  "key": "user_preferences",
+  "value": {
+    "theme": "dark",
+    "language": "en",
+    "notifications": true
+  },
+  "metadata": {
+    "user_id": "user456",
+    "timestamp": "2024-01-16T14:30:00Z",
+    "version": "1.0"
+  }
+}

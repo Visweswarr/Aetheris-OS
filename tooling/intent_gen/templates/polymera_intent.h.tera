@@ -1,0 +1,223 @@
+// GENERATED FILE - DO NOT EDIT
+// Generated from intent/schema/intent.yaml by tooling/intent_gen
+// Schema hash: {{ schema.schema_hash }}
+
+#ifndef POLYMERA_INTENT_H
+#define POLYMERA_INTENT_H
+
+#include <stdint.h>
+#include <stddef.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Schema version
+#define INTENT_SCHEMA_VERSION {{ schema.version }}
+#define INTENT_SCHEMA_HASH "{{ schema.schema_hash }}"
+
+// Size limits
+#define INTENT_MAX_SIZE {{ schema.limits.intent_max_size }}
+#define PLAN_PREVIEW_MAX_SIZE {{ schema.limits.plan_preview_max_size }}
+#define WHY_RECORD_MAX_SIZE {{ schema.limits.why_record_max_size }}
+#define METADATA_MAX_ENTRIES {{ schema.limits.metadata_max_entries }}
+#define CONSTRAINTS_MAX_COUNT {{ schema.limits.constraints_max_count }}
+#define ACTIONS_MAX_COUNT {{ schema.limits.actions_max_count }}
+
+// Intent types
+{% for name, value in schema.intent_types %}
+#define INTENT_TYPE_{{ name }} {{ value }}
+{% endfor %}
+
+// Action kinds
+{% for name, value in schema.action_kinds %}
+#define ACTION_KIND_{{ name }} {{ value }}
+{% endfor %}
+
+// Constraint types
+{% for name, value in schema.constraint_types %}
+#define CONSTRAINT_TYPE_{{ name }} {{ value }}
+{% endfor %}
+
+// Priority levels
+{% for name, value in schema.priorities %}
+#define PRIORITY_{{ name }} {{ value }}
+{% endfor %}
+
+// Intent states
+{% for name, value in schema.intent_states %}
+#define INTENT_STATE_{{ name }} {{ value }}
+{% endfor %}
+
+// CBOR field tags
+#define INTENT_FIELD_VERSION 1
+#define INTENT_FIELD_ID 2
+#define INTENT_FIELD_DESCRIPTION 3
+#define INTENT_FIELD_INTENT_TYPE 4
+#define INTENT_FIELD_PRIORITY 5
+#define INTENT_FIELD_CONSTRAINTS 6
+#define INTENT_FIELD_METADATA 7
+#define INTENT_FIELD_REQUESTED_CAPS 8
+#define INTENT_FIELD_DEADLINE_MS 9
+#define INTENT_FIELD_DID 10
+#define INTENT_FIELD_NONCE 11
+
+#define CONSTRAINT_FIELD_KIND 1
+#define CONSTRAINT_FIELD_VALUE_TYPE 2
+#define CONSTRAINT_FIELD_VALUE_BYTES 3
+#define CONSTRAINT_FIELD_VALUE_SCALAR 4
+#define CONSTRAINT_FIELD_VALUE_STRING 5
+
+#define ACTION_FIELD_KIND 1
+#define ACTION_FIELD_PARAMS 2
+#define ACTION_FIELD_COST_ESTIMATE 3
+#define ACTION_FIELD_TIME_ESTIMATE 4
+
+#define PLAN_FIELD_INTENT_ID 1
+#define PLAN_FIELD_ACTIONS 2
+#define PLAN_FIELD_TOTAL_COST 3
+#define PLAN_FIELD_TOTAL_TIME 4
+#define PLAN_FIELD_CONSTRAINTS_APPLIED 5
+
+#define PLAN_PREVIEW_FIELD_PLAN 1
+#define PLAN_PREVIEW_FIELD_RISKS 2
+#define PLAN_PREVIEW_FIELD_NOTES 3
+#define PLAN_PREVIEW_FIELD_CONFIDENCE 4
+
+#define WHY_RECORD_FIELD_SEQ 1
+#define WHY_RECORD_FIELD_TS 2
+#define WHY_RECORD_FIELD_ACTOR 3
+#define WHY_RECORD_FIELD_EVENT 4
+#define WHY_RECORD_FIELD_DATA_HASH 5
+#define WHY_RECORD_FIELD_PREV_HASH 6
+#define WHY_RECORD_FIELD_SIGNATURE 7
+#define WHY_RECORD_FIELD_JUSTIFICATION 8
+
+// Value types for constraints
+#define CONSTRAINT_VALUE_TYPE_NONE 0
+#define CONSTRAINT_VALUE_TYPE_BYTES 3
+#define CONSTRAINT_VALUE_TYPE_SCALAR 4
+#define CONSTRAINT_VALUE_TYPE_STRING 5
+
+// CBOR major types
+#define CBOR_MAJOR_UNSIGNED_INT 0
+#define CBOR_MAJOR_NEGATIVE_INT 1
+#define CBOR_MAJOR_BYTE_STRING 2
+#define CBOR_MAJOR_TEXT_STRING 3
+#define CBOR_MAJOR_ARRAY 4
+#define CBOR_MAJOR_MAP 5
+#define CBOR_MAJOR_TAG 6
+#define CBOR_MAJOR_SIMPLE 7
+
+// CBOR simple values
+#define CBOR_SIMPLE_FALSE 20
+#define CBOR_SIMPLE_TRUE 21
+#define CBOR_SIMPLE_NULL 22
+#define CBOR_SIMPLE_UNDEFINED 23
+
+// Struct definitions
+typedef struct {
+    uint16_t version;
+    uint128_t id;
+    char description[256];
+    uint16_t intent_type;
+    uint8_t priority;
+    uint32_t constraints_count;
+    uint32_t metadata_count;
+    uint64_t requested_caps[16];
+    uint32_t requested_caps_count;
+    uint64_t deadline_ms;
+    char did[64];
+    char nonce[64];
+} polymera_intent_v1_t;
+
+typedef struct {
+    uint16_t kind;
+    uint8_t value_type;
+    uint8_t value_bytes[256];
+    uint32_t value_bytes_len;
+    uint64_t value_scalar;
+    char value_string[256];
+} polymera_constraint_v1_t;
+
+typedef struct {
+    uint16_t kind;
+    uint32_t params_count;
+    char param_keys[16][64];
+    char param_values[16][256];
+    uint64_t cost_estimate;
+    uint64_t time_estimate;
+} polymera_action_v1_t;
+
+typedef struct {
+    uint128_t intent_id;
+    uint32_t actions_count;
+    polymera_action_v1_t actions[64];
+    uint64_t total_cost;
+    uint64_t total_time;
+    uint32_t constraints_applied_count;
+    polymera_constraint_v1_t constraints_applied[16];
+} polymera_plan_v1_t;
+
+typedef struct {
+    polymera_plan_v1_t plan;
+    uint32_t risks_count;
+    char risks[8][256];
+    uint32_t notes_count;
+    char notes[8][256];
+    uint8_t confidence;
+} polymera_plan_preview_v1_t;
+
+typedef struct {
+    uint64_t seq;
+    uint64_t ts;
+    char actor[64];
+    char event[64];
+    uint8_t data_hash[32];
+    uint8_t prev_hash[32];
+    uint8_t signature[1024];
+    uint32_t signature_len;
+    char justification[256];
+} polymera_why_record_v1_t;
+
+typedef struct {
+    uint128_t intent_id;
+    uint8_t state;
+    uint8_t last_why_log_hash[32];
+    uint8_t progress;
+    uint64_t last_update;
+    uint32_t error_code;
+} polymera_intent_status_v1_t;
+
+// CBOR encoding helpers
+typedef struct {
+    uint8_t *buffer;
+    size_t size;
+    size_t offset;
+} cbor_encoder_t;
+
+// Function declarations
+int cbor_encode_intent(const polymera_intent_v1_t *intent, uint8_t *buffer, size_t buffer_size, size_t *encoded_size);
+int cbor_decode_intent(const uint8_t *buffer, size_t buffer_size, polymera_intent_v1_t *intent);
+
+int cbor_encode_plan_preview(const polymera_plan_preview_v1_t *preview, uint8_t *buffer, size_t buffer_size, size_t *encoded_size);
+int cbor_decode_plan_preview(const uint8_t *buffer, size_t buffer_size, polymera_plan_preview_v1_t *preview);
+
+int cbor_encode_why_record(const polymera_why_record_v1_t *record, uint8_t *buffer, size_t buffer_size, size_t *encoded_size);
+int cbor_decode_why_record(const uint8_t *buffer, size_t buffer_size, polymera_why_record_v1_t *record);
+
+// Validation functions
+int validate_intent(const polymera_intent_v1_t *intent);
+int validate_plan_preview(const polymera_plan_preview_v1_t *preview);
+int validate_why_record(const polymera_why_record_v1_t *record);
+
+// Utility functions
+uint32_t compute_intent_hash(const polymera_intent_v1_t *intent);
+uint32_t compute_plan_preview_hash(const polymera_plan_preview_v1_t *preview);
+uint32_t compute_why_record_hash(const polymera_why_record_v1_t *record);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // POLYMERA_INTENT_H

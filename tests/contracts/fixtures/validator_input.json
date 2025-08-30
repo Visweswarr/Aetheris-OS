@@ -1,0 +1,32 @@
+{
+  "operation": "validate",
+  "data": {
+    "user_id": "user789",
+    "age": 25,
+    "email": "user@example.com",
+    "permissions": ["read", "write"]
+  },
+  "rules": [
+    {
+      "field": "age",
+      "type": "range",
+      "min": 18,
+      "max": 100
+    },
+    {
+      "field": "email",
+      "type": "format",
+      "pattern": "^[^@]+@[^@]+\\.[^@]+$"
+    },
+    {
+      "field": "permissions",
+      "type": "array",
+      "allowed_values": ["read", "write", "admin"]
+    }
+  ],
+  "metadata": {
+    "validation_id": "val_123",
+    "timestamp": "2024-01-17T09:15:00Z",
+    "schema_version": "1.0"
+  }
+}

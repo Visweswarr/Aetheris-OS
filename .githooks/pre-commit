@@ -1,0 +1,43 @@
+#!/bin/bash
+
+set -e
+
+echo "🔒 Polymera OS Surface Guard - Pre-commit Check"
+echo "================================================"
+
+if ! command -v bazel &> /dev/null; then
+    echo "❌ Bazel not found. Please install Bazel to use the surface guard."
+    exit 1
+fi
+
+echo "🔄 Regenerating golden surfaces..."
+if ! bazel run //tooling/abi:gen; then
+    echo "❌ Failed to regenerate ABI surfaces"
+    exit 1
+fi
+
+if [ -f "policy/compile.sh" ]; then
+    echo "🔄 Regenerating policy WASM..."
+    if ! (cd policy && ./compile.sh); then
+        echo "❌ Failed to regenerate policy WASM"
+        exit 1
+    fi
+fi
+
+echo "🔍 Checking surface integrity..."
+if ! bazel run //tooling/guard:surface_check; then
+    echo ""
+    echo "❌ Surface drift detected! Please review and fix before committing."
+    echo ""
+    echo "To allow intentional changes:"
+    echo "1. Edit SURFACE.allow.yaml with justification and approval"
+    echo "2. Re-run: bazel run //tooling/guard:surface_check"
+    echo "3. Commit again"
+    echo ""
+    echo "To restore from git:"
+    echo "git checkout -- SURFACE.lock.json"
+    echo ""
+    exit 1
+fi
+
+echo "✅ All surfaces OK - proceeding with commit"

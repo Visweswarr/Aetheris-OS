@@ -1,0 +1,19 @@
+[package]
+name = "soak-test-p2"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "soak-test"
+path = "main.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+log = "0.4"
+env_logger = "0.10"
+fastrand = "2.0"
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["full"] }
+

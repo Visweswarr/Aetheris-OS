@@ -1,0 +1,89 @@
+[package]
+name = "polymeractl"
+version = "0.1.0"
+edition = "2021"
+description = "Polymera OS Developer CLI"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/polymera-os/polymera-os"
+keywords = ["cli", "polymera", "os", "development", "build", "qemu", "image", "verify", "sbom", "sign"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "polymeractl"
+path = "main.rs"
+
+[dependencies]
+# CLI framework
+clap = { version = "4.0", features = ["derive"] }
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Colored output
+colored = "2.0"
+
+# Logging
+log = "0.4"
+env_logger = "0.10"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Cryptography
+sha2 = "0.10"
+base64 = "0.21"
+
+# File system operations
+walkdir = "2.4"
+
+# Error handling
+thiserror = "1.0"
+
+# Utilities
+uuid = { version = "1.0", features = ["v4"] }
+
+[dev-dependencies]
+# Testing
+tokio-test = "0.4"
+tempfile = "3.8"
+
+# Mocking
+mockall = "0.11"
+
+# Test utilities
+assert_fs = "1.0"
+predicates = "3.0"
+
+[features]
+default = []
+# Enable additional features for development
+dev = ["full-tests", "debug-output"]
+# Enable all tests
+full-tests = []
+# Enable debug output
+debug-output = []
+
+[profile.release]
+# Optimize for size
+opt-level = "z"
+# Enable link-time optimization
+lto = true
+# Strip debug symbols
+strip = true
+# Enable panic = "abort" for smaller binary
+panic = "abort"
+
+[profile.dev]
+# Enable debug assertions
+debug = true
+# Enable overflow checks
+overflow-checks = true
+
+# Build optimizations
+[profile.dev.package."*"]
+opt-level = 1

@@ -1,0 +1,178 @@
+{
+	"name": "Polymera OS Development Environment",
+	"image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+	"features": {
+		"ghcr.io/devcontainers/features/rust:1": {
+			"version": "stable"
+		},
+		"ghcr.io/devcontainers/features/git:1": {},
+		"ghcr.io/devcontainers/features/github-cli:1": {}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"rust-lang.rust-analyzer",
+				"ms-vscode.cpptools",
+				"ms-vscode.cmake-tools",
+				"ms-vscode.makefile-tools",
+				"ms-vscode.hexeditor",
+				"ms-vscode.hexeditor",
+				"ms-vscode.hexeditor"
+			],
+			"settings": {
+				"rust-analyzer.checkOnSave.command": "clippy",
+				"rust-analyzer.checkOnSave.extraArgs": ["--", "-W", "clippy::all"],
+				"files.associations": {
+					"*.md": "markdown",
+					"*.yml": "yaml",
+					"*.yaml": "yaml",
+					"*.sh": "shellscript",
+					"*.bat": "batchfile"
+				}
+			}
+		}
+	},
+	"postCreateCommand": "rustup component add rustfmt clippy",
+	"remoteUser": "vscode",
+	"mounts": [
+		"source=${localWorkspaceFolder}/.devcontainer/scripts,target=/usr/local/share/devcontainer/scripts,type=bind,consistency=cached"
+	],
+	"tasks": {
+		"version": "2.0.0",
+		"tasks": [
+			{
+				"label": "Run Matrix Cell (APIC Default)",
+				"type": "shell",
+				"command": "make",
+				"args": ["matrix-apic-default"],
+				"group": "build",
+				"presentation": {
+					"echo": true,
+					"reveal": "always",
+					"focus": false,
+					"panel": "shared",
+					"showReuseMessage": true,
+					"clear": false
+				},
+				"problemMatcher": [],
+				"detail": "Run APIC timer matrix cell with default settings"
+			},
+			{
+				"label": "Run Matrix Cell (HPET Default)",
+				"type": "shell",
+				"command": "make",
+				"args": ["matrix-hpet-default"],
+				"group": "build",
+				"presentation": {
+					"echo": true,
+					"reveal": "always",
+					"focus": false,
+					"panel": "shared",
+					"showReuseMessage": true,
+					"clear": false
+				},
+				"problemMatcher": [],
+				"detail": "Run HPET timer matrix cell with default settings"
+			},
+			{
+				"label": "Run Matrix Cell (Auth On)",
+				"type": "shell",
+				"command": "make",
+				"args": ["matrix-auth-on"],
+				"group": "build",
+				"presentation": {
+					"echo": true,
+					"reveal": "always",
+					"focus": false,
+					"panel": "shared",
+					"showReuseMessage": true,
+					"clear": false
+				},
+				"problemMatcher": [],
+				"detail": "Run matrix cell with authentication enabled"
+			},
+			{
+				"label": "Run Matrix Cell (Jitter On)",
+				"type": "shell",
+				"command": "make",
+				"args": ["matrix-jitter-on"],
+				"group": "build",
+				"presentation": {
+					"echo": true,
+					"reveal": "always",
+					"focus": false,
+					"panel": "shared",
+					"showReuseMessage": true,
+					"clear": false
+				},
+				"problemMatcher": [],
+				"detail": "Run matrix cell with jitter injection enabled"
+			},
+			{
+				"label": "Run Matrix Cell (Full Features)",
+				"type": "shell",
+				"command": "make",
+				"args": ["matrix-full-features"],
+				"group": "build",
+				"presentation": {
+					"echo": true,
+					"reveal": "always",
+					"focus": false,
+					"panel": "shared",
+					"showReuseMessage": true,
+					"clear": false
+				},
+				"problemMatcher": [],
+				"detail": "Run matrix cell with all features enabled"
+			},
+			{
+				"label": "Run Matrix Cell (Custom)",
+				"type": "shell",
+				"command": "make",
+				"args": ["matrix-custom"],
+				"group": "build",
+				"presentation": {
+					"echo": true,
+					"reveal": "always",
+					"focus": false,
+					"panel": "shared",
+					"showReuseMessage": true,
+					"clear": false
+				},
+				"problemMatcher": [],
+				"detail": "Run matrix cell with custom configuration"
+			},
+			{
+				"label": "Run Matrix Cell (Local)",
+				"type": "shell",
+				"command": "make",
+				"args": ["matrix-local"],
+				"group": "build",
+				"presentation": {
+					"echo": true,
+					"reveal": "always",
+					"focus": false,
+					"panel": "shared",
+					"showReuseMessage": true,
+					"clear": false
+				},
+				"problemMatcher": [],
+				"detail": "Run matrix cell with environment variables"
+			}
+		]
+	},
+	"forwardPorts": [8080, 3000],
+	"portsAttributes": {
+		"8080": {
+			"label": "Development Server",
+			"onAutoForward": "notify"
+		},
+		"3000": {
+			"label": "Debug Server",
+			"onAutoForward": "notify"
+		}
+	},
+	"postStartCommand": "echo 'Polymera OS development environment ready!'",
+	"workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+	"workspaceFolder": "/workspace"
+}

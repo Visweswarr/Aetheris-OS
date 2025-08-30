@@ -1,0 +1,53 @@
+[package]
+name = "polymera-observability"
+version = "0.1.0"
+edition = "2021"
+description = "Observability and telemetry for Polymera OS"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/polymera-os/polymera-os"
+keywords = ["observability", "telemetry", "opentelemetry", "metrics", "tracing"]
+categories = ["development-tools", "monitoring"]
+
+[dependencies]
+# OpenTelemetry core
+opentelemetry = { version = "0.21", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.14", features = ["grpc-tonic", "http-proto"] }
+opentelemetry-semantic-conventions = "0.12"
+
+# Tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-opentelemetry = "0.22"
+
+# Metrics
+prometheus = { version = "0.13", features = ["process"] }
+
+# Async runtime
+tokio = { version = "1.0", features = ["full", "sync"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+
+# Utilities
+md5 = "0.7"
+uuid = { version = "1.0", features = ["v4"] }
+regex = "1.0"
+rand = "0.8"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[features]
+default = ["full"]
+full = ["otel", "metrics", "privacy"]
+otel = ["opentelemetry", "opentelemetry-otlp", "tracing-opentelemetry"]
+metrics = ["prometheus"]
+privacy = ["md5"]
+
+[[bin]]
+name = "observability-test"
+path = "src/bin/test.rs"
+
+[[bin]]
+name = "observability-bench"
+path = "src/bin/bench.rs"

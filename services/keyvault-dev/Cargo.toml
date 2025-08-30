@@ -1,0 +1,37 @@
+[package]
+name = "keyvault-dev"
+version = "0.1.0"
+edition = "2021"
+authors = ["Polymera OS Team"]
+description = "Development keyvault service with file-backed persistence for issuer anchors and session metadata"
+
+[dependencies]
+# Core dependencies
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Cryptographic dependencies
+aes-gcm = "0.10"
+rand = "0.8"
+getrandom = "0.2"
+hex = "0.4"
+
+# File system and I/O
+tokio-util = { version = "0.7", features = ["io"] }
+futures-util = "0.3"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Development dependencies
+[dev-dependencies]
+tempfile = "3.0"
+tokio-test = "0.4"
+
+[features]
+default = []
+dev-only = []

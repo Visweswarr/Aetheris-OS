@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Hello Polymera - Minimal TypeScript React app for Polymera OS UI">
+    <meta name="keywords" content="polymera, os, ui, typescript, react, bazel">
+    <meta name="author" content="Polymera OS Team">
+    
+    <title>Hello Polymera - Polymera OS UI</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="/src/index.tsx" as="script" type="module">
+    
+    <!-- Meta tags for social sharing -->
+    <meta property="og:title" content="Hello Polymera - Polymera OS UI">
+    <meta property="og:description" content="Minimal TypeScript React app for Polymera OS UI">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://polymera-os.github.io">
+    <meta property="og:image" content="https://polymera-os.github.io/og-image.png">
+    
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Hello Polymera - Polymera OS UI">
+    <meta name="twitter:description" content="Minimal TypeScript React app for Polymera OS UI">
+    
+    <!-- Security headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+    
+    <!-- Performance optimizations -->
+    <meta http-equiv="Accept-CH" content="DPR, Viewport-Width, Width">
+    <meta name="theme-color" content="#667eea">
+    
+    <!-- Critical CSS for initial render -->
+    <style>
+        /* Critical CSS for initial render */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        
+        #root {
+            min-height: 100vh;
+        }
+        
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-size: 1.5rem;
+            text-align: center;
+        }
+        
+        .loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid white;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error {
+            color: #f87171;
+            text-align: center;
+            padding: 40px;
+            font-size: 1.2rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Root element for React app -->
+    <div id="root">
+        <!-- Loading state while React app initializes -->
+        <div class="loading">
+            <div>
+                <div class="loading-spinner"></div>
+                <div>🚀 Loading Polymera OS...</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Error boundary for React app -->
+    <div id="error-boundary" style="display: none;">
+        <div class="error">
+            <h2>⚠️ Application Error</h2>
+            <p>Something went wrong while loading the Polymera OS UI.</p>
+            <p>Please refresh the page or contact support if the problem persists.</p>
+        </div>
+    </div>
+    
+    <!-- React app entry point -->
+    <script type="module" src="/src/index.tsx"></script>
+    
+    <!-- Fallback for non-module browsers -->
+    <script nomodule>
+        document.getElementById('root').innerHTML = `
+            <div class="error">
+                <h2>🚫 Browser Not Supported</h2>
+                <p>Your browser doesn't support ES modules, which are required for this application.</p>
+                <p>Please use a modern browser like Chrome, Firefox, Safari, or Edge.</p>
+            </div>
+        `;
+    </script>
+    
+    <!-- Service worker registration for PWA support -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(function(registration) {
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                    })
+                    .catch(function(error) {
+                        console.log('ServiceWorker registration failed: ', error);
+                    });
+            });
+        }
+    </script>
+    
+    <!-- Performance monitoring -->
+    <script>
+        // Performance monitoring
+        window.addEventListener('load', function() {
+            if ('performance' in window) {
+                const perfData = performance.getEntriesByType('navigation')[0];
+                if (perfData) {
+                    console.log('🚀 App Load Performance:', {
+                        'DOM Content Loaded': perfData.domContentLoadedEventEnd - perfData.domContentLoadedEventStart + 'ms',
+                        'Load Complete': perfData.loadEventEnd - perfData.loadEventStart + 'ms',
+                        'Total Load Time': perfData.loadEventEnd - perfData.fetchStart + 'ms'
+                    });
+                }
+            }
+        });
+        
+        // Error monitoring
+        window.addEventListener('error', function(event) {
+            console.error('🚨 Application Error:', {
+                message: event.message,
+                filename: event.filename,
+                lineno: event.lineno,
+                colno: event.colno,
+                error: event.error
+            });
+        });
+        
+        // Unhandled promise rejection monitoring
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('🚨 Unhandled Promise Rejection:', event.reason);
+        });
+    </script>
+    
+    <!-- Development helpers -->
+    <script>
+        // Development mode detection
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            console.log('🔧 Development mode detected');
+            console.log('📱 App: Hello Polymera');
+            console.log('🔧 Build system: Bazel + TypeScript');
+            console.log('⚛️ Framework: React');
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+[package]
+name = "polymera-harnesses"
+version = "0.1.0"
+edition = "2021"
+description = "Performance testing harnesses for Polymera OS SLO validation"
+authors = ["Polymera OS Team <team@polymera.os>"]
+
+[[bin]]
+name = "xr_harness"
+path = "xr.rs"
+
+[[bin]]
+name = "network_harness"
+path = "net.rs"
+
+[[bin]]
+name = "wallet_harness"
+path = "wallet.rs"
+
+[dependencies]
+# Core dependencies
+anyhow = "1.0"
+clap = { version = "4.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+tokio = { version = "1.0", features = ["full"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+rand = "0.8"
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# OpenTelemetry and metrics
+opentelemetry = { version = "0.21", features = ["metrics"] }
+opentelemetry-otlp = { version = "0.14", features = ["http-proto", "reqwest-client"] }
+opentelemetry-sdk = { version = "0.21", features = ["rt-tokio"] }
+opentelemetry-prometheus = "0.14"
+prometheus = "0.13"
+
+[dev-dependencies]
+tempfile = "3.0"
+tokio-test = "0.4"
+
+[features]
+default = ["prometheus-export"]
+prometheus-export = ["opentelemetry-prometheus", "prometheus"]
+otlp-export = []
+console-export = []

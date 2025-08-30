@@ -1,0 +1,456 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Polymera OS Package Manifest",
+  "description": "Schema for Polymera OS content-addressed package bundles with SBOM, signatures, and capability manifests",
+  "type": "object",
+  "required": [
+    "manifest_version",
+    "package_id",
+    "content_hash",
+    "created_at",
+    "capabilities",
+    "sbom",
+    "signatures",
+    "metadata"
+  ],
+  "properties": {
+    "manifest_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Version of the manifest schema",
+      "examples": ["1.0.0", "2.1.0"]
+    },
+    "package_id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+(\\.[a-zA-Z0-9_-]+)*$",
+      "description": "Unique identifier for the package",
+      "examples": ["core.kernel", "services.attest", "crypto.liboqs"]
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$",
+      "description": "SHA-256 hash of the package content (excluding signatures)",
+      "examples": ["a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef12345678"]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the package was created"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Optional expiration timestamp for the package"
+    },
+    "capabilities": {
+      "type": "object",
+      "description": "Capability manifest defining what the package can do",
+      "required": ["required", "optional", "restricted"],
+      "properties": {
+        "required": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/capability"
+          },
+          "description": "Capabilities that must be available for the package to function"
+        },
+        "optional": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/capability"
+          },
+          "description": "Capabilities that enhance functionality if available"
+        },
+        "restricted": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/capability"
+          },
+          "description": "Capabilities that the package explicitly cannot access"
+        }
+      }
+    },
+    "sbom": {
+      "type": "object",
+      "description": "Software Bill of Materials",
+      "required": ["format", "version", "components"],
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": ["spdx", "cyclonedx", "swid"],
+          "description": "SBOM format specification"
+        },
+        "version": {
+          "type": "string",
+          "description": "Version of the SBOM format"
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/sbom_component"
+          },
+          "description": "List of software components and dependencies"
+        },
+        "relationships": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/sbom_relationship"
+          },
+          "description": "Relationships between components"
+        }
+      }
+    },
+    "signatures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/signature"
+      },
+      "description": "Cryptographic signatures of the package manifest"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional package metadata",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human-readable package name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Package description"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?(\\+[a-zA-Z0-9.-]+)?$",
+          "description": "Semantic version of the package"
+        },
+        "author": {
+          "type": "string",
+          "description": "Package author or maintainer"
+        },
+        "license": {
+          "type": "string",
+          "description": "License identifier (SPDX format)"
+        },
+        "homepage": {
+          "type": "string",
+          "format": "uri",
+          "description": "Package homepage URL"
+        },
+        "repository": {
+          "type": "string",
+          "format": "uri",
+          "description": "Source code repository URL"
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Keywords for package discovery"
+        },
+        "tags": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Key-value tags for package categorization"
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/package_file"
+      },
+      "description": "List of files included in the package"
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/package_dependency"
+      },
+      "description": "Package dependencies"
+    },
+    "security": {
+      "type": "object",
+      "description": "Security-related information",
+      "properties": {
+        "vulnerabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/vulnerability"
+          },
+          "description": "Known security vulnerabilities"
+        },
+        "checksums": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Additional checksums for verification"
+        },
+        "audit_info": {
+          "type": "object",
+          "description": "Security audit information",
+          "properties": {
+            "audited_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "auditor": {
+              "type": "string"
+            },
+            "audit_report": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "capability": {
+      "type": "object",
+      "required": ["name", "type", "description"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Capability identifier"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["system", "network", "storage", "crypto", "ui", "custom"],
+          "description": "Capability category"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description"
+        },
+        "version": {
+          "type": "string",
+          "description": "Required version of the capability"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Capability-specific parameters"
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional constraints for the capability"
+        }
+      }
+    },
+    "sbom_component": {
+      "type": "object",
+      "required": ["name", "version", "type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Component name"
+        },
+        "version": {
+          "type": "string",
+          "description": "Component version"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["application", "framework", "library", "operating-system", "device", "file"],
+          "description": "Component type"
+        },
+        "purl": {
+          "type": "string",
+          "description": "Package URL for the component"
+        },
+        "cpe": {
+          "type": "string",
+          "description": "Common Platform Enumeration identifier"
+        },
+        "license": {
+          "type": "string",
+          "description": "Component license"
+        },
+        "supplier": {
+          "type": "string",
+          "description": "Component supplier or vendor"
+        },
+        "description": {
+          "type": "string",
+          "description": "Component description"
+        },
+        "checksums": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/checksum"
+          },
+          "description": "Component checksums"
+        }
+      }
+    },
+    "sbom_relationship": {
+      "type": "object",
+      "required": ["from", "to", "type"],
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "Source component identifier"
+        },
+        "to": {
+          "type": "string",
+          "description": "Target component identifier"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["depends_on", "contains", "derives_from", "build_tool_for", "dev_tool_for"],
+          "description": "Relationship type"
+        },
+        "description": {
+          "type": "string",
+          "description": "Relationship description"
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "required": ["algorithm", "key_id", "signature", "timestamp"],
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": ["rsa-2048-sha256", "rsa-4096-sha512", "ed25519", "ecdsa-p256", "ecdsa-p384"],
+          "description": "Signature algorithm used"
+        },
+        "key_id": {
+          "type": "string",
+          "description": "Identifier for the signing key"
+        },
+        "signature": {
+          "type": "string",
+          "description": "Base64-encoded signature"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the signature was created"
+        },
+        "signer": {
+          "type": "string",
+          "description": "Name or identifier of the signer"
+        },
+        "certificate": {
+          "type": "string",
+          "description": "Base64-encoded certificate (if applicable)"
+        }
+      }
+    },
+    "package_file": {
+      "type": "object",
+      "required": ["path", "size", "checksum"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "File path within the package"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "File size in bytes"
+        },
+        "checksum": {
+          "$ref": "#/definitions/checksum"
+        },
+        "permissions": {
+          "type": "string",
+          "pattern": "^[rwx-]{9}$",
+          "description": "Unix file permissions"
+        },
+        "mime_type": {
+          "type": "string",
+          "description": "MIME type of the file"
+        },
+        "executable": {
+          "type": "boolean",
+          "description": "Whether the file is executable"
+        }
+      }
+    },
+    "package_dependency": {
+      "type": "object",
+      "required": ["package_id", "version_constraint"],
+      "properties": {
+        "package_id": {
+          "type": "string",
+          "description": "Dependent package identifier"
+        },
+        "version_constraint": {
+          "type": "string",
+          "description": "Version constraint (e.g., '>=1.0.0,<2.0.0')"
+        },
+        "optional": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the dependency is optional"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why this dependency is needed"
+        }
+      }
+    },
+    "checksum": {
+      "type": "object",
+      "required": ["algorithm", "value"],
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": ["sha256", "sha512", "blake3", "md5"],
+          "description": "Hash algorithm used"
+        },
+        "value": {
+          "type": "string",
+          "description": "Hexadecimal hash value"
+        }
+      }
+    },
+    "vulnerability": {
+      "type": "object",
+      "required": ["id", "severity", "description"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Vulnerability identifier (CVE, etc.)"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"],
+          "description": "Vulnerability severity"
+        },
+        "description": {
+          "type": "string",
+          "description": "Vulnerability description"
+        },
+        "affected_components": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of affected component names"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          },
+          "description": "References to vulnerability details"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

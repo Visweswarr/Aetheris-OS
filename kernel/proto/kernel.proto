@@ -1,0 +1,498 @@
+syntax = "proto3";
+
+package polymera.kernel;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+
+// Service definitions for Polymera OS kernel
+
+// Core kernel service
+service PolymeraCoreService {
+  // Initialize the kernel
+  rpc Initialize(InitializeRequest) returns (InitializeResponse);
+
+  // Get kernel status
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+
+  // Shutdown the kernel
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+
+  // Emergency shutdown
+  rpc EmergencyShutdown(EmergencyShutdownRequest) returns (EmergencyShutdownResponse);
+}
+
+// Process management service
+service ProcessManagerService {
+  // Create a new process
+  rpc CreateProcess(CreateProcessRequest) returns (CreateProcessResponse);
+
+  // Terminate a process
+  rpc TerminateProcess(TerminateProcessRequest) returns (TerminateProcessResponse);
+
+  // Get process information
+  rpc GetProcessInfo(GetProcessInfoRequest) returns (GetProcessInfoResponse);
+
+  // List all processes
+  rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
+
+  // Suspend a process
+  rpc SuspendProcess(SuspendProcessRequest) returns (SuspendProcessResponse);
+
+  // Resume a process
+  rpc ResumeProcess(ResumeProcessRequest) returns (ResumeProcessResponse);
+}
+
+// Memory management service
+service MemoryManagerService {
+  // Allocate memory
+  rpc AllocateMemory(AllocateMemoryRequest) returns (AllocateMemoryResponse);
+
+  // Free memory
+  rpc FreeMemory(FreeMemoryRequest) returns (FreeMemoryResponse);
+
+  // Map memory
+  rpc MapMemory(MapMemoryRequest) returns (MapMemoryResponse);
+
+  // Unmap memory
+  rpc UnmapMemory(UnmapMemoryRequest) returns (UnmapMemoryResponse);
+
+  // Get memory info
+  rpc GetMemoryInfo(GetMemoryInfoRequest) returns (GetMemoryInfoResponse);
+
+  // Protect memory
+  rpc ProtectMemory(ProtectMemoryRequest) returns (ProtectMemoryResponse);
+}
+
+// IPC service
+service IPCService {
+  // Send a message
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+
+  // Receive a message
+  rpc ReceiveMessage(ReceiveMessageRequest) returns (ReceiveMessageResponse);
+
+  // Subscribe to messages
+  rpc Subscribe(SubscribeRequest) returns (stream IPCMessage);
+
+  // Create a channel
+  rpc CreateChannel(CreateChannelRequest) returns (CreateChannelResponse);
+
+  // Destroy a channel
+  rpc DestroyChannel(DestroyChannelRequest) returns (DestroyChannelResponse);
+}
+
+// Security service
+service SecurityService {
+  // Verify capability
+  rpc VerifyCapability(VerifyCapabilityRequest) returns (VerifyCapabilityResponse);
+
+  // Grant capability
+  rpc GrantCapability(GrantCapabilityRequest) returns (GrantCapabilityResponse);
+
+  // Revoke capability
+  rpc RevokeCapability(RevokeCapabilityRequest) returns (RevokeCapabilityResponse);
+
+  // Generate attestation
+  rpc GenerateAttestation(GenerateAttestationRequest) returns (GenerateAttestationResponse);
+
+  // Verify attestation
+  rpc VerifyAttestation(VerifyAttestationRequest) returns (VerifyAttestationResponse);
+}
+
+// Device management service
+service DeviceManagerService {
+  // Enumerate devices
+  rpc EnumerateDevices(EnumerateDevicesRequest) returns (EnumerateDevicesResponse);
+
+  // Get device info
+  rpc GetDeviceInfo(GetDeviceInfoRequest) returns (GetDeviceInfoResponse);
+
+  // Open device
+  rpc OpenDevice(OpenDeviceRequest) returns (OpenDeviceResponse);
+
+  // Close device
+  rpc CloseDevice(CloseDeviceRequest) returns (CloseDeviceResponse);
+
+  // Device control
+  rpc DeviceControl(DeviceControlRequest) returns (DeviceControlResponse);
+}
+
+// Message types
+
+// Initialize request
+message InitializeRequest {
+  KernelConfig config = 1;
+  repeated string features = 2;
+}
+
+// Initialize response
+message InitializeResponse {
+  bool success = 1;
+  string message = 2;
+  KernelStatus status = 3;
+}
+
+// Kernel configuration
+message KernelConfig {
+  SecurityConfig security = 1;
+  PerformanceConfig performance = 2;
+  MemoryConfig memory = 3;
+  DeviceConfig devices = 4;
+  LoggingConfig logging = 5;
+}
+
+// Security configuration
+message SecurityConfig {
+  bool pqc_enabled = 1;
+  bool zk_enabled = 2;
+  repeated string pqc_algorithms = 3;
+  repeated string zk_frameworks = 4;
+  bool secure_boot_enabled = 5;
+  bool tpm_enabled = 6;
+}
+
+// Performance configuration
+message PerformanceConfig {
+  uint32 max_processes = 1;
+  uint32 max_threads_per_process = 2;
+  uint64 max_memory_per_process = 3;
+  bool deterministic_mode = 4;
+  uint32 performance_budget_us = 5;
+}
+
+// Memory configuration
+message MemoryConfig {
+  uint64 total_memory = 1;
+  uint64 kernel_memory = 2;
+  uint64 user_memory = 3;
+  bool memory_protection = 4;
+  bool memory_isolation = 5;
+}
+
+// Device configuration
+message DeviceConfig {
+  bool pci_enabled = 1;
+  bool usb_enabled = 2;
+  bool network_enabled = 3;
+  bool audio_enabled = 4;
+  bool graphics_enabled = 5;
+}
+
+// Logging configuration
+message LoggingConfig {
+  string log_level = 1;
+  string log_file = 2;
+  bool console_logging = 3;
+  bool file_logging = 4;
+  uint32 max_log_size = 5;
+}
+
+// Kernel status
+message KernelStatus {
+  string version = 1;
+  string build_date = 2;
+  KernelState state = 3;
+  uint64 uptime = 4;
+  repeated string active_features = 5;
+  PerformanceMetrics performance = 6;
+  SecurityStatus security = 7;
+}
+
+// Kernel state
+enum KernelState {
+  UNKNOWN = 0;
+  INITIALIZING = 1;
+  RUNNING = 2;
+  SHUTTING_DOWN = 3;
+  ERROR = 4;
+  EMERGENCY = 5;
+}
+
+// Performance metrics
+message PerformanceMetrics {
+  uint64 context_switches = 1;
+  uint64 ipc_messages = 2;
+  uint64 memory_allocations = 3;
+  uint64 system_calls = 4;
+  repeated TimingMeasurement timings = 5;
+}
+
+// Timing measurement
+message TimingMeasurement {
+  string operation = 1;
+  uint64 min_time_us = 2;
+  uint64 max_time_us = 3;
+  uint64 avg_time_us = 4;
+  uint64 p99_time_us = 5;
+  uint64 count = 6;
+}
+
+// Security status
+message SecurityStatus {
+  bool pqc_ready = 1;
+  bool zk_ready = 2;
+  bool secure_boot_verified = 3;
+  bool tpm_available = 4;
+  repeated string active_policies = 5;
+  repeated SecurityAlert alerts = 6;
+}
+
+// Security alert
+message SecurityAlert {
+  string id = 1;
+  string severity = 2;
+  string description = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  repeated string affected_components = 5;
+}
+
+// Process management messages
+
+// Create process request
+message CreateProcessRequest {
+  string name = 1;
+  bytes executable = 2;
+  repeated string capabilities = 3;
+  uint64 memory_limit = 4;
+  ProcessPriority priority = 5;
+}
+
+// Create process response
+message CreateProcessResponse {
+  bool success = 1;
+  string process_id = 2;
+  string message = 3;
+}
+
+// Process priority
+enum ProcessPriority {
+  LOW = 0;
+  NORMAL = 1;
+  HIGH = 2;
+  REAL_TIME = 3;
+}
+
+// Process info
+message ProcessInfo {
+  string process_id = 1;
+  string name = 2;
+  ProcessState state = 3;
+  uint64 memory_usage = 4;
+  uint64 cpu_usage = 5;
+  repeated string capabilities = 6;
+  google.protobuf.Timestamp created = 7;
+}
+
+// Process state
+enum ProcessState {
+  CREATED = 0;
+  READY = 1;
+  RUNNING = 2;
+  BLOCKED = 3;
+  TERMINATED = 4;
+  SUSPENDED = 5;
+}
+
+// Memory management messages
+
+// Allocate memory request
+message AllocateMemoryRequest {
+  uint64 size = 1;
+  MemoryType type = 2;
+  MemoryProtection protection = 3;
+  repeated string capabilities = 4;
+}
+
+// Memory type
+enum MemoryType {
+  KERNEL = 0;
+  USER = 1;
+  SHARED = 2;
+  DEVICE = 3;
+}
+
+// Memory protection
+enum MemoryProtection {
+  NONE = 0;
+  READ = 1;
+  WRITE = 2;
+  EXECUTE = 4;
+  READ_WRITE = 3;
+  READ_EXECUTE = 5;
+  WRITE_EXECUTE = 6;
+  READ_WRITE_EXECUTE = 7;
+}
+
+// Allocate memory response
+message AllocateMemoryResponse {
+  bool success = 1;
+  uint64 address = 2;
+  uint64 size = 3;
+  string message = 4;
+}
+
+// IPC messages
+
+// IPC message
+message IPCMessage {
+  string message_id = 1;
+  string sender = 2;
+  string receiver = 3;
+  string channel = 4;
+  bytes payload = 5;
+  bytes signature = 6;
+  google.protobuf.Timestamp timestamp = 7;
+  repeated string capabilities = 8;
+  MessageType type = 9;
+}
+
+// Message type
+enum MessageType {
+  DATA = 0;
+  CONTROL = 1;
+  HEARTBEAT = 2;
+  ERROR = 3;
+}
+
+// Send message request
+message SendMessageRequest {
+  IPCMessage message = 1;
+  uint32 timeout_ms = 2;
+}
+
+// Send message response
+message SendMessageResponse {
+  bool success = 1;
+  string message_id = 2;
+  string error = 3;
+}
+
+// Security messages
+
+// Capability
+message Capability {
+  string id = 1;
+  string name = 2;
+  repeated string permissions = 3;
+  google.protobuf.Timestamp issued = 4;
+  google.protobuf.Timestamp expires = 5;
+  bytes signature = 6;
+}
+
+// Verify capability request
+message VerifyCapabilityRequest {
+  string capability_id = 1;
+  string operation = 2;
+  repeated string required_permissions = 3;
+}
+
+// Verify capability response
+message VerifyCapabilityResponse {
+  bool valid = 1;
+  repeated string granted_permissions = 2;
+  string error = 3;
+}
+
+// Attestation
+message Attestation {
+  string id = 1;
+  string subject = 2;
+  repeated string claims = 3;
+  bytes evidence = 4;
+  bytes signature = 5;
+  google.protobuf.Timestamp timestamp = 6;
+  string algorithm = 7;
+}
+
+// Generate attestation request
+message GenerateAttestationRequest {
+  string subject = 1;
+  repeated string claims = 2;
+  string algorithm = 3;
+}
+
+// Generate attestation response
+message GenerateAttestationResponse {
+  bool success = 1;
+  Attestation attestation = 2;
+  string error = 3;
+}
+
+// Device management messages
+
+// Device info
+message DeviceInfo {
+  string device_id = 1;
+  string name = 2;
+  string type = 3;
+  string driver = 4;
+  DeviceState state = 5;
+  repeated string capabilities = 6;
+  map<string, string> properties = 7;
+}
+
+// Device state
+enum DeviceState {
+  UNKNOWN = 0;
+  AVAILABLE = 1;
+  IN_USE = 2;
+  ERROR = 3;
+  OFFLINE = 4;
+}
+
+// Enumerate devices request
+message EnumerateDevicesRequest {
+  string device_type = 1;
+  bool include_offline = 2;
+}
+
+// Enumerate devices response
+message EnumerateDevicesResponse {
+  repeated DeviceInfo devices = 1;
+  string error = 2;
+}
+
+// Common response types
+
+// Get status request
+message GetStatusRequest {}
+
+// Get status response
+message GetStatusResponse {
+  KernelStatus status = 1;
+}
+
+// Shutdown request
+message ShutdownRequest {
+  bool graceful = 1;
+  uint32 timeout_ms = 2;
+}
+
+// Shutdown response
+message ShutdownResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Emergency shutdown request
+message EmergencyShutdownRequest {
+  string reason = 1;
+}
+
+// Emergency shutdown response
+message EmergencyShutdownResponse {
+  bool success = 1;
+}
+
+// Generic request/response for extensibility
+message GenericRequest {
+  string operation = 1;
+  google.protobuf.Any data = 2;
+}
+
+message GenericResponse {
+  bool success = 1;
+  google.protobuf.Any data = 2;
+  string error = 3;
+}

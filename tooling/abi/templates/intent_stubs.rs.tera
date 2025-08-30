@@ -1,0 +1,360 @@
+// Generated from abi/intent.yaml - DO NOT EDIT
+// Intent Bus ABI v{{ schema.version }} userland stubs
+
+#![no_std]
+#![allow(non_camel_case_types)]
+
+use core::ffi::c_void;
+
+pub const SYS_INTENT_SUBMIT: u32 = {{ schema.syscalls[0].id }};
+pub const SYS_INTENT_POLL: u32 = {{ schema.syscalls[1].id }};
+pub const SYS_INTENT_CANCEL: u32 = {{ schema.syscalls[2].id }};
+pub const SYS_INTENT_STATUS: u32 = {{ schema.syscalls[3].id }};
+
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IntentHeaderV1 {
+    pub version: u16,
+    pub lane: u8,
+    pub reserved: u8,
+    pub intent_id: u128,
+    pub parent_id: u128,
+    pub scope_flags: u64,
+    pub ttl_ms: u32,
+    pub text_len: u32,
+    pub plan_len: u32,
+    pub preview_len: u16,
+    pub whylog_len: u16,
+    pub hash: [u8; 32],
+    pub purpose_hash: [u8; 32],
+}
+
+impl Default for IntentHeaderV1 {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            lane: 0,
+            reserved: 0,
+            intent_id: 0,
+            parent_id: 0,
+            scope_flags: 0,
+            ttl_ms: 0,
+            text_len: 0,
+            plan_len: 0,
+            preview_len: 0,
+            whylog_len: 0,
+            hash: [0; 32],
+            purpose_hash: [0; 32],
+        }
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IntentStatusV1 {
+    pub intent_id: u128,
+    pub state: u8,
+    pub progress: u8,
+    pub last_update: u64,
+    pub error: u32,
+}
+
+impl Default for IntentStatusV1 {
+    fn default() -> Self {
+        Self {
+            intent_id: 0,
+            state: 0,
+            progress: 0,
+            last_update: 0,
+            error: 0,
+        }
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IntentEvent {
+    pub intent_id: u128,
+    pub event_type: u8,
+    pub timestamp: u64,
+    pub data_len: u16,
+    pub data: [u8; 0], // Flexible array member
+}
+
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IntentPollFilter {
+    pub lane_mask: u8,
+    pub since_ts: u64,
+    pub max_items: u16,
+    pub state_mask: u8,
+}
+
+impl Default for IntentPollFilter {
+    fn default() -> Self {
+        Self {
+            lane_mask: 0,
+            since_ts: 0,
+            max_items: 0,
+            state_mask: 0,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntentLane {
+    RT = 0,
+    HIGH = 1,
+    BEST = 2,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntentState {
+    Submitted = 0,
+    Queued = 1,
+    Running = 2,
+    Completed = 3,
+    Denied = 4,
+    Cancelled = 5,
+    Failed = 6,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntentEventType {
+    Accepted = 0,
+    Running = 1,
+    ToolCall = 2,
+    Completed = 3,
+    Denied = 4,
+    Cancelled = 5,
+    Failed = 6,
+}
+
+// Constants
+pub const INTENT_TEXT_MAX: usize = {{ schema.limits.text_max }};
+pub const INTENT_PLAN_MAX: usize = {{ schema.limits.plan_max }};
+pub const INTENT_PREVIEW_MAX: usize = {{ schema.limits.preview_max }};
+pub const INTENT_WHYLOG_MAX: usize = {{ schema.limits.whylog_max }};
+
+// Syscall wrappers
+#[inline(always)]
+pub unsafe fn syscall4(
+    number: u32,
+    arg1: usize,
+    arg2: usize,
+    arg3: usize,
+    arg4: usize,
+) -> isize {
+    let ret: isize;
+    core::arch::asm!(
+        "syscall",
+        in("rax") number,
+        in("rdi") arg1,
+        in("rsi") arg2,
+        in("rdx") arg3,
+        in("r10") arg4,
+        out("rax") ret,
+        options(nostack, preserves_flags)
+    );
+    ret
+}
+
+#[inline(always)]
+pub unsafe fn syscall5(
+    number: u32,
+    arg1: usize,
+    arg2: usize,
+    arg3: usize,
+    arg4: usize,
+    arg5: usize,
+) -> isize {
+    let ret: isize;
+    core::arch::asm!(
+        "syscall",
+        in("rax") number,
+        in("rdi") arg1,
+        in("rsi") arg2,
+        in("rdx") arg3,
+        in("r10") arg4,
+        in("r8") arg5,
+        out("rax") ret,
+        options(nostack, preserves_flags)
+    );
+    ret
+}
+
+pub fn intent_submit(
+    header: &IntentHeaderV1,
+    text_buf: *const u8,
+    plan_buf: *const u8,
+    preview_buf: *const u8,
+    whylog_buf: *const u8,
+) -> Result<(), i32> {
+    let ret = unsafe {
+        syscall5(
+            SYS_INTENT_SUBMIT,
+            header as *const _ as usize,
+            text_buf as usize,
+            plan_buf as usize,
+            preview_buf as usize,
+            whylog_buf as usize,
+        )
+    };
+    
+    if ret < 0 {
+        Err(ret as i32)
+    } else {
+        Ok(())
+    }
+}
+
+pub fn intent_poll(
+    filter: &IntentPollFilter,
+    events_buf: *mut IntentEvent,
+    events_len: usize,
+) -> Result<usize, i32> {
+    let ret = unsafe {
+        syscall4(
+            SYS_INTENT_POLL,
+            filter as *const _ as usize,
+            events_buf as usize,
+            events_len,
+            0,
+        )
+    };
+    
+    if ret < 0 {
+        Err(ret as i32)
+    } else {
+        Ok(ret as usize)
+    }
+}
+
+pub fn intent_cancel(intent_id: u128) -> Result<(), i32> {
+    let ret = unsafe {
+        syscall4(
+            SYS_INTENT_CANCEL,
+            intent_id as usize,
+            (intent_id >> 64) as usize,
+            0,
+            0,
+        )
+    };
+    
+    if ret < 0 {
+        Err(ret as i32)
+    } else {
+        Ok(())
+    }
+}
+
+pub fn intent_status(
+    intent_id: u128,
+    status_buf: *mut IntentStatusV1,
+) -> Result<(), i32> {
+    let ret = unsafe {
+        syscall4(
+            SYS_INTENT_STATUS,
+            intent_id as usize,
+            (intent_id >> 64) as usize,
+            status_buf as usize,
+            0,
+        )
+    };
+    
+    if ret < 0 {
+        Err(ret as i32)
+    } else {
+        Ok(())
+    }
+}
+
+// Helper functions
+pub fn create_intent_header(
+    lane: IntentLane,
+    intent_id: u128,
+    parent_id: u128,
+    scope_flags: u64,
+    ttl_ms: u32,
+    text_len: u32,
+    plan_len: u32,
+    preview_len: u16,
+    whylog_len: u16,
+) -> IntentHeaderV1 {
+    IntentHeaderV1 {
+        version: 1,
+        lane: lane as u8,
+        reserved: 0,
+        intent_id,
+        parent_id,
+        scope_flags,
+        ttl_ms,
+        text_len,
+        plan_len,
+        preview_len,
+        whylog_len,
+        hash: [0; 32], // Will be computed by kernel
+        purpose_hash: [0; 32], // Will be computed by kernel
+    }
+}
+
+pub fn create_poll_filter(
+    lane_mask: u8,
+    since_ts: u64,
+    max_items: u16,
+    state_mask: u8,
+) -> IntentPollFilter {
+    IntentPollFilter {
+        lane_mask,
+        since_ts,
+        max_items,
+        state_mask,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_intent_header_default() {
+        let header = IntentHeaderV1::default();
+        assert_eq!(header.version, 1);
+        assert_eq!(header.lane, 0);
+        assert_eq!(header.intent_id, 0);
+    }
+    
+    #[test]
+    fn test_create_intent_header() {
+        let header = create_intent_header(
+            IntentLane::HIGH,
+            12345,
+            0,
+            0x42,
+            5000,
+            100,
+            50,
+            25,
+            10,
+        );
+        
+        assert_eq!(header.version, 1);
+        assert_eq!(header.lane, 1);
+        assert_eq!(header.intent_id, 12345);
+        assert_eq!(header.scope_flags, 0x42);
+        assert_eq!(header.ttl_ms, 5000);
+    }
+    
+    #[test]
+    fn test_create_poll_filter() {
+        let filter = create_poll_filter(0x07, 1000, 50, 0xFF);
+        
+        assert_eq!(filter.lane_mask, 0x07);
+        assert_eq!(filter.since_ts, 1000);
+        assert_eq!(filter.max_items, 50);
+        assert_eq!(filter.state_mask, 0xFF);
+    }
+}

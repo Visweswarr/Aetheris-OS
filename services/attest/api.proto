@@ -1,0 +1,778 @@
+syntax = "proto3";
+
+package polymera.attest.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "validate/validate.proto";
+
+option go_package = "github.com/polymera-os/services/attest/api/v1;attestv1";
+option java_multiple_files = true;
+option java_package = "org.polymera.attest.v1";
+option java_outer_classname = "AttestationApiProto";
+option objc_class_prefix = "POLY";
+option csharp_namespace = "Polymera.Attest.V1";
+
+// Attestation Registry Service
+service AttestationRegistryService {
+  // Issue a new attestation
+  rpc IssueAttestation(IssueAttestationRequest) returns (IssueAttestationResponse) {
+    option (google.api.http) = {
+      post: "/v1/attestations"
+      body: "*"
+    };
+  }
+
+  // Revoke an attestation
+  rpc RevokeAttestation(RevokeAttestationRequest) returns (RevokeAttestationResponse) {
+    option (google.api.http) = {
+      post: "/v1/attestations/{attestation_id}/revoke"
+      body: "*"
+    };
+  }
+
+  // Update attestation data
+  rpc UpdateAttestation(UpdateAttestationRequest) returns (UpdateAttestationResponse) {
+    option (google.api.http) = {
+      put: "/v1/attestations/{attestation_id}"
+      body: "*"
+    };
+  }
+
+  // Get attestation by ID
+  rpc GetAttestation(GetAttestationRequest) returns (GetAttestationResponse) {
+    option (google.api.http) = {
+      get: "/v1/attestations/{attestation_id}"
+    };
+  }
+
+  // List attestations with filters
+  rpc ListAttestations(ListAttestationsRequest) returns (ListAttestationsResponse) {
+    option (google.api.http) = {
+      get: "/v1/attestations"
+    };
+  }
+
+  // Search attestations by criteria
+  rpc SearchAttestations(SearchAttestationsRequest) returns (SearchAttestationsResponse) {
+    option (google.api.http) = {
+      post: "/v1/attestations/search"
+      body: "*"
+    };
+  }
+
+  // Create a new schema
+  rpc CreateSchema(CreateSchemaRequest) returns (CreateSchemaResponse) {
+    option (google.api.http) = {
+      post: "/v1/schemas"
+      body: "*"
+    };
+  }
+
+  // Get schema by ID
+  rpc GetSchema(GetSchemaRequest) returns (GetSchemaResponse) {
+    option (google.api.http) = {
+      get: "/v1/schemas/{schema_id}"
+    };
+  }
+
+  // List schemas
+  rpc ListSchemas(ListSchemasRequest) returns (ListSchemasResponse) {
+    option (google.api.http) = {
+      get: "/v1/schemas"
+    };
+  }
+
+  // Deprecate a schema
+  rpc DeprecateSchema(DeprecateSchemaRequest) returns (DeprecateSchemaResponse) {
+    option (google.api.http) = {
+      post: "/v1/schemas/{schema_id}/deprecate"
+      body: "*"
+    };
+  }
+
+  // Register a new issuer
+  rpc RegisterIssuer(RegisterIssuerRequest) returns (RegisterIssuerResponse) {
+    option (google.api.http) = {
+      post: "/v1/issuers"
+      body: "*"
+    };
+  }
+
+  // Get issuer by address
+  rpc GetIssuer(GetIssuerRequest) returns (GetIssuerResponse) {
+    option (google.api.http) = {
+      get: "/v1/issuers/{address}"
+    };
+  }
+
+  // List issuers
+  rpc ListIssuers(ListIssuersRequest) returns (ListIssuersResponse) {
+    option (google.api.http) = {
+      get: "/v1/issuers"
+    };
+  }
+
+  // Authorize issuer for schema
+  rpc AuthorizeIssuerForSchema(AuthorizeIssuerForSchemaRequest) returns (AuthorizeIssuerForSchemaResponse) {
+    option (google.api.http) = {
+      post: "/v1/issuers/{issuer}/schemas/{schema_id}/authorize"
+    };
+  }
+
+  // Revoke issuer schema authorization
+  rpc RevokeIssuerSchemaAuthorization(RevokeIssuerSchemaAuthorizationRequest) returns (RevokeIssuerSchemaAuthorizationResponse) {
+    option (google.api.http) = {
+      post: "/v1/issuers/{issuer}/schemas/{schema_id}/revoke"
+    };
+  }
+
+  // Get registry configuration
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse) {
+    option (google.api.http) = {
+      get: "/v1/config"
+    };
+  }
+
+  // Update registry configuration
+  rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse) {
+    option (google.api.http) = {
+      put: "/v1/config"
+      body: "*"
+    };
+  }
+
+  // Get registry statistics
+  rpc GetStats(GetStatsRequest) returns (GetStatsResponse) {
+    option (google.api.http) = {
+      get: "/v1/stats"
+    };
+  }
+
+  // Validate attestation
+  rpc ValidateAttestation(ValidateAttestationRequest) returns (ValidateAttestationResponse) {
+    option (google.api.http) = {
+      post: "/v1/attestations/validate"
+      body: "*"
+    };
+  }
+
+  // Verify attestation signature
+  rpc VerifyAttestationSignature(VerifyAttestationSignatureRequest) returns (VerifyAttestationSignatureResponse) {
+    option (google.api.http) = {
+      post: "/v1/attestations/verify"
+      body: "*"
+    };
+  }
+
+  // Stream attestation events
+  rpc StreamAttestationEvents(StreamAttestationEventsRequest) returns (stream AttestationEvent) {
+    option (google.api.http) = {
+      get: "/v1/events/stream"
+    };
+  }
+}
+
+// ============ REQUEST/RESPONSE MESSAGES ============
+
+// Issue Attestation
+message IssueAttestationRequest {
+  string subject = 1 [(validate.rules).string.min_len = 1];
+  string schema_id = 2 [(validate.rules).string.min_len = 1];
+  bytes data = 3 [(validate.rules).bytes.max_len = 1024];
+  google.protobuf.Timestamp expires_at = 4;
+  string uri = 5 [(validate.rules).string.uri = true];
+  repeated string tags = 6 [(validate.rules).repeated.max_items = 10];
+  map<string, string> metadata = 7;
+  string signature = 8;
+  bytes signature_data = 9;
+}
+
+message IssueAttestationResponse {
+  Attestation attestation = 1;
+  string transaction_hash = 2;
+  google.protobuf.Timestamp issued_at = 3;
+}
+
+// Revoke Attestation
+message RevokeAttestationRequest {
+  uint64 attestation_id = 1 [(validate.rules).uint64.gt = 0];
+  string reason = 2 [(validate.rules).string.min_len = 1];
+  string signature = 3;
+  bytes signature_data = 4;
+}
+
+message RevokeAttestationResponse {
+  bool success = 1;
+  string transaction_hash = 2;
+  google.protobuf.Timestamp revoked_at = 3;
+}
+
+// Update Attestation
+message UpdateAttestationRequest {
+  uint64 attestation_id = 1 [(validate.rules).uint64.gt = 0];
+  bytes data = 2 [(validate.rules).bytes.max_len = 1024];
+  string uri = 3 [(validate.rules).string.uri = true];
+  repeated string tags = 4 [(validate.rules).repeated.max_items = 10];
+  map<string, string> metadata = 5;
+  string signature = 6;
+  bytes signature_data = 7;
+}
+
+message UpdateAttestationResponse {
+  Attestation attestation = 1;
+  string transaction_hash = 2;
+  google.protobuf.Timestamp updated_at = 3;
+}
+
+// Get Attestation
+message GetAttestationRequest {
+  uint64 attestation_id = 1 [(validate.rules).uint64.gt = 0];
+  bool include_metadata = 2;
+}
+
+message GetAttestationResponse {
+  Attestation attestation = 1;
+  AttestationMetadata metadata = 2;
+}
+
+// List Attestations
+message ListAttestationsRequest {
+  string subject = 1;
+  string issuer = 2;
+  string schema_id = 3;
+  repeated string tags = 4;
+  bool include_revoked = 5;
+  bool include_expired = 6;
+  google.protobuf.Timestamp from_date = 7;
+  google.protobuf.Timestamp to_date = 8;
+  int32 page_size = 9 [(validate.rules).int32.gte = 1, (validate.rules).int32.lte = 100];
+  string page_token = 10;
+  string order_by = 11;
+  bool ascending = 12;
+}
+
+message ListAttestationsResponse {
+  repeated Attestation attestations = 1;
+  string next_page_token = 2;
+  int32 total_size = 3;
+}
+
+// Search Attestations
+message SearchAttestationsRequest {
+  string query = 1 [(validate.rules).string.min_len = 1];
+  repeated string filters = 2;
+  google.protobuf.Timestamp from_date = 3;
+  google.protobuf.Timestamp to_date = 4;
+  int32 page_size = 5 [(validate.rules).int32.gte = 1, (validate.rules).int32.lte = 100];
+  string page_token = 6;
+  string sort_by = 7;
+  bool ascending = 8;
+}
+
+message SearchAttestationsResponse {
+  repeated Attestation attestations = 1;
+  string next_page_token = 2;
+  int32 total_size = 3;
+  repeated SearchFacet facets = 4;
+}
+
+// Create Schema
+message CreateSchemaRequest {
+  string name = 1 [(validate.rules).string.min_len = 1, (validate.rules).string.max_len = 100];
+  string description = 2 [(validate.rules).string.max_len = 500];
+  repeated SchemaField fields = 3 [(validate.rules).repeated.min_items = 1, (validate.rules).repeated.max_items = 50];
+  string version = 4 [(validate.rules).string.pattern = "^\\d+\\.\\d+\\.\\d+$"];
+  bool required = 5;
+  map<string, string> metadata = 6;
+  string signature = 7;
+  bytes signature_data = 8;
+}
+
+message CreateSchemaResponse {
+  Schema schema = 1;
+  string transaction_hash = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+// Get Schema
+message GetSchemaRequest {
+  string schema_id = 1 [(validate.rules).string.min_len = 1];
+}
+
+message GetSchemaResponse {
+  Schema schema = 1;
+}
+
+// List Schemas
+message ListSchemasRequest {
+  bool include_deprecated = 1;
+  string created_by = 2;
+  int32 page_size = 3 [(validate.rules).int32.gte = 1, (validate.rules).int32.lte = 100];
+  string page_token = 4;
+}
+
+message ListSchemasResponse {
+  repeated Schema schemas = 1;
+  string next_page_token = 2;
+  int32 total_size = 3;
+}
+
+// Deprecate Schema
+message DeprecateSchemaRequest {
+  string schema_id = 1 [(validate.rules).string.min_len = 1];
+  string reason = 2 [(validate.rules).string.min_len = 1];
+  string signature = 3;
+  bytes signature_data = 4;
+}
+
+message DeprecateSchemaResponse {
+  bool success = 1;
+  string transaction_hash = 2;
+  google.protobuf.Timestamp deprecated_at = 3;
+}
+
+// Register Issuer
+message RegisterIssuerRequest {
+  string name = 1 [(validate.rules).string.min_len = 1, (validate.rules).string.max_len = 100];
+  string description = 2 [(validate.rules).string.max_len = 500];
+  string uri = 3 [(validate.rules).string.uri = true];
+  repeated string authorized_schemas = 4;
+  map<string, string> metadata = 5;
+  string signature = 6;
+  bytes signature_data = 7;
+}
+
+message RegisterIssuerResponse {
+  Issuer issuer = 1;
+  string transaction_hash = 2;
+  google.protobuf.Timestamp registered_at = 3;
+}
+
+// Get Issuer
+message GetIssuerRequest {
+  string address = 1 [(validate.rules).string.min_len = 1];
+}
+
+message GetIssuerResponse {
+  Issuer issuer = 1;
+}
+
+// List Issuers
+message ListIssuersRequest {
+  bool include_inactive = 1;
+  repeated string authorized_schemas = 2;
+  int32 page_size = 3 [(validate.rules).int32.gte = 1, (validate.rules).int32.lte = 100];
+  string page_token = 4;
+}
+
+message ListIssuersResponse {
+  repeated Issuer issuers = 1;
+  string next_page_token = 2;
+  int32 total_size = 3;
+}
+
+// Authorize Issuer for Schema
+message AuthorizeIssuerForSchemaRequest {
+  string issuer = 1 [(validate.rules).string.min_len = 1];
+  string schema_id = 2 [(validate.rules).string.min_len = 1];
+  string signature = 3;
+  bytes signature_data = 4;
+}
+
+message AuthorizeIssuerForSchemaResponse {
+  bool success = 1;
+  string transaction_hash = 2;
+  google.protobuf.Timestamp authorized_at = 3;
+}
+
+// Revoke Issuer Schema Authorization
+message RevokeIssuerSchemaAuthorizationRequest {
+  string issuer = 1 [(validate.rules).string.min_len = 1];
+  string schema_id = 2 [(validate.rules).string.min_len = 1];
+  string signature = 3;
+  bytes signature_data = 4;
+}
+
+message RevokeIssuerSchemaAuthorizationResponse {
+  bool success = 1;
+  string transaction_hash = 2;
+  google.protobuf.Timestamp revoked_at = 3;
+}
+
+// Get Config
+message GetConfigRequest {}
+
+message GetConfigResponse {
+  RegistryConfig config = 1;
+}
+
+// Update Config
+message UpdateConfigRequest {
+  google.protobuf.Timestamp min_attestation_lifetime = 1;
+  google.protobuf.Timestamp max_attestation_lifetime = 2;
+  string attestation_fee = 3;
+  bool attestation_fee_enabled = 4;
+  int32 max_tags_per_attestation = 5 [(validate.rules).int32.gte = 1, (validate.rules).int32.lte = 100];
+  int32 max_attestation_data_size = 6 [(validate.rules).int32.gte = 64, (validate.rules).int32.lte = 10240];
+  string signature = 7;
+  bytes signature_data = 8;
+}
+
+message UpdateConfigResponse {
+  RegistryConfig config = 1;
+  string transaction_hash = 2;
+  google.protobuf.Timestamp updated_at = 3;
+}
+
+// Get Stats
+message GetStatsRequest {}
+
+message GetStatsResponse {
+  RegistryStats stats = 1;
+}
+
+// Validate Attestation
+message ValidateAttestationRequest {
+  uint64 attestation_id = 1 [(validate.rules).uint64.gt = 0];
+  bool check_signature = 2;
+  bool check_expiry = 3;
+  bool check_revocation = 4;
+}
+
+message ValidateAttestationResponse {
+  bool is_valid = 1;
+  repeated ValidationError errors = 2;
+  repeated ValidationWarning warnings = 3;
+  AttestationValidationDetails details = 4;
+}
+
+// Verify Attestation Signature
+message VerifyAttestationSignatureRequest {
+  uint64 attestation_id = 1 [(validate.rules).uint64.gt = 0];
+  bytes signature = 2 [(validate.rules).bytes.min_len = 1];
+  bytes signature_data = 3;
+}
+
+message VerifyAttestationSignatureResponse {
+  bool is_valid = 1;
+  string signer_address = 2;
+  google.protobuf.Timestamp signed_at = 3;
+  repeated SignatureError errors = 4;
+}
+
+// Stream Attestation Events
+message StreamAttestationEventsRequest {
+  repeated string event_types = 1;
+  string issuer = 2;
+  string subject = 3;
+  string schema_id = 4;
+  bool include_metadata = 5;
+}
+
+// ============ DATA STRUCTURES ============
+
+// Attestation
+message Attestation {
+  uint64 id = 1;
+  string issuer = 2;
+  string subject = 3;
+  string schema_id = 4;
+  bytes data = 5;
+  google.protobuf.Timestamp issued_at = 6;
+  google.protobuf.Timestamp expires_at = 7;
+  bool revoked = 8;
+  google.protobuf.Timestamp revoked_at = 9;
+  string revoked_by = 10;
+  string uri = 11;
+  repeated string tags = 12;
+  uint32 version = 13;
+  map<string, string> metadata = 14;
+  string transaction_hash = 15;
+  string block_hash = 16;
+  uint64 block_number = 17;
+}
+
+// Schema
+message Schema {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated SchemaField fields = 4;
+  bool required = 5;
+  google.protobuf.Timestamp created_at = 6;
+  string created_by = 7;
+  bool deprecated = 8;
+  google.protobuf.Timestamp deprecated_at = 9;
+  string version = 10;
+  map<string, string> metadata = 11;
+}
+
+// Schema Field
+message SchemaField {
+  string name = 1;
+  string type = 2;
+  string description = 3;
+  bool required = 4;
+  string default_value = 5;
+  repeated string allowed_values = 6;
+  map<string, string> constraints = 7;
+}
+
+// Issuer
+message Issuer {
+  string address = 1;
+  string name = 2;
+  string description = 3;
+  string uri = 4;
+  bool active = 5;
+  google.protobuf.Timestamp registered_at = 6;
+  uint64 total_attestations = 7;
+  repeated string authorized_schemas = 8;
+  map<string, string> metadata = 9;
+}
+
+// Registry Config
+message RegistryConfig {
+  string name = 1;
+  string description = 2;
+  string uri = 3;
+  google.protobuf.Timestamp min_attestation_lifetime = 4;
+  google.protobuf.Timestamp max_attestation_lifetime = 5;
+  string attestation_fee = 6;
+  bool attestation_fee_enabled = 7;
+  int32 max_tags_per_attestation = 8;
+  int32 max_attestation_data_size = 9;
+  string admin = 10;
+  google.protobuf.Timestamp created_at = 11;
+  map<string, string> metadata = 12;
+}
+
+// Registry Stats
+message RegistryStats {
+  uint64 total_attestations = 1;
+  uint64 total_schemas = 2;
+  uint64 total_issuers = 3;
+  uint64 active_attestations = 4;
+  uint64 revoked_attestations = 5;
+  uint64 expired_attestations = 6;
+  uint64 attestations_this_month = 7;
+  uint64 attestations_this_week = 8;
+  uint64 attestations_today = 9;
+  repeated SchemaStats schema_stats = 10;
+  repeated IssuerStats issuer_stats = 11;
+  google.protobuf.Timestamp last_updated = 12;
+}
+
+// Schema Stats
+message SchemaStats {
+  string schema_id = 1;
+  string name = 2;
+  uint64 total_attestations = 3;
+  uint64 active_attestations = 4;
+  uint64 revoked_attestations = 5;
+  uint64 expired_attestations = 6;
+}
+
+// Issuer Stats
+message IssuerStats {
+  string address = 1;
+  string name = 2;
+  uint64 total_attestations = 3;
+  uint64 active_attestations = 4;
+  uint64 revoked_attestations = 5;
+  uint64 expired_attestations = 6;
+  repeated string authorized_schemas = 7;
+}
+
+// Attestation Metadata
+message AttestationMetadata {
+  string ipfs_hash = 1;
+  string arweave_id = 2;
+  string filecoin_cid = 3;
+  map<string, string> external_metadata = 4;
+  repeated string related_attestations = 5;
+  repeated string related_documents = 6;
+}
+
+// Search Facet
+message SearchFacet {
+  string name = 1;
+  repeated FacetValue values = 2;
+}
+
+// Facet Value
+message FacetValue {
+  string value = 1;
+  int32 count = 2;
+}
+
+// Validation Error
+message ValidationError {
+  string field = 1;
+  string code = 2;
+  string message = 3;
+  string details = 4;
+}
+
+// Validation Warning
+message ValidationWarning {
+  string field = 1;
+  string code = 2;
+  string message = 3;
+  string details = 4;
+}
+
+// Attestation Validation Details
+message AttestationValidationDetails {
+  bool signature_valid = 1;
+  bool not_expired = 2;
+  bool not_revoked = 3;
+  bool schema_valid = 4;
+  bool issuer_authorized = 5;
+  repeated string validation_checks = 6;
+}
+
+// Signature Error
+message SignatureError {
+  string code = 1;
+  string message = 2;
+  string details = 3;
+}
+
+// Attestation Event
+message AttestationEvent {
+  string event_id = 1;
+  string event_type = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  string transaction_hash = 4;
+  string block_hash = 5;
+  uint64 block_number = 6;
+  oneof event_data {
+    AttestationIssuedEvent issued = 7;
+    AttestationRevokedEvent revoked = 8;
+    AttestationUpdatedEvent updated = 9;
+    AttestationExpiredEvent expired = 10;
+    SchemaCreatedEvent schema_created = 11;
+    SchemaDeprecatedEvent schema_deprecated = 12;
+    IssuerRegisteredEvent issuer_registered = 13;
+    IssuerDeactivatedEvent issuer_deactivated = 14;
+  }
+  map<string, string> metadata = 15;
+}
+
+// Event Types
+message AttestationIssuedEvent {
+  uint64 attestation_id = 1;
+  string issuer = 2;
+  string subject = 3;
+  string schema_id = 4;
+  google.protobuf.Timestamp issued_at = 5;
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+message AttestationRevokedEvent {
+  uint64 attestation_id = 1;
+  string issuer = 2;
+  string subject = 3;
+  string revoked_by = 4;
+  string reason = 5;
+  google.protobuf.Timestamp revoked_at = 6;
+}
+
+message AttestationUpdatedEvent {
+  uint64 attestation_id = 1;
+  string issuer = 2;
+  string subject = 3;
+  uint32 version = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message AttestationExpiredEvent {
+  uint64 attestation_id = 1;
+  string issuer = 2;
+  string subject = 3;
+  google.protobuf.Timestamp expired_at = 4;
+}
+
+message SchemaCreatedEvent {
+  string schema_id = 1;
+  string name = 2;
+  string created_by = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message SchemaDeprecatedEvent {
+  string schema_id = 1;
+  string deprecated_by = 2;
+  string reason = 3;
+  google.protobuf.Timestamp deprecated_at = 4;
+}
+
+message IssuerRegisteredEvent {
+  string address = 1;
+  string name = 2;
+  google.protobuf.Timestamp registered_at = 3;
+}
+
+message IssuerDeactivatedEvent {
+  string address = 1;
+  string deactivated_by = 2;
+  string reason = 3;
+  google.protobuf.Timestamp deactivated_at = 4;
+}
+
+// ============ COMMON TYPES ============
+
+// Pagination
+message Pagination {
+  int32 page_size = 1 [(validate.rules).int32.gte = 1, (validate.rules).int32.lte = 100];
+  string page_token = 2;
+  int32 total_size = 3;
+}
+
+// Sorting
+message Sorting {
+  string field = 1;
+  bool ascending = 2;
+}
+
+// Filter
+message Filter {
+  string field = 1;
+  string operator = 2;
+  string value = 3;
+}
+
+// ============ ERROR RESPONSES ============
+
+// Error Response
+message ErrorResponse {
+  string error_code = 1;
+  string message = 2;
+  string details = 3;
+  repeated ErrorDetail errors = 4;
+  string request_id = 5;
+  google.protobuf.Timestamp timestamp = 6;
+}
+
+// Error Detail
+message ErrorDetail {
+  string field = 1;
+  string code = 2;
+  string message = 3;
+  string suggestion = 4;
+}
+
+// ============ HEALTH CHECK ============
+
+// Health Check
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  string status = 1;
+  map<string, string> details = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}

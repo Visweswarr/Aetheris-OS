@@ -1,0 +1,6 @@
+# Basic capability creation seed
+# Format: op_type=0 (create), num_ops=5, cap_type=0 (Read), flags=0x01 (TRANSFERABLE)
+#         max_expiry=300s, max_pid=10, max_rid=100, max_cap_id=1000
+#         perms=0x1234, max_delegation=2, revoke_policy=0 (Immediate), audit_level=1 (Basic)
+0x00 0x05 0x00 0x01 0x2C 0x0A 0x64 0xE8 0x34 0x02 0x00 0x01
+

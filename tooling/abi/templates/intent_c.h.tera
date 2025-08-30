@@ -1,0 +1,237 @@
+// Generated from abi/intent.yaml - DO NOT EDIT
+// Intent Bus ABI v{{ schema.version }} C header
+
+#ifndef POLYMERA_INTENT_H
+#define POLYMERA_INTENT_H
+
+#include <stdint.h>
+#include <sys/types.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Intent Bus ABI v{{ schema.version }}
+// {{ schema.description }}
+
+// Priority lanes
+#define INTENT_LANE_RT    0
+#define INTENT_LANE_HIGH  1
+#define INTENT_LANE_BEST  2
+
+// Intent states
+#define INTENT_STATE_SUBMITTED  0
+#define INTENT_STATE_QUEUED     1
+#define INTENT_STATE_RUNNING    2
+#define INTENT_STATE_COMPLETED  3
+#define INTENT_STATE_DENIED     4
+#define INTENT_STATE_CANCELLED  5
+#define INTENT_STATE_FAILED     6
+
+// Intent event types
+#define INTENT_EVENT_ACCEPTED   0
+#define INTENT_EVENT_RUNNING    1
+#define INTENT_EVENT_TOOLCALL   2
+#define INTENT_EVENT_COMPLETED  3
+#define INTENT_EVENT_DENIED     4
+#define INTENT_EVENT_CANCELLED  5
+#define INTENT_EVENT_FAILED     6
+
+// Limits
+#define INTENT_TEXT_MAX     {{ schema.limits.text_max }}
+#define INTENT_PLAN_MAX     {{ schema.limits.plan_max }}
+#define INTENT_PREVIEW_MAX  {{ schema.limits.preview_max }}
+#define INTENT_WHYLOG_MAX   {{ schema.limits.whylog_max }}
+
+#define INTENT_QUEUE_RT_MAX   {{ schema.limits.queue_rt_max }}
+#define INTENT_QUEUE_HIGH_MAX {{ schema.limits.queue_high_max }}
+#define INTENT_QUEUE_BEST_MAX {{ schema.limits.queue_best_max }}
+
+// Syscall numbers
+#define SYS_INTENT_SUBMIT  {{ schema.syscalls[0].id }}
+#define SYS_INTENT_POLL    {{ schema.syscalls[1].id }}
+#define SYS_INTENT_CANCEL  {{ schema.syscalls[2].id }}
+#define SYS_INTENT_STATUS  {{ schema.syscalls[3].id }}
+
+// Audit codes
+#define INTENT_AUDIT_ACCEPT       {{ schema.audit_codes[0].code }}
+#define INTENT_AUDIT_DENY         {{ schema.audit_codes[1].code }}
+#define INTENT_AUDIT_OVERSIZE     {{ schema.audit_codes[2].code }}
+#define INTENT_AUDIT_RATE         {{ schema.audit_codes[3].code }}
+#define INTENT_AUDIT_SCHEMA       {{ schema.audit_codes[4].code }}
+#define INTENT_AUDIT_POLICY_ERROR {{ schema.audit_codes[5].code }}
+#define INTENT_AUDIT_QUEUE_FULL   {{ schema.audit_codes[6].code }}
+#define INTENT_AUDIT_CANCELLED    {{ schema.audit_codes[7].code }}
+#define INTENT_AUDIT_FAILED       {{ schema.audit_codes[8].code }}
+
+// Capability scope flags
+#define INTENT_SCOPE_FS_READ       (1ULL << 0)
+#define INTENT_SCOPE_FS_WRITE      (1ULL << 1)
+#define INTENT_SCOPE_NET_OUT       (1ULL << 2)
+#define INTENT_SCOPE_WALLET        (1ULL << 3)
+#define INTENT_SCOPE_DEVICE        (1ULL << 4)
+#define INTENT_SCOPE_IPC_SEND      (1ULL << 5)
+#define INTENT_SCOPE_IPC_RECV      (1ULL << 6)
+#define INTENT_SCOPE_PROCESS_CREATE (1ULL << 7)
+
+// Wire format structures
+#pragma pack(push, 1)
+
+typedef struct {
+    uint16_t version;
+    uint8_t  lane;
+    uint8_t  reserved;
+    uint64_t intent_id_low;
+    uint64_t intent_id_high;
+    uint64_t parent_id_low;
+    uint64_t parent_id_high;
+    uint64_t scope_flags;
+    uint32_t ttl_ms;
+    uint32_t text_len;
+    uint32_t plan_len;
+    uint16_t preview_len;
+    uint16_t whylog_len;
+    uint8_t  hash[32];
+    uint8_t  purpose_hash[32];
+} intent_header_v1_t;
+
+typedef struct {
+    uint64_t intent_id_low;
+    uint64_t intent_id_high;
+    uint8_t  state;
+    uint8_t  progress;
+    uint64_t last_update;
+    uint32_t error;
+} intent_status_v1_t;
+
+typedef struct {
+    uint64_t intent_id_low;
+    uint64_t intent_id_high;
+    uint8_t  event_type;
+    uint8_t  reserved[7];
+    uint64_t timestamp;
+    uint16_t data_len;
+    uint8_t  data[0]; // Flexible array member
+} intent_event_t;
+
+typedef struct {
+    uint8_t  lane_mask;
+    uint8_t  reserved[7];
+    uint64_t since_ts;
+    uint16_t max_items;
+    uint8_t  state_mask;
+    uint8_t  reserved2[5];
+} intent_poll_filter_t;
+
+#pragma pack(pop)
+
+// Helper macros for 128-bit IDs
+#define INTENT_ID_SET_LOW(ptr, value)  ((ptr)->intent_id_low = (value))
+#define INTENT_ID_SET_HIGH(ptr, value) ((ptr)->intent_id_high = (value))
+#define INTENT_ID_GET_LOW(ptr)         ((ptr)->intent_id_low)
+#define INTENT_ID_GET_HIGH(ptr)        ((ptr)->intent_id_high)
+
+// Structure sizes
+#define INTENT_HEADER_SIZE  sizeof(intent_header_v1_t)
+#define INTENT_STATUS_SIZE  sizeof(intent_status_v1_t)
+#define INTENT_EVENT_BASE_SIZE sizeof(intent_event_t)
+
+// Validation helpers
+static inline int intent_header_is_valid(const intent_header_v1_t *header) {
+    return header->version == 1 &&
+           header->lane <= INTENT_LANE_BEST &&
+           header->text_len <= INTENT_TEXT_MAX &&
+           header->plan_len <= INTENT_PLAN_MAX &&
+           header->preview_len <= INTENT_PREVIEW_MAX &&
+           header->whylog_len <= INTENT_WHYLOG_MAX &&
+           header->ttl_ms > 0;
+}
+
+static inline size_t intent_total_payload_size(const intent_header_v1_t *header) {
+    return header->text_len + header->plan_len + 
+           header->preview_len + header->whylog_len;
+}
+
+// Syscall wrapper functions
+static inline long intent_submit(
+    const intent_header_v1_t *header,
+    const void *text_buf,
+    const void *plan_buf,
+    const void *preview_buf,
+    const void *whylog_buf
+) {
+    return syscall(SYS_INTENT_SUBMIT, header, text_buf, plan_buf, preview_buf, whylog_buf);
+}
+
+static inline long intent_poll(
+    const intent_poll_filter_t *filter,
+    void *events_buf,
+    size_t events_len
+) {
+    return syscall(SYS_INTENT_POLL, filter, events_buf, events_len);
+}
+
+static inline long intent_cancel(uint64_t intent_id_low, uint64_t intent_id_high) {
+    return syscall(SYS_INTENT_CANCEL, intent_id_low, intent_id_high);
+}
+
+static inline long intent_status(
+    uint64_t intent_id_low,
+    uint64_t intent_id_high,
+    intent_status_v1_t *status_buf
+) {
+    return syscall(SYS_INTENT_STATUS, intent_id_low, intent_id_high, status_buf);
+}
+
+// Helper functions
+static inline void intent_header_init(
+    intent_header_v1_t *header,
+    uint8_t lane,
+    uint64_t intent_id_low,
+    uint64_t intent_id_high,
+    uint64_t parent_id_low,
+    uint64_t parent_id_high,
+    uint64_t scope_flags,
+    uint32_t ttl_ms,
+    uint32_t text_len,
+    uint32_t plan_len,
+    uint16_t preview_len,
+    uint16_t whylog_len
+) {
+    header->version = 1;
+    header->lane = lane;
+    header->reserved = 0;
+    header->intent_id_low = intent_id_low;
+    header->intent_id_high = intent_id_high;
+    header->parent_id_low = parent_id_low;
+    header->parent_id_high = parent_id_high;
+    header->scope_flags = scope_flags;
+    header->ttl_ms = ttl_ms;
+    header->text_len = text_len;
+    header->plan_len = plan_len;
+    header->preview_len = preview_len;
+    header->whylog_len = whylog_len;
+    memset(header->hash, 0, sizeof(header->hash));
+    memset(header->purpose_hash, 0, sizeof(header->purpose_hash));
+}
+
+static inline void intent_poll_filter_init(
+    intent_poll_filter_t *filter,
+    uint8_t lane_mask,
+    uint64_t since_ts,
+    uint16_t max_items,
+    uint8_t state_mask
+) {
+    filter->lane_mask = lane_mask;
+    memset(filter->reserved, 0, sizeof(filter->reserved));
+    filter->since_ts = since_ts;
+    filter->max_items = max_items;
+    filter->state_mask = state_mask;
+    memset(filter->reserved2, 0, sizeof(filter->reserved2));
+}
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // POLYMERA_INTENT_H

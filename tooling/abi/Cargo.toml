@@ -1,0 +1,73 @@
+[package]
+name = "abi-gen"
+version = "0.2.0"
+edition = "2021"
+authors = ["Polymera OS Team"]
+description = "ABI generator for Polymera OS system calls, error codes, and features"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/polymera-os/polymera-os"
+keywords = ["abi", "syscalls", "codegen", "polymera"]
+categories = ["development-tools", "system"]
+
+[[bin]]
+name = "abi-gen"
+path = "src/main.rs"
+
+[dependencies]
+# Core dependencies
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+
+# Templating engine
+tera = "1.19"
+
+# File and path handling
+walkdir = "2.4"
+tempfile = "3.8"
+
+# Hashing for schema validation
+sha2 = "0.10"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+env_logger = "0.10"
+log = "0.4"
+
+# Command line argument parsing
+clap = { version = "4.4", features = ["derive"] }
+
+# Optional: for better error messages
+colored = "2.0"
+
+[dev-dependencies]
+# Testing
+tempfile = "3.8"
+assert_fs = "1.1"
+
+# Test data generation
+fake = "2.9"
+
+[features]
+default = []
+# Enable additional output formats
+json_output = []
+xml_output = []
+# Enable validation features
+strict_validation = []
+# Enable experimental features
+experimental = []
+
+[profile.release]
+# Optimize for speed in release builds
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.dev]
+# Optimize for compile speed in development
+opt-level = 0
+debug = true

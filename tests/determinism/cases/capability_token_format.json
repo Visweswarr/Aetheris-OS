@@ -1,0 +1,26 @@
+{
+  "id": "capability_token_format",
+  "name": "Capability Token Format Determinism Test",
+  "command": "cargo",
+  "args": [
+    "run",
+    "--bin",
+    "capability_token_format_test",
+    "--",
+    "format",
+    "--input",
+    "test_data/sample_token.json",
+    "--output",
+    "test_output/formatted_token.json"
+  ],
+  "working_dir": "../../security/caps",
+  "env": {
+    "RUST_LOG": "info",
+    "DETERMINISM_MODE": "true",
+    "CAPABILITY_TOKEN_SEED": "12345"
+  },
+  "input": null,
+  "expected_exit_code": 0,
+  "timeout": 60,
+  "seed": 12345
+}

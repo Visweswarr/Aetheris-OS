@@ -1,0 +1,325 @@
+# Polymera OS - Comprehensive .gitignore
+
+# Build artifacts
+bazel-bin/
+bazel-out/
+bazel-testlogs/
+bazel-polymera-os/
+*.o
+*.so
+*.dll
+*.dylib
+*.exe
+*.a
+*.lib
+
+# Rust build artifacts
+target/
+Cargo.lock
+**/*.rs.bk
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.eslintcache
+.next/
+.nuxt/
+dist/
+build/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+log/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Test artifacts
+test-results/
+perf-results/
+coverage/
+.nyc_output/
+
+# Documentation build
+docs/_build/
+docs/build/
+site/
+
+# Docker
+.dockerignore
+Dockerfile
+docker-compose*.yml
+
+# Kubernetes
+*.yaml
+*.yml
+!*.yaml.example
+!*.yml.example
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Ansible
+*.retry
+
+# Vagrant
+.vagrant/
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# Poetry
+poetry.lock
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Bazel
+.bazel/
+bazel-*
+
+# Performance and test data
+*.perf
+*.bench
+*.profile
+
+# Large binary files
+*.bin
+*.dat
+*.data
+*.model
+*.weights
+
+# Archive files
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Backup files
+*.backup
+*.bak
+*.old
+
+# Lock files (keep some important ones)
+# !Cargo.lock
+# !package-lock.json
+# !yarn.lock
+
+# Generated files
+*.generated.*
+*.gen.*
+*.auto.*
+
+# Local configuration
+config.local.*
+*.local.*
+
+# Secrets and keys
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.csr
+secrets/
+keys/
+
+# FUSE mount points
+/mnt/ngfs
+/tmp/ngfs-*
+
+# Blockchain data
+chaindata/
+geth/
+parity/
+
+# NGFS specific
+.ngfs/
+ngfs-data/
+ngfs-cache/
+
+# Contract artifacts
+contracts/out/
+contracts/artifacts/
+contracts/cache/
+
+# ZK proof artifacts
+*.proof
+*.witness
+*.circuit
+
+# WASM artifacts
+*.wasm
+*.wat
+
+# CBOR test data
+*.cbor
+*.cddl
+
+# Performance baselines
+perf-baselines/
+baselines/
+
+# Test fixtures (keep important ones, exclude large ones)
+tests/**/fixtures/*.bin
+tests/**/fixtures/*.dat
+tests/**/fixtures/*.large
+
+# Documentation build artifacts
+docs/build/
+docs/_build/
+site/
+
+# CI artifacts
+.ci/
+ci-results/
+
+# Development tools
+.devcontainer/
+.vscode/
+.idea/
+
+# OS specific
+*.exe
+*.dll
+*.so
+*.dylib
+.DS_Store
+Thumbs.db
+
+# Keep important files
+!README.md
+!LICENSE
+!CONTRIBUTING.md
+!CODE_OF_CONDUCT.md
+!SECURITY.md
+!DESIGN.md
+!SPEC.md
+!TASKS.md
+!BUILD
+!WORKSPACE
+!Makefile
+!flake.nix
+!default.nix
+!package.json
+!pyproject.toml
+!rustfmt.toml
+!.editorconfig
+!.pre-commit-config.yaml
+!.eslintrc.js
+!.prettierrc
+!.commitlintrc.js

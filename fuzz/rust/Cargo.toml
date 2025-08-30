@@ -1,0 +1,60 @@
+[package]
+name = "polymera-fuzz"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+base64 = "0.21"
+uuid = "1.0"
+thiserror = "1.0"
+
+# Internal dependencies
+polymera-caps = { path = "../../security/caps" }
+
+[profile.release]
+overflow-checks = true
+debug = true
+
+[profile.dev]
+overflow-checks = true
+debug = true
+
+[[bin]]
+name = "capability_token_format_fuzzer"
+path = "src/capability_token_format_fuzzer.rs"
+
+[[bin]]
+name = "capability_token_sign_fuzzer"
+path = "src/capability_token_sign_fuzzer.rs"
+
+[[bin]]
+name = "capability_token_verify_fuzzer"
+path = "src/capability_token_verify_fuzzer.rs"
+
+[[bin]]
+name = "json_parser_fuzzer"
+path = "src/json_parser_fuzzer.rs"
+
+[[bin]]
+name = "base64_parser_fuzzer"
+path = "src/base64_parser_fuzzer.rs"
+
+[[bin]]
+name = "uuid_parser_fuzzer"
+path = "src/uuid_parser_fuzzer.rs"
+
+[[bin]]
+name = "cap_parser_fuzzer"
+path = "src/cap_parser.rs"
+
+[[bin]]
+name = "syscall_decoder_fuzzer"
+path = "src/syscall_decoder.rs"
+
+[[bin]]
+name = "ipc_header_fuzzer"
+path = "src/ipc_header.rs"

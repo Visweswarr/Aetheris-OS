@@ -1,0 +1,42 @@
+[
+  {
+    "snapshot_cid": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "did": "did:aetheris:test:user1",
+    "timestamp": 1703123456,
+    "chain": "local",
+    "version": "1.0",
+    "metadata": {
+      "description": "Test NGFS snapshot anchor",
+      "tags": ["test", "ngfs", "snapshot"],
+      "priority": "normal",
+      "batch_id": null,
+      "expires_at": null,
+      "custom_fields": {}
+    },
+    "signature": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+    "gas_used": 45000,
+    "block_number": 12345,
+    "transaction_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "status": "confirmed"
+  },
+  {
+    "snapshot_cid": "0xfedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321",
+    "did": "did:aetheris:test:user2",
+    "timestamp": 1703120056,
+    "chain": "local",
+    "version": "1.0",
+    "metadata": {
+      "description": "High priority system snapshot",
+      "tags": ["system", "critical", "backup"],
+      "priority": "high",
+      "batch_id": null,
+      "expires_at": null,
+      "custom_fields": {}
+    },
+    "signature": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "gas_used": 52000,
+    "block_number": 12340,
+    "transaction_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+    "status": "confirmed"
+  }
+]

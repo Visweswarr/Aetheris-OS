@@ -1,0 +1,118 @@
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "environment": "development",
+  "metrics": {
+    "identity.issuance.latency": {
+      "metric_type": "histogram",
+      "samples": 1000,
+      "values": {
+        "p50": 120.0,
+        "p95": 250.0,
+        "p99": 450.0,
+        "max": 500.0,
+        "mean": 150.0
+      },
+      "metadata": {
+        "unit": "milliseconds",
+        "service": "identity-service",
+        "version": "1.0.0"
+      }
+    },
+    "xr.mtp.latency": {
+      "metric_type": "histogram",
+      "samples": 5000,
+      "values": {
+        "p50": 8.0,
+        "p95": 15.0,
+        "p99": 25.0,
+        "max": 30.0,
+        "mean": 10.5
+      },
+      "metadata": {
+        "unit": "milliseconds",
+        "service": "xr-service",
+        "frame_rate": 90
+      }
+    },
+    "auth.anonymous.confirm_latency": {
+      "metric_type": "histogram",
+      "samples": 500,
+      "values": {
+        "p50": 1200.0,
+        "p95": 2500.0,
+        "p99": 4000.0,
+        "max": 4500.0,
+        "mean": 1800.0
+      },
+      "metadata": {
+        "unit": "milliseconds",
+        "service": "auth-service",
+        "privacy_level": "high"
+      }
+    },
+    "mesh.sync.latency": {
+      "metric_type": "histogram",
+      "samples": 200,
+      "values": {
+        "p50": 25000.0,
+        "p95": 45000.0,
+        "p99": 70000.0,
+        "max": 80000.0,
+        "mean": 30000.0
+      },
+      "metadata": {
+        "unit": "milliseconds",
+        "service": "mesh-service",
+        "peer_count": 15
+      }
+    },
+    "privacy.budget.processing_latency": {
+      "metric_type": "histogram",
+      "samples": 2000,
+      "values": {
+        "p50": 30.0,
+        "p95": 80.0,
+        "p99": 150.0,
+        "max": 180.0,
+        "mean": 45.0
+      },
+      "metadata": {
+        "unit": "milliseconds",
+        "service": "privacy-service",
+        "epsilon": 0.05
+      }
+    },
+    "keystore.operations.latency": {
+      "metric_type": "histogram",
+      "samples": 3000,
+      "values": {
+        "p50": 15.0,
+        "p95": 40.0,
+        "p99": 80.0,
+        "max": 95.0,
+        "mean": 25.0
+      },
+      "metadata": {
+        "unit": "milliseconds",
+        "service": "keystore-service",
+        "crypto_algorithm": "dilithium"
+      }
+    },
+    "session.validation.latency": {
+      "metric_type": "histogram",
+      "samples": 4000,
+      "values": {
+        "p50": 8.0,
+        "p95": 20.0,
+        "p99": 35.0,
+        "max": 45.0,
+        "mean": 12.0
+      },
+      "metadata": {
+        "unit": "milliseconds",
+        "service": "session-service",
+        "validation_type": "full"
+      }
+    }
+  }
+}

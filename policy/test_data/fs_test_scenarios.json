@@ -1,0 +1,508 @@
+{
+  "test_scenarios": {
+    "fs_access_scopes": [
+      {
+        "name": "allow_user_home_directory_read",
+        "input": {
+          "operation": "read",
+          "user_id": "user123",
+          "path": "/home/user123/document.txt",
+          "timestamp": "2024-01-15T14:00:00Z"
+        },
+        "data": {
+          "users": {
+            "user123": {
+              "role": "developer",
+              "tier": "premium",
+              "groups": ["developers", "beta_testers"],
+              "additional_scopes": [
+                {"type": "directory", "path": "/home/user123"}
+              ],
+              "access_restrictions": {
+                "restricted_hours": [0, 1, 2, 3, 4, 5]
+              }
+            }
+          },
+          "policy_config": {
+            "role_scopes": {
+              "developer": [
+                {"type": "directory", "path": "/workspace"},
+                {"type": "directory", "path": "/opt/dev"}
+              ]
+            },
+            "role_permissions": {
+              "developer": {
+                "allowed_operations": ["read", "write", "execute", "list", "stat"]
+              }
+            },
+            "user_limits": {
+              "premium": {
+                "max_file_size": 1073741824,
+                "disk_quota": 107374182400
+              }
+            }
+          },
+          "file_usage": {
+            "user123": [
+              {"path": "/home/user123/project1", "size": 1048576}
+            ]
+          }
+        },
+        "expected": {
+          "allow": true,
+          "rationale_contains": ["filesystem access approved", "operation: read"]
+        }
+      },
+      {
+        "name": "allow_developer_workspace_write",
+        "input": {
+          "operation": "write",
+          "user_id": "user123",
+          "path": "/workspace/project/src/main.rs",
+          "file_size": 1024,
+          "timestamp": "2024-01-15T14:00:00Z"
+        },
+        "data": {
+          "users": {
+            "user123": {
+              "role": "developer",
+              "tier": "premium",
+              "groups": ["developers"],
+              "additional_scopes": [
+                {"type": "directory", "path": "/home/user123"}
+              ],
+              "access_restrictions": {
+                "restricted_hours": [0, 1, 2, 3, 4, 5]
+              }
+            }
+          },
+          "policy_config": {
+            "role_scopes": {
+              "developer": [
+                {"type": "directory", "path": "/workspace"},
+                {"type": "directory", "path": "/opt/dev"}
+              ]
+            },
+            "role_permissions": {
+              "developer": {
+                "allowed_operations": ["read", "write", "execute", "list", "stat"]
+              }
+            },
+            "user_limits": {
+              "premium": {
+                "max_file_size": 1073741824,
+                "disk_quota": 107374182400
+              }
+            }
+          },
+          "file_usage": {
+            "user123": [
+              {"path": "/home/user123/project1", "size": 1048576}
+            ]
+          }
+        },
+        "expected": {
+          "allow": true,
+          "rationale_contains": ["filesystem access approved", "operation: write"]
+        }
+      },
+      {
+        "name": "deny_path_outside_scope",
+        "input": {
+          "operation": "read",
+          "user_id": "user456",
+          "path": "/workspace/secret_project/code.rs",
+          "timestamp": "2024-01-15T14:00:00Z"
+        },
+        "data": {
+          "users": {
+            "user456": {
+              "role": "user",
+              "tier": "basic",
+              "groups": ["users"],
+              "additional_scopes": [
+                {"type": "directory", "path": "/home/user456"}
+              ],
+              "access_restrictions": {
+                "restricted_hours": [22, 23, 0, 1, 2, 3, 4, 5, 6]
+              }
+            }
+          },
+          "policy_config": {
+            "role_scopes": {
+              "user": [
+                {"type": "directory", "path": "/home"},
+                {"type": "directory", "path": "/tmp"}
+              ]
+            },
+            "role_permissions": {
+              "user": {
+                "allowed_operations": ["read", "write", "list", "stat"]
+              }
+            },
+            "user_limits": {
+              "basic": {
+                "max_file_size": 104857600,
+                "disk_quota": 10737418240
+              }
+            }
+          },
+          "file_usage": {
+            "user456": [
+              {"path": "/home/user456/documents", "size": 524288}
+            ]
+          }
+        },
+        "expected": {
+          "allow": false,
+          "rationale_contains": ["path not accessible"]
+        }
+      },
+      {
+        "name": "deny_operation_not_permitted",
+        "input": {
+          "operation": "execute",
+          "user_id": "user456",
+          "path": "/home/user456/script.sh",
+          "timestamp": "2024-01-15T14:00:00Z"
+        },
+        "data": {
+          "users": {
+            "user456": {
+              "role": "user",
+              "tier": "basic",
+              "groups": ["users"],
+              "additional_scopes": [
+                {"type": "directory", "path": "/home/user456"}
+              ],
+              "access_restrictions": {
+                "restricted_hours": [22, 23, 0, 1, 2, 3, 4, 5, 6]
+              }
+            }
+          },
+          "policy_config": {
+            "role_scopes": {
+              "user": [
+                {"type": "directory", "path": "/home"},
+                {"type": "directory", "path": "/tmp"}
+              ]
+            },
+            "role_permissions": {
+              "user": {
+                "allowed_operations": ["read", "write", "list", "stat"]
+              }
+            },
+            "user_limits": {
+              "basic": {
+                "max_file_size": 104857600,
+                "disk_quota": 10737418240
+              }
+            }
+          },
+          "file_usage": {
+            "user456": [
+              {"path": "/home/user456/documents", "size": 524288}
+            ]
+          }
+        },
+        "expected": {
+          "allow": false,
+          "rationale_contains": ["operation not permitted"]
+        }
+      },
+      {
+        "name": "deny_file_size_limit_exceeded",
+        "input": {
+          "operation": "write",
+          "user_id": "user456",
+          "path": "/home/user456/large_file.dat",
+          "file_size": 209715200,
+          "timestamp": "2024-01-15T14:00:00Z"
+        },
+        "data": {
+          "users": {
+            "user456": {
+              "role": "user",
+              "tier": "basic",
+              "groups": ["users"],
+              "additional_scopes": [
+                {"type": "directory", "path": "/home/user456"}
+              ],
+              "access_restrictions": {
+                "restricted_hours": [22, 23, 0, 1, 2, 3, 4, 5, 6]
+              }
+            }
+          },
+          "policy_config": {
+            "role_scopes": {
+              "user": [
+                {"type": "directory", "path": "/home"},
+                {"type": "directory", "path": "/tmp"}
+              ]
+            },
+            "role_permissions": {
+              "user": {
+                "allowed_operations": ["read", "write", "list", "stat"]
+              }
+            },
+            "user_limits": {
+              "basic": {
+                "max_file_size": 104857600,
+                "disk_quota": 10737418240
+              }
+            }
+          },
+          "file_usage": {
+            "user456": [
+              {"path": "/home/user456/documents", "size": 524288}
+            ]
+          }
+        },
+        "expected": {
+          "allow": false,
+          "rationale_contains": ["file size limit exceeded"]
+        }
+      },
+      {
+        "name": "deny_sensitive_file_access",
+        "input": {
+          "operation": "read",
+          "user_id": "user123",
+          "path": "/etc/shadow",
+          "timestamp": "2024-01-15T14:00:00Z"
+        },
+        "data": {
+          "users": {
+            "user123": {
+              "role": "developer",
+              "tier": "premium",
+              "groups": ["developers"],
+              "additional_scopes": [
+                {"type": "directory", "path": "/home/user123"}
+              ],
+              "access_restrictions": {
+                "restricted_hours": [0, 1, 2, 3, 4, 5]
+              }
+            }
+          },
+          "policy_config": {
+            "role_scopes": {
+              "developer": [
+                {"type": "directory", "path": "/workspace"},
+                {"type": "directory", "path": "/opt/dev"},
+                {"type": "directory", "path": "/etc"}
+              ]
+            },
+            "role_permissions": {
+              "developer": {
+                "allowed_operations": ["read", "write", "execute", "list", "stat"]
+              }
+            },
+            "sensitive_file_patterns": [
+              "/etc/passwd",
+              "/etc/shadow",
+              "/etc/ssh/*",
+              "*.key",
+              "*.pem"
+            ],
+            "user_limits": {
+              "premium": {
+                "max_file_size": 1073741824,
+                "disk_quota": 107374182400
+              }
+            }
+          },
+          "file_usage": {
+            "user123": [
+              {"path": "/home/user123/project1", "size": 1048576}
+            ]
+          }
+        },
+        "expected": {
+          "allow": false,
+          "rationale_contains": ["sensitive file"]
+        }
+      },
+      {
+        "name": "deny_time_restriction_violation",
+        "input": {
+          "operation": "write",
+          "user_id": "user123",
+          "path": "/home/user123/document.txt",
+          "file_size": 1024,
+          "timestamp": "2024-01-15T03:00:00Z"
+        },
+        "data": {
+          "users": {
+            "user123": {
+              "role": "developer",
+              "tier": "premium",
+              "groups": ["developers"],
+              "additional_scopes": [
+                {"type": "directory", "path": "/home/user123"}
+              ],
+              "access_restrictions": {
+                "restricted_hours": [0, 1, 2, 3, 4, 5]
+              }
+            }
+          },
+          "policy_config": {
+            "role_scopes": {
+              "developer": [
+                {"type": "directory", "path": "/workspace"},
+                {"type": "directory", "path": "/opt/dev"}
+              ]
+            },
+            "role_permissions": {
+              "developer": {
+                "allowed_operations": ["read", "write", "execute", "list", "stat"]
+              }
+            },
+            "user_limits": {
+              "premium": {
+                "max_file_size": 1073741824,
+                "disk_quota": 107374182400
+              }
+            }
+          },
+          "file_usage": {
+            "user123": [
+              {"path": "/home/user123/project1", "size": 1048576}
+            ]
+          }
+        },
+        "expected": {
+          "allow": false,
+          "rationale_contains": ["time restriction"]
+        }
+      },
+      {
+        "name": "allow_temporary_access",
+        "input": {
+          "operation": "read",
+          "user_id": "user456",
+          "path": "/opt/temp_project",
+          "timestamp": "2024-01-15T16:00:00Z"
+        },
+        "data": {
+          "users": {
+            "user456": {
+              "role": "user",
+              "tier": "basic",
+              "groups": ["users"],
+              "additional_scopes": [
+                {"type": "directory", "path": "/home/user456"}
+              ],
+              "access_restrictions": {
+                "restricted_hours": [22, 23, 0, 1, 2, 3, 4, 5, 6]
+              }
+            }
+          },
+          "policy_config": {
+            "role_scopes": {
+              "user": [
+                {"type": "directory", "path": "/home"},
+                {"type": "directory", "path": "/tmp"}
+              ]
+            },
+            "role_permissions": {
+              "user": {
+                "allowed_operations": ["read", "write", "list", "stat"]
+              }
+            },
+            "user_limits": {
+              "basic": {
+                "max_file_size": 104857600,
+                "disk_quota": 10737418240
+              }
+            }
+          },
+          "file_usage": {
+            "user456": [
+              {"path": "/home/user456/documents", "size": 524288}
+            ]
+          },
+          "temporary_access": {
+            "user456": [
+              {
+                "path": "/opt/temp_project",
+                "expires_at": "2024-01-15T18:00:00Z"
+              }
+            ]
+          }
+        },
+        "expected": {
+          "allow": true,
+          "rationale_contains": ["temporary grant"]
+        }
+      },
+      {
+        "name": "allow_system_backup",
+        "input": {
+          "operation": "system_backup",
+          "system_role": "backup_service",
+          "path": "/var/backups/daily",
+          "system_token": "fs_sys_backup_12345",
+          "timestamp": "2024-01-15T14:00:00Z"
+        },
+        "data": {
+          "policy_config": {
+            "trusted_monitoring_services": ["monitoring_service", "audit_service"]
+          }
+        },
+        "expected": {
+          "allow": true,
+          "rationale_contains": []
+        }
+      },
+      {
+        "name": "allow_emergency_access",
+        "input": {
+          "operation": "read",
+          "user_id": "user456",
+          "path": "/etc/passwd",
+          "timestamp": "2024-01-15T14:00:00Z",
+          "emergency_token": "fs_emergency_12345",
+          "admin_user_id": "admin123",
+          "justification": "Security incident investigation"
+        },
+        "data": {
+          "users": {
+            "user456": {
+              "role": "user",
+              "tier": "basic",
+              "groups": ["users"],
+              "additional_scopes": [
+                {"type": "directory", "path": "/home/user456"}
+              ]
+            }
+          },
+          "policy_config": {
+            "role_scopes": {
+              "user": [
+                {"type": "directory", "path": "/home"},
+                {"type": "directory", "path": "/tmp"}
+              ]
+            },
+            "role_permissions": {
+              "user": {
+                "allowed_operations": ["read", "write", "list", "stat"]
+              }
+            },
+            "sensitive_file_patterns": [
+              "/etc/passwd",
+              "/etc/shadow"
+            ]
+          },
+          "admins": {
+            "admin123": {"emergency_fs_access": true}
+          }
+        },
+        "expected": {
+          "allow": true,
+          "rationale_contains": ["emergency filesystem access"]
+        }
+      }
+    ]
+  }
+}

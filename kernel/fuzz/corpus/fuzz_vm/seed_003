@@ -1,0 +1,8 @@
+# Virtual memory stress testing seed
+# Format: op_type=3 (stress), num_ops=100, page_size=2 (1G), flags=0x07 (READ|WRITE|EXECUTE)
+#         alignment=2 (1G), max_pages=500, addr_space=0x40, prot=0x07
+#         mapping_strategy=2 (overlapping), unmap_strategy=3 (selective)
+#         stress_level=3 (high), frag_level=3 (high), cache_behavior=1 (aggressive)
+#         tlb_behavior=1 (flush_always), error_prob=15%, validation_freq=3 (always)
+0x03 0x64 0x02 0x07 0x02 0xF4 0x40 0x07 0x02 0x03 0x03 0x03 0x01 0x01 0x0F 0x03
+

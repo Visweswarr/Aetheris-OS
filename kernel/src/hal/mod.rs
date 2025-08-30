@@ -1,0 +1,10 @@
+#[cfg(target_arch="x86_64")]
+pub mod x86_64;
+#[cfg(target_arch="aarch64")]
+pub mod aarch64;
+
+pub trait Hal {
+    fn init_cpu() -> Result<(), &'static str>;
+    fn init_timer() -> Result<(), &'static str>;
+    fn enable_interrupts() -> Result<(), &'static str>;
+}

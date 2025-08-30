@@ -1,0 +1,89 @@
+[package]
+name = "polymera-ratelimit"
+version = "0.1.0"
+edition = "2021"
+description = "Token bucket rate limiting with DID-based tracking for Polymera OS"
+license = "Apache-2.0"
+repository = "https://github.com/polymera-os/polymera-os"
+keywords = ["rate-limiting", "token-bucket", "middleware", "did", "security"]
+categories = ["web-programming", "network-programming", "authentication"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Collections and utilities
+dashmap = "5.5"  # Concurrent HashMap for better performance
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# HTTP integration (optional)
+axum = { version = "0.7", optional = true }
+hyper = { version = "1.0", optional = true }
+tower = { version = "0.4", optional = true }
+tower-layer = { version = "0.3", optional = true }
+tower-service = { version = "0.3", optional = true }
+
+# Actix Web integration (optional)
+actix-web = { version = "4.4", optional = true }
+
+# Metrics (optional)
+prometheus = { version = "0.13", optional = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[features]
+default = ["axum-integration"]
+
+# Web framework integrations
+axum-integration = ["axum", "hyper", "tower", "tower-layer", "tower-service"]
+actix-integration = ["actix-web"]
+
+# Observability
+metrics = ["prometheus"]
+
+# All features for testing
+full = [
+    "axum-integration",
+    "actix-integration", 
+    "metrics"
+]
+
+[[bench]]
+name = "rate_limit_bench"
+harness = false
+required-features = ["metrics"]
+
+[lib]
+name = "polymera_ratelimit"
+path = "lib.rs"
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic_usage.rs"
+
+[[example]]
+name = "axum_middleware"
+path = "examples/axum_middleware.rs"
+required-features = ["axum-integration"]
+
+[[example]]
+name = "actix_middleware"
+path = "examples/actix_middleware.rs"
+required-features = ["actix-integration"]

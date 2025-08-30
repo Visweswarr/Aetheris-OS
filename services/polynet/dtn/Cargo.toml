@@ -1,0 +1,51 @@
+[package]
+name = "polynet-dtn"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# Core dependencies
+tokio = { version = "1.0", features = ["full"] }
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.0", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Protobuf
+prost = "0.12"
+prost-types = "0.12"
+tonic = "0.10"
+
+# Crypto and hashing
+sha2 = "0.10"
+ed25519-dalek = "2.0"
+rand = "0.8"
+
+# Storage and database
+sled = "0.34"
+dashmap = "5.4"
+
+# Network and messaging
+libp2p = { version = "0.53", features = ["tokio", "macros"] }
+
+# Utilities
+anyhow = "1.0"
+clap = { version = "4.0", features = ["derive"] }
+config = "0.13"
+dirs = "5.0"
+
+[build-dependencies]
+tonic-build = "0.10"
+
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = "0.5"
+
+[[bench]]
+name = "dtn_benchmarks"
+harness = false

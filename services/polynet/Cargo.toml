@@ -1,0 +1,98 @@
+[package]
+name = "polymera-polynet"
+version = "0.1.0"
+edition = "2021"
+description = "Network services for Polymera OS including quarantine and peer management"
+license = "Apache-2.0"
+repository = "https://github.com/polymera-os/polymera-os"
+keywords = ["networking", "p2p", "quarantine", "mesh", "libp2p"]
+categories = ["network-programming", "cryptography"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Cryptography
+ed25519-dalek = { version = "2.0", features = ["rand_core"] }
+sha2 = "0.10"
+rand = "0.8"
+
+# Utilities
+uuid = { version = "1.6", features = ["v4", "serde"] }
+hex = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Network protocols (optional features)
+libp2p = { version = "0.53", optional = true, features = [
+    "kad",
+    "mdns",
+    "noise",
+    "tcp",
+    "websocket",
+    "yamux",
+    "gossipsub",
+    "identify",
+    "ping",
+    "request-response",
+    "dcutr",
+    "relay",
+    "autonat",
+] }
+
+# QUIC support (optional)
+quinn = { version = "0.10", optional = true }
+rustls = { version = "0.21", optional = true }
+
+# Metrics (optional)
+prometheus = { version = "0.13", optional = true }
+
+[dev-dependencies]
+tempfile = "3.8"
+tokio-test = "0.4"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[features]
+default = ["libp2p-support"]
+
+# Protocol support
+libp2p-support = ["libp2p"]
+quic-support = ["quinn", "rustls"]
+
+# Observability
+metrics = ["prometheus"]
+
+# All features for testing
+full = [
+    "libp2p-support",
+    "quic-support",
+    "metrics"
+]
+
+[[bench]]
+name = "quarantine_bench"
+harness = false
+
+[lib]
+name = "polymera_polynet"
+path = "lib.rs"
+
+[[example]]
+name = "basic_quarantine"
+path = "examples/basic_quarantine.rs"
+
+[[example]]
+name = "p2p_quarantine_integration"
+path = "examples/p2p_integration.rs"
+required-features = ["libp2p-support"]

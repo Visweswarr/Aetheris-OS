@@ -1,0 +1,8 @@
+# Basic virtual memory mapping seed
+# Format: op_type=0 (map_only), num_ops=25, page_size=0 (4K), flags=0x01 (READ)
+#         alignment=0 (4K), max_pages=50, addr_space=0x10, prot=0x01
+#         mapping_strategy=0 (sequential), unmap_strategy=0 (individual)
+#         stress_level=0 (none), frag_level=0 (none), cache_behavior=0 (normal)
+#         tlb_behavior=0 (normal), error_prob=5%, validation_freq=2 (sometimes)
+0x00 0x19 0x00 0x01 0x00 0x32 0x10 0x01 0x00 0x00 0x00 0x00 0x00 0x00 0x05 0x02
+

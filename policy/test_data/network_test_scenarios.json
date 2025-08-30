@@ -1,0 +1,366 @@
+{
+  "test_scenarios": {
+    "network_rate_limits": [
+      {
+        "name": "allow_valid_network_request",
+        "input": {
+          "operation": "network_request",
+          "user_id": "user123",
+          "source_ip": "192.168.1.10",
+          "destination_endpoint": "api.polymera.os/users",
+          "protocol": "HTTPS",
+          "request_size": 1024,
+          "timestamp": "2024-01-15T15:00:00Z",
+          "user_agent": "Mozilla/5.0"
+        },
+        "data": {
+          "users": {
+            "user123": {
+              "tier": "premium",
+              "role": "developer",
+              "average_request_size": 1024
+            }
+          },
+          "policy_config": {
+            "rate_limits": {
+              "premium": {
+                "requests_per_minute": 1000,
+                "ip_requests_per_minute": 500,
+                "endpoint_requests_per_minute": 200,
+                "max_bandwidth_bps": 10485760
+              }
+            },
+            "permissions": {
+              "developer": {
+                "allowed_protocols": ["HTTP", "HTTPS", "QUIC", "WebSocket"],
+                "allowed_endpoints": ["api.polymera.os/*", "dev.polymera.os/*"],
+                "blocked_endpoints": ["admin.polymera.os/*"],
+                "allowed_countries": ["US", "CA", "GB", "DE"],
+                "blocked_countries": ["CN", "RU"]
+              }
+            }
+          },
+          "request_logs": {
+            "user": {
+              "user123": [
+                {"timestamp": "2024-01-15T14:59:30Z", "request_size": 1024, "response_size": 2048}
+              ]
+            },
+            "ip": {
+              "192.168.1.10": [
+                {"timestamp": "2024-01-15T14:59:30Z"}
+              ]
+            },
+            "endpoint": {
+              "api.polymera.os/users": [
+                {"timestamp": "2024-01-15T14:59:30Z"}
+              ]
+            }
+          },
+          "geoip": {
+            "192.168.1.10": {"country": "US"}
+          },
+          "domain_geo": {
+            "api.polymera.os": {"country": "US"}
+          }
+        },
+        "expected": {
+          "allow": true,
+          "rationale_contains": ["network request approved", "rate"]
+        }
+      },
+      {
+        "name": "deny_rate_limit_exceeded",
+        "input": {
+          "operation": "network_request",
+          "user_id": "user456",
+          "source_ip": "192.168.1.20",
+          "destination_endpoint": "api.polymera.os/data",
+          "protocol": "HTTPS",
+          "request_size": 512,
+          "timestamp": "2024-01-15T15:00:00Z"
+        },
+        "data": {
+          "users": {
+            "user456": {
+              "tier": "basic",
+              "role": "user",
+              "average_request_size": 512
+            }
+          },
+          "policy_config": {
+            "rate_limits": {
+              "basic": {
+                "requests_per_minute": 100,
+                "ip_requests_per_minute": 50,
+                "endpoint_requests_per_minute": 20,
+                "max_bandwidth_bps": 1048576
+              }
+            },
+            "permissions": {
+              "user": {
+                "allowed_protocols": ["HTTP", "HTTPS"],
+                "allowed_endpoints": ["api.polymera.os/public/*"],
+                "blocked_endpoints": ["api.polymera.os/admin/*"],
+                "allowed_countries": [],
+                "blocked_countries": ["CN", "RU", "IR"]
+              }
+            }
+          },
+          "request_logs": {
+            "user": {
+              "user456": [
+                {"timestamp": "2024-01-15T14:59:01Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:02Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:03Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:04Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:05Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:06Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:07Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:08Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:09Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:10Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:11Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:12Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:13Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:14Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:15Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:16Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:17Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:18Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:19Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:20Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:21Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:22Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:23Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:24Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:25Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:26Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:27Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:28Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:29Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:30Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:31Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:32Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:33Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:34Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:35Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:36Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:37Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:38Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:39Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:40Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:41Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:42Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:43Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:44Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:45Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:46Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:47Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:48Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:49Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:50Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:51Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:52Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:53Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:54Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:55Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:56Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:57Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:58Z", "request_size": 512},
+                {"timestamp": "2024-01-15T14:59:59Z", "request_size": 512}
+              ]
+            }
+          }
+        },
+        "expected": {
+          "allow": false,
+          "rationale_contains": ["rate limit exceeded"]
+        }
+      },
+      {
+        "name": "deny_blocked_endpoint",
+        "input": {
+          "operation": "network_request",
+          "user_id": "user456",
+          "source_ip": "192.168.1.10",
+          "destination_endpoint": "admin.polymera.os/dashboard",
+          "protocol": "HTTPS",
+          "request_size": 512,
+          "timestamp": "2024-01-15T15:00:00Z"
+        },
+        "data": {
+          "users": {
+            "user456": {
+              "tier": "basic",
+              "role": "user",
+              "average_request_size": 512
+            }
+          },
+          "policy_config": {
+            "rate_limits": {
+              "basic": {
+                "requests_per_minute": 100,
+                "ip_requests_per_minute": 50,
+                "endpoint_requests_per_minute": 20,
+                "max_bandwidth_bps": 1048576
+              }
+            },
+            "permissions": {
+              "user": {
+                "allowed_protocols": ["HTTP", "HTTPS"],
+                "allowed_endpoints": ["api.polymera.os/public/*"],
+                "blocked_endpoints": ["api.polymera.os/admin/*", "admin.polymera.os/*"],
+                "allowed_countries": [],
+                "blocked_countries": ["CN", "RU", "IR"]
+              }
+            }
+          },
+          "request_logs": {
+            "user": {"user456": []},
+            "ip": {"192.168.1.10": []},
+            "endpoint": {"admin.polymera.os/dashboard": []}
+          },
+          "geoip": {
+            "192.168.1.10": {"country": "US"}
+          },
+          "domain_geo": {
+            "admin.polymera.os": {"country": "US"}
+          }
+        },
+        "expected": {
+          "allow": false,
+          "rationale_contains": ["endpoint not accessible"]
+        }
+      },
+      {
+        "name": "deny_geographic_restriction",
+        "input": {
+          "operation": "network_request",
+          "user_id": "user456",
+          "source_ip": "203.0.113.1",
+          "destination_endpoint": "api.polymera.os/public/data",
+          "protocol": "HTTPS",
+          "request_size": 512,
+          "timestamp": "2024-01-15T15:00:00Z"
+        },
+        "data": {
+          "users": {
+            "user456": {
+              "tier": "basic",
+              "role": "user",
+              "average_request_size": 512
+            }
+          },
+          "policy_config": {
+            "rate_limits": {
+              "basic": {
+                "requests_per_minute": 100,
+                "ip_requests_per_minute": 50,
+                "endpoint_requests_per_minute": 20,
+                "max_bandwidth_bps": 1048576
+              }
+            },
+            "permissions": {
+              "user": {
+                "allowed_protocols": ["HTTP", "HTTPS"],
+                "allowed_endpoints": ["api.polymera.os/public/*"],
+                "blocked_endpoints": ["api.polymera.os/admin/*"],
+                "allowed_countries": [],
+                "blocked_countries": ["CN", "RU", "IR"]
+              }
+            }
+          },
+          "request_logs": {
+            "user": {"user456": []},
+            "ip": {"203.0.113.1": []},
+            "endpoint": {"api.polymera.os/public/data": []}
+          },
+          "geoip": {
+            "203.0.113.1": {"country": "CN"}
+          },
+          "domain_geo": {
+            "api.polymera.os": {"country": "US"}
+          }
+        },
+        "expected": {
+          "allow": false,
+          "rationale_contains": ["geographic access denied"]
+        }
+      },
+      {
+        "name": "deny_protocol_not_allowed",
+        "input": {
+          "operation": "network_request",
+          "user_id": "user456",
+          "source_ip": "192.168.1.10",
+          "destination_endpoint": "api.polymera.os/public/data",
+          "protocol": "WebSocket",
+          "request_size": 512,
+          "timestamp": "2024-01-15T15:00:00Z"
+        },
+        "data": {
+          "users": {
+            "user456": {
+              "tier": "basic",
+              "role": "user",
+              "average_request_size": 512
+            }
+          },
+          "policy_config": {
+            "rate_limits": {
+              "basic": {
+                "requests_per_minute": 100,
+                "ip_requests_per_minute": 50,
+                "endpoint_requests_per_minute": 20,
+                "max_bandwidth_bps": 1048576
+              }
+            },
+            "permissions": {
+              "user": {
+                "allowed_protocols": ["HTTP", "HTTPS"],
+                "allowed_endpoints": ["api.polymera.os/public/*"],
+                "blocked_endpoints": ["api.polymera.os/admin/*"],
+                "allowed_countries": [],
+                "blocked_countries": ["CN", "RU", "IR"]
+              }
+            }
+          },
+          "request_logs": {
+            "user": {"user456": []},
+            "ip": {"192.168.1.10": []},
+            "endpoint": {"api.polymera.os/public/data": []}
+          },
+          "geoip": {
+            "192.168.1.10": {"country": "US"}
+          },
+          "domain_geo": {
+            "api.polymera.os": {"country": "US"}
+          }
+        },
+        "expected": {
+          "allow": false,
+          "rationale_contains": ["protocol not allowed"]
+        }
+      },
+      {
+        "name": "allow_internal_communication",
+        "input": {
+          "operation": "internal_communication",
+          "source_service": "auth_service",
+          "destination_service": "monitoring_service",
+          "service_token": "svc_internal_token_12345"
+        },
+        "data": {
+          "policy_config": {
+            "trusted_services": ["auth_service", "monitoring_service", "backup_service"]
+          }
+        },
+        "expected": {
+          "allow": true,
+          "rationale_contains": []
+        }
+      }
+    ]
+  }
+}

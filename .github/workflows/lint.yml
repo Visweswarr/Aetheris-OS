@@ -1,0 +1,246 @@
+name: Code Quality & Linting
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run linting checks weekly
+    - cron: '0 2 * * 1'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUST_LOG: info
+
+jobs:
+  # Rust formatting and linting
+  rust-lint:
+    name: Rust Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-unknown-linux-gnu
+
+      - name: Install Rust components
+        run: |
+          rustup component add rustfmt
+          rustup component add clippy
+
+      - name: Check Rust formatting
+        run: |
+          echo "🔍 Checking Rust code formatting..."
+          cargo fmt -- --check
+
+      - name: Run Rust linter (clippy)
+        run: |
+          echo "🔍 Running Rust linter (clippy)..."
+          cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Verify Rust code compiles
+        run: |
+          echo "🔍 Verifying Rust code compiles..."
+          cargo check --all-targets --all-features
+
+  # Python formatting and linting
+  python-lint:
+    name: Python Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python linting tools
+        run: |
+          pip install black ruff
+
+      - name: Check Python formatting (black)
+        run: |
+          echo "🔍 Checking Python code formatting..."
+          black --check --diff .
+
+      - name: Run Python linter (ruff)
+        run: |
+          echo "🔍 Running Python linter (ruff)..."
+          ruff check .
+
+      - name: Check Python import sorting
+        run: |
+          echo "🔍 Checking Python import sorting..."
+          ruff check --select I .
+
+  # TypeScript/JavaScript formatting and linting
+  typescript-lint:
+    name: TypeScript Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install Node.js dependencies
+        run: |
+          npm install -g prettier eslint @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint-config-prettier eslint-plugin-prettier
+
+      - name: Check TypeScript/JavaScript formatting (prettier)
+        run: |
+          echo "🔍 Checking TypeScript/JavaScript code formatting..."
+          prettier --check "**/*.{js,jsx,ts,tsx,json,css,scss,html,yaml,md}"
+
+      - name: Run TypeScript/JavaScript linter (eslint)
+        run: |
+          echo "🔍 Running TypeScript/JavaScript linter (eslint)..."
+          eslint "**/*.{js,jsx,ts,tsx}" --max-warnings 0
+
+  # Shell script formatting
+  shell-lint:
+    name: Shell Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install shell formatting tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shfmt shellcheck
+
+      - name: Check shell script formatting (shfmt)
+        run: |
+          echo "🔍 Checking shell script formatting..."
+          find . -name "*.sh" -type f -exec shfmt -d {} \;
+
+      - name: Run shell script linter (shellcheck)
+        run: |
+          echo "🔍 Running shell script linter (shellcheck)..."
+          find . -name "*.sh" -type f -exec shellcheck {} \;
+
+  # Markdown and documentation linting
+  docs-lint:
+    name: Documentation Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install documentation linting tools
+        run: |
+          npm install -g markdownlint-cli
+
+      - name: Check Markdown formatting
+        run: |
+          echo "🔍 Checking Markdown formatting..."
+          markdownlint "**/*.md" --config .markdownlint.json
+
+      - name: Check YAML formatting
+        run: |
+          echo "🔍 Checking YAML formatting..."
+          find . -name "*.yml" -o -name "*.yaml" | xargs -I {} sh -c 'echo "Checking {}"; python -c "import yaml; yaml.safe_load(open(\"{}\"))"'
+
+      - name: Check JSON formatting
+        run: |
+          echo "🔍 Checking JSON formatting..."
+          find . -name "*.json" | xargs -I {} sh -c 'echo "Checking {}"; python -c "import json; json.load(open(\"{}\"))"'
+
+  # Pre-commit hooks validation
+  pre-commit-lint:
+    name: Pre-commit Hooks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install pre-commit
+        run: |
+          pip install pre-commit
+
+      - name: Install pre-commit hooks
+        run: |
+          echo "🔍 Installing pre-commit hooks..."
+          pre-commit install
+
+      - name: Run pre-commit on all files
+        run: |
+          echo "🔍 Running pre-commit hooks on all files..."
+          pre-commit run --all-files
+
+  # Bazel lint targets
+  bazel-lint:
+    name: Bazel Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bazel
+        uses: bazelbuild/setup-bazelisk@v2
+
+      - name: Run Bazel lint targets
+        run: |
+          echo "🔍 Running Bazel lint targets..."
+          # Run any custom lint targets defined in BUILD files
+          bazel query "attr('tags', 'lint', //...)" 2>/dev/null || echo "No custom lint targets found"
+
+      - name: Verify Bazel build
+        run: |
+          echo "🔍 Verifying Bazel build..."
+          bazel build //...
+
+  # Final lint summary
+  lint-summary:
+    name: Lint Summary
+    runs-on: ubuntu-latest
+    needs: [rust-lint, python-lint, typescript-lint, shell-lint, docs-lint, pre-commit-lint, bazel-lint]
+    steps:
+      - name: Generate lint summary
+        run: |
+          echo "🎉 All linting checks completed successfully!"
+          echo "✅ Rust: rustfmt + clippy"
+          echo "✅ Python: black + ruff"
+          echo "✅ TypeScript: prettier + eslint"
+          echo "✅ Shell: shfmt + shellcheck"
+          echo "✅ Documentation: markdownlint + yaml/json validation"
+          echo "✅ Pre-commit: All hooks passed"
+          echo "✅ Bazel: Build verification passed"
+          echo ""
+          echo "🚀 Code quality gates passed - ready for merge!"
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '## 🎉 Linting & Code Quality Check Complete!\n\nAll formatting and linting checks have passed successfully:\n\n✅ **Rust**: rustfmt + clippy\n✅ **Python**: black + ruff  \n✅ **TypeScript**: prettier + eslint\n✅ **Shell**: shfmt + shellcheck\n✅ **Documentation**: markdownlint + validation\n✅ **Pre-commit**: All hooks passed\n✅ **Bazel**: Build verification passed\n\n**Status**: 🚀 Code quality gates passed - ready for merge!\n\n*This PR meets all Polymera OS code quality standards.*'
+            });

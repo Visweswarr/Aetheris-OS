@@ -1,0 +1,540 @@
+syntax = "proto3";
+
+package health.v1;
+
+option go_package = "github.com/polymera-os/polymera-os/proto/health;health";
+option java_multiple_files = true;
+option java_package = "com.polymera.os.health.v1";
+option java_outer_classname = "HealthProto";
+option csharp_namespace = "Polymera.OS.Health.V1";
+option objc_class_prefix = "POH";
+option php_namespace = "Polymera\\OS\\Health\\V1";
+option ruby_package = "Polymera::OS::Health::V1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/any.proto";
+
+// Health status enumeration
+enum HealthStatus {
+  HEALTH_STATUS_UNSPECIFIED = 0;
+  HEALTH_STATUS_HEALTHY = 1;
+  HEALTH_STATUS_DEGRADED = 2;
+  HEALTH_STATUS_UNHEALTHY = 3;
+  HEALTH_STATUS_CRITICAL = 4;
+  HEALTH_STATUS_MAINTENANCE = 5;
+  HEALTH_STATUS_UNKNOWN = 6;
+}
+
+// Health severity level
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  SEVERITY_LOW = 1;
+  SEVERITY_MEDIUM = 2;
+  SEVERITY_HIGH = 3;
+  SEVERITY_CRITICAL = 4;
+}
+
+// Health check request
+message HealthCheckRequest {
+  // Service identifier
+  string service_id = 1;
+  
+  // Health check type
+  string check_type = 2;
+  
+  // Additional parameters for the health check
+  map<string, string> parameters = 3;
+  
+  // Request timeout in seconds
+  int32 timeout_seconds = 4;
+  
+  // Include detailed health information
+  bool include_details = 5;
+}
+
+// Health check response
+message HealthCheckResponse {
+  // Service identifier
+  string service_id = 1;
+  
+  // Overall health status
+  HealthStatus status = 2;
+  
+  // Numeric health score (0-100)
+  double health_score = 3;
+  
+  // Health check timestamp
+  google.protobuf.Timestamp timestamp = 4;
+  
+  // Health check duration in milliseconds
+  int64 duration_ms = 5;
+  
+  // Detailed health information
+  repeated HealthCheckDetail details = 6;
+  
+  // Error message if health check failed
+  string error_message = 7;
+  
+  // Service metadata
+  ServiceMetadata metadata = 8;
+}
+
+// Individual health check detail
+message HealthCheckDetail {
+  // Check name/identifier
+  string check_name = 1;
+  
+  // Check status
+  HealthStatus status = 2;
+  
+  // Check description
+  string description = 3;
+  
+  // Check duration in milliseconds
+  int64 duration_ms = 4;
+  
+  // Check error message if failed
+  string error_message = 5;
+  
+  // Additional check data
+  map<string, string> data = 6;
+  
+  // Check severity
+  Severity severity = 7;
+  
+  // Check timestamp
+  google.protobuf.Timestamp timestamp = 8;
+}
+
+// Service metadata
+message ServiceMetadata {
+  // Service name
+  string name = 1;
+  
+  // Service version
+  string version = 2;
+  
+  // Service instance ID
+  string instance_id = 3;
+  
+  // Service environment
+  string environment = 4;
+  
+  // Service region/zone
+  string region = 5;
+  
+  // Service tags
+  repeated string tags = 6;
+  
+  // Service owner/team
+  string owner = 7;
+  
+  // Service description
+  string description = 8;
+  
+  // Service contact information
+  string contact = 9;
+  
+  // Service documentation URL
+  string documentation_url = 10;
+}
+
+// Dependency information
+message Dependency {
+  // Dependency service ID
+  string service_id = 1;
+  
+  // Dependency name
+  string name = 2;
+  
+  // Dependency type (database, cache, external API, etc.)
+  string type = 3;
+  
+  // Dependency health status
+  HealthStatus status = 4;
+  
+  // Dependency health score
+  double health_score = 5;
+  
+  // Dependency endpoint/connection string
+  string endpoint = 6;
+  
+  // Dependency timeout in seconds
+  int32 timeout_seconds = 7;
+  
+  // Dependency retry configuration
+  RetryConfig retry_config = 8;
+  
+  // Dependency circuit breaker configuration
+  CircuitBreakerConfig circuit_breaker_config = 9;
+  
+  // Dependency metadata
+  ServiceMetadata metadata = 10;
+  
+  // Last health check timestamp
+  google.protobuf.Timestamp last_check = 11;
+  
+  // Dependency weight in health calculation
+  double weight = 12;
+}
+
+// Retry configuration for dependencies
+message RetryConfig {
+  // Maximum number of retries
+  int32 max_retries = 1;
+  
+  // Initial retry delay in milliseconds
+  int64 initial_delay_ms = 2;
+  
+  // Maximum retry delay in milliseconds
+  int64 max_delay_ms = 3;
+  
+  // Retry delay multiplier
+  double delay_multiplier = 4;
+  
+  // Retryable error codes
+  repeated string retryable_errors = 5;
+}
+
+// Circuit breaker configuration
+message CircuitBreakerConfig {
+  // Failure threshold to open circuit
+  int32 failure_threshold = 1;
+  
+  // Success threshold to close circuit
+  int32 success_threshold = 2;
+  
+  // Timeout to attempt closing circuit
+  int64 timeout_ms = 3;
+  
+  // Minimum request count before circuit breaker activates
+  int32 minimum_request_count = 4;
+}
+
+// Dependency DAG (Directed Acyclic Graph)
+message DependencyDAG {
+  // Service ID
+  string service_id = 1;
+  
+  // Direct dependencies
+  repeated Dependency dependencies = 2;
+  
+  // Transitive dependencies (dependencies of dependencies)
+  repeated Dependency transitive_dependencies = 3;
+  
+  // Dependency graph in DOT format
+  string dot_graph = 4;
+  
+  // Dependency depth
+  int32 max_depth = 5;
+  
+  // Total dependency count
+  int32 total_dependencies = 6;
+  
+  // Critical path dependencies
+  repeated string critical_path = 7;
+  
+  // Dependency health summary
+  DependencyHealthSummary health_summary = 8;
+}
+
+// Dependency health summary
+message DependencyHealthSummary {
+  // Total dependencies
+  int32 total_count = 1;
+  
+  // Healthy dependencies
+  int32 healthy_count = 2;
+  
+  // Degraded dependencies
+  int32 degraded_count = 3;
+  
+  // Unhealthy dependencies
+  int32 unhealthy_count = 4;
+  
+  // Critical dependencies
+  int32 critical_count = 5;
+  
+  // Overall dependency health score
+  double overall_score = 6;
+  
+  // Critical dependencies list
+  repeated string critical_dependencies = 7;
+  
+  // Failed dependencies list
+  repeated string failed_dependencies = 8;
+}
+
+// Health aggregation request
+message HealthAggregationRequest {
+  // Service IDs to aggregate
+  repeated string service_ids = 1;
+  
+  // Include dependency information
+  bool include_dependencies = 2;
+  
+  // Include detailed health information
+  bool include_details = 3;
+  
+  // Health check timeout in seconds
+  int32 timeout_seconds = 4;
+  
+  // Health check concurrency limit
+  int32 concurrency_limit = 5;
+}
+
+// Health aggregation response
+message HealthAggregationResponse {
+  // Overall system health status
+  HealthStatus overall_status = 1;
+  
+  // Overall system health score
+  double overall_score = 2;
+  
+  // Aggregation timestamp
+  google.protobuf.Timestamp timestamp = 3;
+  
+  // Individual service health statuses
+  repeated HealthCheckResponse service_health = 4;
+  
+  // System-wide dependency DAG
+  repeated DependencyDAG dependency_dags = 5;
+  
+  // System health summary
+  SystemHealthSummary system_summary = 6;
+  
+  // Health check statistics
+  HealthCheckStats stats = 7;
+}
+
+// System health summary
+message SystemHealthSummary {
+  // Total services
+  int32 total_services = 1;
+  
+  // Healthy services
+  int32 healthy_services = 2;
+  
+  // Degraded services
+  int32 degraded_services = 3;
+  
+  // Unhealthy services
+  int32 unhealthy_services = 4;
+  
+  // Critical services
+  int32 critical_services = 5;
+  
+  // Services in maintenance
+  int32 maintenance_services = 6;
+  
+  // Overall system health score
+  double system_score = 7;
+  
+  // Critical services list
+  repeated string critical_services = 8;
+  
+  // Failed services list
+  repeated string failed_services = 9;
+}
+
+// Health check statistics
+message HealthCheckStats {
+  // Total health checks performed
+  int64 total_checks = 1;
+  
+  // Successful health checks
+  int64 successful_checks = 2;
+  
+  // Failed health checks
+  int64 failed_checks = 3;
+  
+  // Average health check duration in milliseconds
+  double average_duration_ms = 4;
+  
+  // Health check success rate
+  double success_rate = 5;
+  
+  // Health check failure rate
+  double failure_rate = 6;
+  
+  // Last health check timestamp
+  google.protobuf.Timestamp last_check = 7;
+}
+
+// Health alert
+message HealthAlert {
+  // Alert ID
+  string alert_id = 1;
+  
+  // Alert severity
+  Severity severity = 2;
+  
+  // Alert message
+  string message = 3;
+  
+  // Affected service ID
+  string service_id = 4;
+  
+  // Alert timestamp
+  google.protobuf.Timestamp timestamp = 5;
+  
+  // Alert status (active, resolved, acknowledged)
+  string status = 6;
+  
+  // Alert description
+  string description = 7;
+  
+  // Alert metadata
+  map<string, string> metadata = 8;
+  
+  // Related health check details
+  repeated HealthCheckDetail related_checks = 9;
+  
+  // Alert acknowledgment information
+  AlertAcknowledgment acknowledgment = 10;
+}
+
+// Alert acknowledgment
+message AlertAcknowledgment {
+  // Acknowledged by
+  string acknowledged_by = 1;
+  
+  // Acknowledgment timestamp
+  google.protobuf.Timestamp timestamp = 2;
+  
+  // Acknowledgment comment
+  string comment = 3;
+  
+  // Expected resolution time
+  google.protobuf.Timestamp expected_resolution = 4;
+}
+
+// Health metrics
+message HealthMetrics {
+  // Service ID
+  string service_id = 1;
+  
+  // Metrics timestamp
+  google.protobuf.Timestamp timestamp = 2;
+  
+  // CPU usage percentage
+  double cpu_usage_percent = 3;
+  
+  // Memory usage percentage
+  double memory_usage_percent = 4;
+  
+  // Disk usage percentage
+  double disk_usage_percent = 5;
+  
+  // Network I/O bytes per second
+  double network_io_bps = 6;
+  
+  // Request rate (requests per second)
+  double request_rate_rps = 7;
+  
+  // Error rate (errors per second)
+  double error_rate_eps = 8;
+  
+  // Response time in milliseconds
+  double response_time_ms = 9;
+  
+  // Active connections
+  int32 active_connections = 10;
+  
+  // Queue depth
+  int32 queue_depth = 11;
+  
+  // Custom metrics
+  map<string, double> custom_metrics = 12;
+}
+
+// Health service definition
+service HealthService {
+  // Basic health check
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+  
+  // Get detailed health information
+  rpc GetHealthDetails(HealthCheckRequest) returns (HealthCheckResponse);
+  
+  // Get service dependencies
+  rpc GetDependencies(HealthCheckRequest) returns (DependencyDAG);
+  
+  // Aggregate health across multiple services
+  rpc AggregateHealth(HealthAggregationRequest) returns (HealthAggregationResponse);
+  
+  // Get system health summary
+  rpc GetSystemHealth(google.protobuf.Empty) returns (SystemHealthSummary);
+  
+  // Get health metrics
+  rpc GetHealthMetrics(HealthCheckRequest) returns (HealthMetrics);
+  
+  // Stream health updates
+  rpc StreamHealthUpdates(HealthCheckRequest) returns (stream HealthCheckResponse);
+  
+  // Stream health alerts
+  rpc StreamHealthAlerts(google.protobuf.Empty) returns (stream HealthAlert);
+  
+  // Acknowledge health alert
+  rpc AcknowledgeAlert(AlertAcknowledgment) returns (google.protobuf.Empty);
+  
+  // Get health check statistics
+  rpc GetHealthStats(google.protobuf.Empty) returns (HealthCheckStats);
+}
+
+// Health monitoring service for internal use
+service HealthMonitoringService {
+  // Register service for health monitoring
+  rpc RegisterService(ServiceMetadata) returns (google.protuf.Empty);
+  
+  // Unregister service from health monitoring
+  rpc UnregisterService(ServiceMetadata) returns (google.protuf.Empty);
+  
+  // Update service health status
+  rpc UpdateHealthStatus(HealthCheckResponse) returns (google.protuf.Empty);
+  
+  // Report dependency health
+  rpc ReportDependencyHealth(Dependency) returns (google.protuf.Empty);
+  
+  // Report health alert
+  rpc ReportHealthAlert(HealthAlert) returns (google.protuf.Empty);
+  
+  // Get monitoring configuration
+  rpc GetMonitoringConfig(google.protuf.Empty) returns (MonitoringConfig);
+  
+  // Update monitoring configuration
+  rpc UpdateMonitoringConfig(MonitoringConfig) returns (google.protuf.Empty);
+}
+
+// Monitoring configuration
+message MonitoringConfig {
+  // Health check interval in seconds
+  int32 health_check_interval_seconds = 1;
+  
+  // Health check timeout in seconds
+  int32 health_check_timeout_seconds = 2;
+  
+  // Dependency check interval in seconds
+  int32 dependency_check_interval_seconds = 3;
+  
+  // Alert thresholds
+  map<string, double> alert_thresholds = 4;
+  
+  // Retry configuration
+  RetryConfig default_retry_config = 5;
+  
+  // Circuit breaker configuration
+  CircuitBreakerConfig default_circuit_breaker_config = 6;
+  
+  // Health score weights
+  map<string, double> health_score_weights = 7;
+  
+  // Monitoring enabled
+  bool monitoring_enabled = 8;
+  
+  // Alerting enabled
+  bool alerting_enabled = 9;
+  
+  // Metrics collection enabled
+  bool metrics_collection_enabled = 10;
+}

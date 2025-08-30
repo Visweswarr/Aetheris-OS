@@ -1,0 +1,2 @@
+# This file ensures the perf/history directory is tracked by git
+# Performance history data is automatically generated and updated by CI

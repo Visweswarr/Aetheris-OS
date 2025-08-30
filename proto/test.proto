@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package polymera.test;
+
+import "google/protobuf/timestamp.proto";
+
+// Test service for demonstrating proto→all functionality
+service TestService {
+  // Simple test method
+  rpc TestMethod(TestRequest) returns (TestResponse);
+  
+  // Stream test method
+  rpc TestStream(TestRequest) returns (stream TestResponse);
+}
+
+// Test request message
+message TestRequest {
+  string message = 1;
+  int32 value = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+// Test response message
+message TestResponse {
+  string reply = 1;
+  bool success = 2;
+  google.protobuf.Timestamp response_time = 3;
+}

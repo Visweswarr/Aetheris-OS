@@ -1,0 +1,320 @@
+# Intent Bus ABI v{{ schema.version }}
+
+{{ schema.description }}
+
+## Overview
+
+The Intent Bus provides a high-level task management system for Polymera OS, allowing processes to submit, monitor, and control AI-like tasks through a secure, low-latency interface. The system supports priority-based queuing, policy-based access control, and comprehensive audit logging.
+
+## Architecture
+
+### Priority Lanes
+
+The Intent Bus uses three priority lanes to ensure critical tasks are processed promptly:
+
+- **RT (Real-Time)**: Highest priority, processed immediately
+- **HIGH**: Medium priority, processed after RT tasks
+- **BEST**: Best effort, processed when resources are available
+
+### Policy Integration
+
+All intents are evaluated through an OPA→WASM policy engine that can:
+- **Allow**: Permit the intent to proceed
+- **Deny**: Block the intent with a reason
+- **Mutate Scopes**: Add required capabilities before allowing
+
+## Data Structures
+
+### IntentHeaderV1
+
+The primary structure for intent submission:
+
+```rust
+pub struct IntentHeaderV1 {
+    pub version: u16,           // Protocol version (1)
+    pub lane: u8,               // Priority lane (0=RT, 1=HIGH, 2=BEST)
+    pub reserved: u8,           // Reserved for future use
+    pub intent_id: u128,        // Unique intent identifier
+    pub parent_id: u128,        // Parent intent ID (0 for root)
+    pub scope_flags: u64,       // Required capability scopes
+    pub ttl_ms: u32,            // Time to live in milliseconds
+    pub text_len: u32,          // Text payload length
+    pub plan_len: u32,          // Plan payload length
+    pub preview_len: u16,       // Preview payload length
+    pub whylog_len: u16,        // WhyLog payload length
+    pub hash: [u8; 32],         // Canonical BLAKE3 hash
+    pub purpose_hash: [u8; 32], // Purpose constraint hash
+}
+```
+
+### IntentStatusV1
+
+Current status of an intent:
+
+```rust
+pub struct IntentStatusV1 {
+    pub intent_id: u128,    // Intent identifier
+    pub state: u8,          // Current state
+    pub progress: u8,       // Progress percentage (0-100)
+    pub last_update: u64,   // Monotonic timestamp
+    pub error: u32,         // Error code if failed/denied
+}
+```
+
+### IntentEvent
+
+Event notification for state changes:
+
+```rust
+pub struct IntentEvent {
+    pub intent_id: u128,    // Intent identifier
+    pub event_type: u8,     // Event type
+    pub timestamp: u64,     // Event timestamp
+    pub data_len: u16,      // Additional data length
+    pub data: [u8; 0],      // Event-specific data (flexible array)
+}
+```
+
+## States and Events
+
+### Intent States
+
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | Submitted | Intent submitted and validated |
+| 1 | Queued | Intent queued for processing |
+| 2 | Running | Intent currently executing |
+| 3 | Completed | Intent completed successfully |
+| 4 | Denied | Intent denied by policy |
+| 5 | Cancelled | Intent cancelled by user |
+| 6 | Failed | Intent failed during execution |
+
+### Event Types
+
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | Accepted | Intent accepted by policy |
+| 1 | Running | Intent started execution |
+| 2 | ToolCall | Tool invocation during execution |
+| 3 | Completed | Intent completed successfully |
+| 4 | Denied | Intent denied by policy |
+| 5 | Cancelled | Intent cancelled |
+| 6 | Failed | Intent failed with error |
+
+## System Calls
+
+### SYS_INTENT_SUBMIT ({{ schema.syscalls[0].id }})
+
+Submit a new intent for processing.
+
+**Arguments:**
+- `header`: Pointer to IntentHeaderV1 structure
+- `text_buf`: Pointer to text payload buffer
+- `plan_buf`: Pointer to plan payload buffer (optional)
+- `preview_buf`: Pointer to preview payload buffer (optional)
+- `whylog_buf`: Pointer to WhyLog payload buffer (optional)
+
+**Returns:** 0 on success, negative errno on failure
+
+**Errors:**
+- `EPERM`: Policy denies or missing capabilities
+- `E2BIG`: Payload exceeds size limits
+- `EAGAIN`: Queue is full
+- `EINVAL`: Invalid header or input
+
+### SYS_INTENT_POLL ({{ schema.syscalls[1].id }})
+
+Poll for intent events and status changes.
+
+**Arguments:**
+- `filter`: Pointer to IntentPollFilter structure
+- `events_buf`: Output buffer for events
+- `events_len`: Buffer length in bytes
+
+**Returns:** Number of events returned, or negative errno on failure
+
+**Errors:**
+- `EPERM`: Missing CAP_IPC_RECV capability
+- `EINVAL`: Buffer too small
+
+### SYS_INTENT_CANCEL ({{ schema.syscalls[2].id }})
+
+Cancel a pending or running intent.
+
+**Arguments:**
+- `intent_id`: Intent identifier to cancel
+
+**Returns:** 0 on success, negative errno on failure
+
+**Errors:**
+- `EBUSY`: Intent already running
+- `ESRCH`: Intent not found
+- `EPERM`: Permission denied
+
+### SYS_INTENT_STATUS ({{ schema.syscalls[3].id }})
+
+Get current status of an intent.
+
+**Arguments:**
+- `intent_id`: Intent identifier
+- `status_buf`: Output buffer for status
+
+**Returns:** 0 on success, negative errno on failure
+
+**Errors:**
+- `ESRCH`: Intent not found
+- `EPERM`: Permission denied
+
+## Limits and Constraints
+
+### Payload Limits
+
+- **Text**: {{ schema.limits.text_max }} bytes maximum
+- **Plan**: {{ schema.limits.plan_max }} bytes maximum
+- **Preview**: {{ schema.limits.preview_max }} bytes maximum
+- **WhyLog**: {{ schema.limits.whylog_max }} bytes maximum
+
+### Queue Capacities
+
+- **RT Lane**: {{ schema.limits.queue_rt_max }} intents
+- **HIGH Lane**: {{ schema.limits.queue_high_max }} intents
+- **BEST Lane**: {{ schema.limits.queue_best_max }} intents
+
+## Capability Scopes
+
+The following capability scopes are supported:
+
+| Scope | Capability | Description |
+|-------|------------|-------------|
+| FS_READ | CAP_FS_READ | File system read access |
+| FS_WRITE | CAP_FS_WRITE | File system write access |
+| NET_OUT | CAP_NET_OUT | Network outbound access |
+| WALLET | CAP_WALLET_USE | Wallet operations |
+| DEVICE | CAP_DEVICE_USE | Device access |
+| IPC_SEND | CAP_IPC_SEND | Inter-process communication send |
+| IPC_RECV | CAP_IPC_RECV | Inter-process communication receive |
+| PROCESS_CREATE | CAP_PROCESS_CREATE | Process creation |
+
+## Policy Engine
+
+The Intent Bus integrates with Polymera OS's policy system through OPA→WASM:
+
+### Policy Decisions
+
+- **allow**: Permit the intent to proceed
+- **deny**: Block the intent with a reason
+- **mutate_scopes**: Add required capabilities before allowing
+
+### Policy Input
+
+The policy engine receives:
+- Intent header fields
+- Process capabilities
+- Current system state
+- Rate limiting information
+
+### Policy Output
+
+The policy engine returns:
+- Decision (allow/deny/mutate)
+- Required additional capabilities
+- Denial reason (if applicable)
+- Rate limiting adjustments
+
+## Audit Logging
+
+All intent operations generate audit events:
+
+| Code | Name | Description |
+|------|------|-------------|
+| {{ schema.audit_codes[0].code }} | INTENT_ACCEPT | Intent accepted by policy |
+| {{ schema.audit_codes[1].code }} | INTENT_DENY | Intent denied by policy |
+| {{ schema.audit_codes[2].code }} | INTENT_OVERSIZE | Intent payload exceeds limits |
+| {{ schema.audit_codes[3].code }} | INTENT_RATE | Intent rate limit exceeded |
+| {{ schema.audit_codes[4].code }} | INTENT_SCHEMA | Intent schema validation failed |
+| {{ schema.audit_codes[5].code }} | INTENT_POLICY_ERROR | Policy evaluation error |
+| {{ schema.audit_codes[6].code }} | INTENT_QUEUE_FULL | Intent queue is full |
+| {{ schema.audit_codes[7].code }} | INTENT_CANCELLED | Intent cancelled by user |
+| {{ schema.audit_codes[8].code }} | INTENT_FAILED | Intent failed during execution |
+
+## Usage Examples
+
+### Basic Intent Submission
+
+```c
+#include <polymera/polymera_intent.h>
+
+intent_header_v1_t header;
+intent_header_init(&header, INTENT_LANE_HIGH, 12345, 0, 0, 0, 
+                   INTENT_SCOPE_FS_READ, 5000, 100, 0, 0, 0);
+
+const char *text = "Read configuration file";
+long result = intent_submit(&header, text, NULL, NULL, NULL);
+if (result < 0) {
+    // Handle error
+}
+```
+
+### Polling for Events
+
+```c
+intent_poll_filter_t filter;
+intent_poll_filter_init(&filter, 0x07, 0, 10, 0xFF);
+
+intent_event_t events[10];
+long count = intent_poll(&filter, events, sizeof(events));
+if (count > 0) {
+    // Process events
+}
+```
+
+### Checking Intent Status
+
+```c
+intent_status_v1_t status;
+long result = intent_status(12345, 0, &status);
+if (result == 0) {
+    printf("Intent state: %d, progress: %d%%\n", 
+           status.state, status.progress);
+}
+```
+
+## Implementation Notes
+
+### Deterministic Hashing
+
+All intents use BLAKE3 for canonical hashing:
+- Text, plan, preview, and WhyLog content are concatenated
+- UTF-8 NFC normalization is applied for consistency
+- Hash is computed over the normalized content
+
+### Memory Management
+
+- No heap allocations in syscall hot paths
+- Bounded buffers prevent memory exhaustion
+- Copy-from-user validation ensures safety
+
+### Performance Characteristics
+
+- **Submit**: <100μs typical
+- **Poll**: <50μs typical
+- **Cancel**: <25μs typical
+- **Status**: <25μs typical
+
+## Security Considerations
+
+- **Capability-based access control** for all operations
+- **Policy evaluation** before intent processing
+- **Audit logging** for all operations
+- **Rate limiting** to prevent abuse
+- **Input validation** and bounds checking
+- **No network access** from kernel
+
+## Future Enhancements
+
+- **Intent chaining** and dependency management
+- **Resource reservation** and scheduling
+- **Distributed intent processing** across nodes
+- **Advanced policy rules** and machine learning
+- **Intent templates** and reuse patterns
+- **Performance metrics** and monitoring

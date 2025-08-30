@@ -1,0 +1,319 @@
+// GENERATED FILE - DO NOT EDIT
+// Generated from intent/schema/intent.yaml by tooling/intent_gen
+// Schema hash: {{ schema.schema_hash }}
+
+use serde::{Deserialize, Serialize};
+use serde_cbor;
+use std::collections::BTreeMap;
+
+pub const SCHEMA_VERSION: u16 = {{ schema.version }};
+pub const SCHEMA_HASH: &str = "{{ schema.schema_hash }}";
+
+// Size limits
+pub const INTENT_MAX_SIZE: usize = {{ schema.limits.intent_max_size }};
+pub const PLAN_PREVIEW_MAX_SIZE: usize = {{ schema.limits.plan_preview_max_size }};
+pub const WHY_RECORD_MAX_SIZE: usize = {{ schema.limits.why_record_max_size }};
+pub const METADATA_MAX_ENTRIES: usize = {{ schema.limits.metadata_max_entries }};
+pub const CONSTRAINTS_MAX_COUNT: usize = {{ schema.limits.constraints_max_count }};
+pub const ACTIONS_MAX_COUNT: usize = {{ schema.limits.actions_max_count }};
+
+// Intent types
+{% for name, value in schema.intent_types %}
+pub const INTENT_TYPE_{{ name }}: u16 = {{ value }};
+{% endfor %}
+
+// Action kinds
+{% for name, value in schema.action_kinds %}
+pub const ACTION_KIND_{{ name }}: u16 = {{ value }};
+{% endfor %}
+
+// Constraint types
+{% for name, value in schema.constraint_types %}
+pub const CONSTRAINT_TYPE_{{ name }}: u16 = {{ value }};
+{% endfor %}
+
+// Priority levels
+{% for name, value in schema.priorities %}
+pub const PRIORITY_{{ name }}: u8 = {{ value }};
+{% endfor %}
+
+// Intent states
+{% for name, value in schema.intent_states %}
+pub const INTENT_STATE_{{ name }}: u8 = {{ value }};
+{% endfor %}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[repr(C)]
+pub struct IntentV1 {
+    #[serde(rename = "1")]
+    pub version: u16,
+    #[serde(rename = "2")]
+    pub id: u128,
+    #[serde(rename = "3")]
+    pub description: String,
+    #[serde(rename = "4")]
+    pub intent_type: u16,
+    #[serde(rename = "5")]
+    pub priority: u8,
+    #[serde(rename = "6")]
+    pub constraints: Vec<ConstraintV1>,
+    #[serde(rename = "7")]
+    pub metadata: BTreeMap<String, String>,
+    #[serde(rename = "8")]
+    pub requested_caps: Vec<u64>,
+    #[serde(rename = "9")]
+    pub deadline_ms: u64,
+    #[serde(rename = "10")]
+    pub did: Option<String>,
+    #[serde(rename = "11")]
+    pub nonce: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[repr(C)]
+pub struct ConstraintV1 {
+    #[serde(rename = "1")]
+    pub kind: u16,
+    #[serde(rename = "2")]
+    pub value_type: u8,
+    #[serde(rename = "3")]
+    pub value_bytes: Option<Vec<u8>>,
+    #[serde(rename = "4")]
+    pub value_scalar: Option<u64>,
+    #[serde(rename = "5")]
+    pub value_string: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[repr(C)]
+pub struct ActionV1 {
+    #[serde(rename = "1")]
+    pub kind: u16,
+    #[serde(rename = "2")]
+    pub params: BTreeMap<String, String>,
+    #[serde(rename = "3")]
+    pub cost_estimate: u64,
+    #[serde(rename = "4")]
+    pub time_estimate: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[repr(C)]
+pub struct PlanV1 {
+    #[serde(rename = "1")]
+    pub intent_id: u128,
+    #[serde(rename = "2")]
+    pub actions: Vec<ActionV1>,
+    #[serde(rename = "3")]
+    pub total_cost: u64,
+    #[serde(rename = "4")]
+    pub total_time: u64,
+    #[serde(rename = "5")]
+    pub constraints_applied: Vec<ConstraintV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[repr(C)]
+pub struct PlanPreviewV1 {
+    #[serde(rename = "1")]
+    pub plan: PlanV1,
+    #[serde(rename = "2")]
+    pub risks: Vec<String>,
+    #[serde(rename = "3")]
+    pub notes: Vec<String>,
+    #[serde(rename = "4")]
+    pub confidence: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[repr(C)]
+pub struct WhyRecordV1 {
+    #[serde(rename = "1")]
+    pub seq: u64,
+    #[serde(rename = "2")]
+    pub ts: u64,
+    #[serde(rename = "3")]
+    pub actor: String,
+    #[serde(rename = "4")]
+    pub event: String,
+    #[serde(rename = "5")]
+    pub data_hash: [u8; 32],
+    #[serde(rename = "6")]
+    pub prev_hash: [u8; 32],
+    #[serde(rename = "7")]
+    pub signature: Vec<u8>,
+    #[serde(rename = "8")]
+    pub justification: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[repr(C)]
+pub struct IntentStatusV1 {
+    pub intent_id: u128,
+    pub state: u8,
+    pub last_why_log_hash: [u8; 32],
+    pub progress: u8,
+    pub last_update: u64,
+    pub error_code: u32,
+}
+
+// CBOR serialization helpers
+impl IntentV1 {
+    pub fn to_cbor(&self) -> Result<Vec<u8>, serde_cbor::Error> {
+        serde_cbor::to_vec(self)
+    }
+    
+    pub fn from_cbor(data: &[u8]) -> Result<Self, serde_cbor::Error> {
+        serde_cbor::from_slice(data)
+    }
+    
+    pub fn serialized_size(&self) -> Result<usize, serde_cbor::Error> {
+        let data = self.to_cbor()?;
+        Ok(data.len())
+    }
+}
+
+impl PlanPreviewV1 {
+    pub fn to_cbor(&self) -> Result<Vec<u8>, serde_cbor::Error> {
+        serde_cbor::to_vec(self)
+    }
+    
+    pub fn from_cbor(data: &[u8]) -> Result<Self, serde_cbor::Error> {
+        serde_cbor::from_slice(data)
+    }
+    
+    pub fn serialized_size(&self) -> Result<usize, serde_cbor::Error> {
+        let data = self.to_cbor()?;
+        Ok(data.len())
+    }
+}
+
+impl WhyRecordV1 {
+    pub fn to_cbor(&self) -> Result<Vec<u8>, serde_cbor::Error> {
+        serde_cbor::to_vec(self)
+    }
+    
+    pub fn from_cbor(data: &[u8]) -> Result<Self, serde_cbor::Error> {
+        serde_cbor::from_slice(data)
+    }
+    
+    pub fn serialized_size(&self) -> Result<usize, serde_cbor::Error> {
+        let data = self.to_cbor()?;
+        Ok(data.len())
+    }
+}
+
+// Builder patterns for fluent construction
+impl IntentV1 {
+    pub fn new() -> Self {
+        Self {
+            version: SCHEMA_VERSION,
+            id: 0,
+            description: String::new(),
+            intent_type: 0,
+            priority: PRIORITY_NORMAL,
+            constraints: Vec::new(),
+            metadata: BTreeMap::new(),
+            requested_caps: Vec::new(),
+            deadline_ms: 0,
+            did: None,
+            nonce: None,
+        }
+    }
+    
+    pub fn with_id(mut self, id: u128) -> Self {
+        self.id = id;
+        self
+    }
+    
+    pub fn with_description(mut self, description: String) -> Self {
+        self.description = description;
+        self
+    }
+    
+    pub fn with_intent_type(mut self, intent_type: u16) -> Self {
+        self.intent_type = intent_type;
+        self
+    }
+    
+    pub fn with_priority(mut self, priority: u8) -> Self {
+        self.priority = priority;
+        self
+    }
+    
+    pub fn with_deadline(mut self, deadline_ms: u64) -> Self {
+        self.deadline_ms = deadline_ms;
+        self
+    }
+    
+    pub fn with_capability(mut self, cap: u64) -> Self {
+        self.requested_caps.push(cap);
+        self
+    }
+    
+    pub fn with_constraint(mut self, constraint: ConstraintV1) -> Self {
+        self.constraints.push(constraint);
+        self
+    }
+    
+    pub fn with_metadata(mut self, key: String, value: String) -> Self {
+        self.metadata.insert(key, value);
+        self
+    }
+}
+
+impl ConstraintV1 {
+    pub fn new(kind: u16) -> Self {
+        Self {
+            kind,
+            value_type: 0,
+            value_bytes: None,
+            value_scalar: None,
+            value_string: None,
+        }
+    }
+    
+    pub fn with_string_value(mut self, value: String) -> Self {
+        self.value_type = 5;
+        self.value_string = Some(value);
+        self
+    }
+    
+    pub fn with_scalar_value(mut self, value: u64) -> Self {
+        self.value_type = 4;
+        self.value_scalar = Some(value);
+        self
+    }
+    
+    pub fn with_bytes_value(mut self, value: Vec<u8>) -> Self {
+        self.value_type = 3;
+        self.value_bytes = Some(value);
+        self
+    }
+}
+
+impl ActionV1 {
+    pub fn new(kind: u16) -> Self {
+        Self {
+            kind,
+            params: BTreeMap::new(),
+            cost_estimate: 0,
+            time_estimate: 0,
+        }
+    }
+    
+    pub fn with_param(mut self, key: String, value: String) -> Self {
+        self.params.insert(key, value);
+        self
+    }
+    
+    pub fn with_cost_estimate(mut self, cost: u64) -> Self {
+        self.cost_estimate = cost;
+        self
+    }
+    
+    pub fn with_time_estimate(mut self, time: u64) -> Self {
+        self.time_estimate = time;
+        self
+    }
+}

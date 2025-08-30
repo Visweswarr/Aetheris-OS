@@ -1,0 +1,6 @@
+# Mixed capability operations seed
+# Format: op_type=3 (mixed), num_ops=20, cap_type=2 (Execute), flags=0x04 (REVOCABLE)
+#         max_expiry=1800s, max_pid=100, max_rid=1000, max_cap_id=10000
+#         perms=0x9ABC, max_delegation=8, revoke_policy=2 (Cascading), audit_level=0 (None)
+0x03 0x14 0x02 0x04 0x84 0x64 0xE8 0x10 0xBC 0x08 0x02 0x00
+

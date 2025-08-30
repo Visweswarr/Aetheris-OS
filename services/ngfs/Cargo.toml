@@ -1,0 +1,34 @@
+[package]
+name = "ngfs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Polymera OS Team"]
+description = "NGFS v1 - Content-Addressed Filesystem with DID-Bound Encryption"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/polymera-os/polymera-os"
+keywords = ["filesystem", "content-addressed", "encryption", "did", "ipfs"]
+categories = ["filesystems", "cryptography"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_cbor = "0.11"
+alloc = { package = "alloc-crate", version = "0.1.0" }
+blake3 = "1.5"
+hex = "0.4"
+zeroize = "1.7"
+thiserror = "1.0"
+rand = "0.8"
+bs58 = "0.5"
+polycrypto-sys = { path = "../../rust/bindings/polycrypto-sys", features = ["ffi"] }
+
+[dev-dependencies]
+criterion = "0.5"
+tempfile = "3.8"
+
+[[bench]]
+name = "schema_bench"
+harness = false
+
+[features]
+default = []
+test-utils = []

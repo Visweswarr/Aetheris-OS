@@ -1,0 +1,30 @@
+{
+  "id": "capability_token_verify",
+  "name": "Capability Token Verification Determinism Test",
+  "command": "cargo",
+  "args": [
+    "run",
+    "--bin",
+    "capability_token_verify_test",
+    "--",
+    "verify",
+    "--input",
+    "test_data/signed_token.json",
+    "--public-key",
+    "test_data/test_public_key.pem",
+    "--config",
+    "test_data/verify_config.json"
+  ],
+  "working_dir": "../../security/caps",
+  "env": {
+    "RUST_LOG": "info",
+    "DETERMINISM_MODE": "true",
+    "VERIFICATION_SEED": "11111",
+    "CLOCK_SKEW_TOLERANCE": "300"
+  },
+  "input": null,
+  "expected_exit_code": 0,
+  "timeout": 90,
+  "seed": 11111
+}
+

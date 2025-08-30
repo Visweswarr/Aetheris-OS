@@ -1,0 +1,96 @@
+{
+  "generated_at": "2025-08-27T16:35:43.723266+00:00",
+  "current_baseline_version": "1.0.0",
+  "proposed_baseline_version": "1.0.1",
+  "total_configurations": 1,
+  "configurations": {
+    "sample_config": {
+      "config_id": "sample_config",
+      "config_name": "Sample Config",
+      "total_runs": 5,
+      "recent_runs": 5,
+      "metrics": {
+        "latency_p50": {
+          "metric_name": "latency_p50",
+          "current_mean": 150.8,
+          "current_std": 2.7748873851023217,
+          "baseline_value": 150.0,
+          "change_percent": 0.533333333333341,
+          "stability_score": 0.8150075076598452,
+          "promotion_recommended": true,
+          "reason": "Stable performance (stability: 0.82, change: 0.5%)"
+        },
+        "latency_p95": {
+          "metric_name": "latency_p95",
+          "current_mean": 250.8,
+          "current_std": 2.7748873851023217,
+          "baseline_value": 250.0,
+          "change_percent": 0.32000000000000456,
+          "stability_score": 0.8890045045959072,
+          "promotion_recommended": true,
+          "reason": "Stable performance (stability: 0.89, change: 0.3%)"
+        },
+        "latency_p99": {
+          "metric_name": "latency_p99",
+          "current_mean": 350.8,
+          "current_std": 2.7748873851023217,
+          "baseline_value": 350.0,
+          "change_percent": 0.22857142857143184,
+          "stability_score": 0.9207175032827908,
+          "promotion_recommended": true,
+          "reason": "Stable performance (stability: 0.92, change: 0.2%)"
+        },
+        "throughput": {
+          "metric_name": "throughput",
+          "current_mean": 1000,
+          "current_std": 3.8078865529319543,
+          "baseline_value": 1000.0,
+          "change_percent": 0.0,
+          "stability_score": 0.9619211344706805,
+          "promotion_recommended": true,
+          "reason": "Stable performance (stability: 0.96, change: 0.0%)"
+        },
+        "memory_usage": {
+          "metric_name": "memory_usage",
+          "current_mean": 512.2,
+          "current_std": 1.9235384061671346,
+          "baseline_value": 512.0,
+          "change_percent": 0.03906250000000888,
+          "stability_score": 0.9624308905045481,
+          "promotion_recommended": true,
+          "reason": "Stable performance (stability: 0.96, change: 0.0%)"
+        },
+        "cpu_usage": {
+          "metric_name": "cpu_usage",
+          "current_mean": 24.8,
+          "current_std": 0.8366600265340756,
+          "baseline_value": 25.0,
+          "change_percent": -0.7999999999999973,
+          "stability_score": 0.6653359893863697,
+          "promotion_recommended": false,
+          "reason": "Low stability (stability: 0.67)"
+        }
+      },
+      "overall_stability": 0.8690695883166902,
+      "promotion_recommended": true,
+      "risk_level": "low"
+    }
+  },
+  "summary": {
+    "total_configurations": 1,
+    "recommended_promotions": 1,
+    "overall_recommendation": 1.0,
+    "risk_distribution": {
+      "low": 1,
+      "medium": 0,
+      "high": 0,
+      "unknown": 0
+    },
+    "stability_summary": {
+      "min": 0.8690695883166902,
+      "max": 0.8690695883166902,
+      "mean": 0.8690695883166902
+    }
+  },
+  "changelog_entry": "## [2025-08-27] Performance Baseline vunknown\n\n**Promotion Summary**: 1/1 configurations recommended for promotion\n\n**Changes**:\n- Sample Config: Stability 0.87, Risk low\n\n**Rationale**: Performance metrics show stable improvement across recommended configurations.\n\n**Generated**: 2025-08-27T16:35:43.723259+00:00\n**Tool**: baseline-promotion v1.0\n"
+}

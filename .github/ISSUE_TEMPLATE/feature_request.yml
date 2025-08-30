@@ -1,0 +1,153 @@
+name: ✨ Feature Request
+description: Suggest a new feature for Polymera OS
+title: "[FEATURE] "
+labels: ["enhancement", "needs-triage"]
+assignees: ["@polymera-core-team"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to suggest a new feature!
+
+        **Before submitting, please:**
+        1. Check if this feature has already been requested
+        2. Ensure the feature aligns with Polymera OS goals
+        3. Consider if this is a feature or a bug fix
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: A clear and concise description of what problem this feature would solve
+      placeholder: "I'm always frustrated when [describe the problem]..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: A clear and concise description of what you want to happen
+      placeholder: "I would like to see [describe the solution]..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternative Solutions
+      description: A clear and concise description of any alternative solutions you've considered
+      placeholder: "I have considered [describe alternatives]..."
+
+  - type: input
+    id: component
+    attributes:
+      label: Affected Component
+      description: Which component would this feature affect?
+      placeholder: "e.g., kernel, crypto, services, runtime, ui, tooling"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority Level
+      description: How important is this feature to you?
+      options:
+        - "Low - Nice to have, but not critical"
+        - "Medium - Important for workflow improvement"
+        - "High - Critical for my use case"
+        - "Critical - Blocking my ability to use Polymera OS"
+    validations:
+      required: true
+
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Use Case
+      description: Describe a specific use case where this feature would be valuable
+      placeholder: |
+        **Example Use Case:**
+        - **Who**: [describe the user]
+        - **What**: [describe what they're trying to do]
+        - **Why**: [describe why this is important]
+        - **When**: [describe when this happens]
+
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Functional Requirements
+      description: List the specific functional requirements for this feature
+      placeholder: |
+        - [ ] Requirement 1
+        - [ ] Requirement 2
+        - [ ] Requirement 3
+
+  - type: textarea
+    id: nonfunctional
+    attributes:
+      label: Non-Functional Requirements
+      description: List any performance, security, or other non-functional requirements
+      placeholder: |
+        - **Performance**: [e.g., must complete within 100ms]
+        - **Security**: [e.g., must use PQC cryptography]
+        - **Reliability**: [e.g., must have 99.9% uptime]
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: Mockups/Designs
+      description: If applicable, add mockups, screenshots, or design concepts
+      placeholder: "Add mockups, screenshots, or design concepts here..."
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation Ideas
+      description: Do you have any ideas about how this could be implemented?
+      placeholder: "Share any implementation ideas or technical approaches..."
+
+  - type: textarea
+    id: testing
+    attributes:
+      label: Testing Considerations
+      description: How should this feature be tested?
+      placeholder: |
+        - Unit tests for [specific components]
+        - Integration tests for [component interactions]
+        - Performance tests for [performance requirements]
+        - Security tests for [security requirements]
+
+  - type: textarea
+    id: documentation
+    attributes:
+      label: Documentation Requirements
+      description: What documentation would be needed for this feature?
+      placeholder: |
+        - User guide updates
+        - API documentation
+        - Architecture documentation
+        - Migration guide
+
+  - type: textarea
+    id: breaking
+    attributes:
+      label: Breaking Changes
+      description: Would this feature introduce any breaking changes?
+      placeholder: "Describe any breaking changes or migration requirements..."
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, or information about the feature request
+      placeholder: "Add any other context about the feature request here..."
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our Code of Conduct
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true

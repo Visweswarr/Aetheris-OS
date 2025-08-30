@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package polymera.test.breaking;
+
+import "google/protobuf/timestamp.proto";
+
+// This service demonstrates breaking changes for testing
+service BreakingChangeService {
+  // Original method signature
+  rpc OriginalMethod(OriginalRequest) returns (OriginalResponse);
+  
+  // This method will be modified to create a breaking change
+  rpc BreakingMethod(BreakingRequest) returns (BreakingResponse);
+}
+
+// Original request message
+message OriginalRequest {
+  string message = 1;
+  int32 value = 2;
+}
+
+// Original response message
+message OriginalResponse {
+  string reply = 1;
+  bool success = 2;
+}
+
+// BREAKING CHANGE: This request message will be modified
+message BreakingRequest {
+  string message = 1;
+  int32 value = 2;
+  // BREAKING: Adding a new required field will break compatibility
+  // string new_required_field = 3;  // This would be a breaking change
+  
+  // SAFE: Adding an optional field is safe
+  string new_optional_field = 3;
+  
+  // SAFE: Adding a field with default value is safe
+  int32 new_field_with_default = 4;
+}
+
+// BREAKING CHANGE: This response message will be modified
+message BreakingResponse {
+  string reply = 1;
+  bool success = 2;
+  
+  // SAFE: Adding optional fields is safe
+  string new_optional_field = 3;
+  
+  // SAFE: Adding fields with defaults is safe
+  int32 new_field_with_default = 4;
+}
+
+// Example of what would cause a breaking change:
+// 1. Changing field numbers
+// 2. Changing field types
+// 3. Making optional fields required
+// 4. Removing fields
+// 5. Changing service method signatures

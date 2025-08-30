@@ -1,0 +1,96 @@
+[package]
+name = "polyimage"
+version = "0.1.0"
+edition = "2021"
+authors = ["Polymera OS Team <team@polymera-os.org>"]
+description = "PolyImage system image management service with A/B slots and rollback protection"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/polymera-os/polymera-os"
+keywords = ["system", "image", "update", "rollback", "security"]
+categories = ["system-programming", "filesystem"]
+
+[dependencies]
+# Core dependencies
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4.0", features = ["derive"] }
+
+# Cryptographic dependencies
+sha2 = "0.10"
+md5 = "0.7"
+ed25519 = "2.0"
+p256 = "0.13"
+rsa = "0.9"
+
+# File and system dependencies
+tempfile = "3.0"
+walkdir = "2.0"
+tar = "0.4"
+flate2 = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+log = "0.4"
+env_logger = "0.10"
+
+# Async support
+tokio = { version = "1.0", features = ["full"], optional = true }
+
+[dev-dependencies]
+# Testing dependencies
+tempfile = "3.0"
+assert_fs = "1.0"
+predicates = "3.0"
+
+# Mock dependencies
+mockall = "0.11"
+
+# Benchmark dependencies
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bin]]
+name = "mkimage"
+path = "mkimage.rs"
+required-features = ["cli"]
+
+[[bin]]
+name = "verify_image"
+path = "verify.rs"
+required-features = ["cli"]
+
+[[bin]]
+name = "slot_manager"
+path = "slot_manager.rs"
+required-features = ["cli"]
+
+[features]
+default = ["std"]
+std = []
+cli = ["clap", "env_logger"]
+full = ["std", "cli", "async", "crypto"]
+async = ["tokio"]
+crypto = ["sha2", "ed25519", "p256", "rsa"]
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.release]
+opt-level = 3
+debug = false
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.test]
+opt-level = 0
+debug = true
+
+[profile.bench]
+opt-level = 3
+debug = false
+lto = true
+codegen-units = 1

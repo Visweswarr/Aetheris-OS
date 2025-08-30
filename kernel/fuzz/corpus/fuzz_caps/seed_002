@@ -1,0 +1,6 @@
+# Capability validation seed
+# Format: op_type=1 (validate), num_ops=10, cap_type=1 (Write), flags=0x02 (DELEGATABLE)
+#         max_expiry=600s, max_pid=50, max_rid=500, max_cap_id=5000
+#         perms=0x5678, max_delegation=5, revoke_policy=1 (Graceful), audit_level=2 (Detailed)
+0x01 0x0A 0x01 0x02 0x58 0x32 0xF4 0x88 0x78 0x05 0x01 0x02
+

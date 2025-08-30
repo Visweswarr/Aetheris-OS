@@ -1,0 +1,43 @@
+[package]
+name = "surface-guard"
+version = "0.1.0"
+edition = "2021"
+authors = ["Polymera OS Team"]
+description = "Interface lock and golden surface guard for Polymera OS"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/polymera-os/polymera-os"
+keywords = ["interface", "guard", "surface", "polymera"]
+categories = ["development-tools", "system"]
+
+[[bin]]
+name = "surface_check"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+sha2 = "0.10"
+walkdir = "2.4"
+anyhow = "1.0"
+thiserror = "1.0"
+clap = { version = "4.4", features = ["derive"] }
+colored = "2.0"
+chrono = { version = "0.4", features = ["serde"] }
+glob = "0.3"
+tempfile = "3.8"
+log = "0.4"
+env_logger = "0.10"
+
+[dev-dependencies]
+tempfile = "3.8"
+assert_fs = "1.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.dev]
+opt-level = 0
+debug = true

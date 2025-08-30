@@ -1,0 +1,597 @@
+syntax = "proto3";
+
+package dtn;
+
+option go_package = "github.com/polymera-os/proto/dtn";
+option java_package = "org.polymera.os.dtn";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+
+// DTN Envelope - Core message container for delay-tolerant networking
+message Envelope {
+  // Unique identifier for this envelope
+  string id = 1;
+  
+  // Source node identifier (DID-based)
+  string source = 2;
+  
+  // Destination node identifier (DID-based)
+  string destination = 3;
+  
+  // Time-to-live in seconds from creation
+  uint64 ttl = 4;
+  
+  // Creation timestamp
+  google.protobuf.Timestamp created_at = 5;
+  
+  // Expiration timestamp (computed from created_at + ttl)
+  google.protobuf.Timestamp expires_at = 6;
+  
+  // Unique nonce for duplicate detection
+  bytes nonce = 7;
+  
+  // Message priority (0 = lowest, 255 = highest)
+  uint32 priority = 8;
+  
+  // Message type identifier
+  string message_type = 9;
+  
+  // Actual message payload
+  google.protobuf.Any payload = 10;
+  
+  // Routing information
+  RoutingInfo routing = 11;
+  
+  // Acknowledgment requirements
+  AckRequirements ack_requirements = 12;
+  
+  // Security and integrity
+  SecurityInfo security = 13;
+  
+  // Metadata for extensibility
+  map<string, string> metadata = 14;
+}
+
+// Routing information for envelope delivery
+message RoutingInfo {
+  // List of intermediate nodes (for multi-hop routing)
+  repeated string intermediate_nodes = 1;
+  
+  // Maximum number of hops allowed
+  uint32 max_hops = 2;
+  
+  // Current hop count
+  uint32 hop_count = 3;
+  
+  // Routing strategy (flood, directed, opportunistic)
+  RoutingStrategy strategy = 4;
+  
+  // Geographic constraints (optional)
+  GeographicConstraints geo_constraints = 5;
+  
+  // Network constraints (optional)
+  NetworkConstraints net_constraints = 6;
+}
+
+// Routing strategy enumeration
+enum RoutingStrategy {
+  ROUTING_STRATEGY_UNSPECIFIED = 0;
+  ROUTING_STRATEGY_FLOOD = 1;        // Flood to all neighbors
+  ROUTING_STRATEGY_DIRECTED = 2;     // Direct path to destination
+  ROUTING_STRATEGY_OPPORTUNISTIC = 3; // Forward when opportunity arises
+  ROUTING_STRATEGY_EPIDEMIC = 4;     // Epidemic routing
+  ROUTING_STRATEGY_SPRAY_AND_WAIT = 5; // Spray and wait routing
+}
+
+// Geographic constraints for routing
+message GeographicConstraints {
+  // Latitude bounds
+  double min_latitude = 1;
+  double max_latitude = 2;
+  
+  // Longitude bounds
+  double min_longitude = 3;
+  double max_longitude = 4;
+  
+  // Maximum distance from source (in meters)
+  uint64 max_distance = 5;
+}
+
+// Network constraints for routing
+message NetworkConstraints {
+  // Required network capabilities
+  repeated string required_capabilities = 1;
+  
+  // Minimum bandwidth requirement (bytes per second)
+  uint64 min_bandwidth = 2;
+  
+  // Maximum latency requirement (milliseconds)
+  uint64 max_latency = 3;
+  
+  // Required security level
+  SecurityLevel min_security_level = 4;
+}
+
+// Security level enumeration
+enum SecurityLevel {
+  SECURITY_LEVEL_UNSPECIFIED = 0;
+  SECURITY_LEVEL_NONE = 1;
+  SECURITY_LEVEL_LOW = 2;
+  SECURITY_LEVEL_MEDIUM = 3;
+  SECURITY_LEVEL_HIGH = 4;
+  SECURITY_LEVEL_CRITICAL = 5;
+}
+
+// Acknowledgment requirements and tracking
+message AckRequirements {
+  // Whether acknowledgment is required
+  bool required = 1;
+  
+  // Type of acknowledgment required
+  AckType ack_type = 2;
+  
+  // Timeout for acknowledgment (seconds)
+  uint64 ack_timeout = 3;
+  
+  // Maximum retry attempts
+  uint32 max_retries = 4;
+  
+  // List of nodes that must acknowledge
+  repeated string required_ack_nodes = 5;
+  
+  // Acknowledgment tracking
+  repeated AckRecord ack_records = 6;
+}
+
+// Acknowledgment type enumeration
+enum AckType {
+  ACK_TYPE_UNSPECIFIED = 0;
+  ACK_TYPE_DELIVERY = 1;      // Acknowledge delivery to destination
+  ACK_TYPE_FORWARD = 2;       // Acknowledge forwarding to next hop
+  ACK_TYPE_PROCESSING = 3;    // Acknowledge message processing
+  ACK_TYPE_STORAGE = 4;       // Acknowledge storage in DTN
+}
+
+// Acknowledgment record
+message AckRecord {
+  // Node that sent the acknowledgment
+  string ack_node = 1;
+  
+  // Type of acknowledgment
+  AckType ack_type = 2;
+  
+  // Timestamp of acknowledgment
+  google.protobuf.Timestamp ack_time = 3;
+  
+  // Acknowledgment status
+  AckStatus status = 4;
+  
+  // Additional acknowledgment data
+  string message = 5;
+}
+
+// Acknowledgment status enumeration
+enum AckStatus {
+  ACK_STATUS_UNSPECIFIED = 0;
+  ACK_STATUS_SUCCESS = 1;
+  ACK_STATUS_FAILURE = 2;
+  ACK_STATUS_PARTIAL = 3;
+  ACK_STATUS_TIMEOUT = 4;
+}
+
+// Security and integrity information
+message SecurityInfo {
+  // Digital signature of the envelope
+  bytes signature = 1;
+  
+  // Public key of the signer
+  bytes signer_public_key = 2;
+  
+  // Signature algorithm used
+  string signature_algorithm = 3;
+  
+  // Hash of the payload for integrity
+  bytes payload_hash = 4;
+  
+  // Hash algorithm used
+  string hash_algorithm = 5;
+  
+  // Encryption information (if payload is encrypted)
+  EncryptionInfo encryption = 6;
+}
+
+// Encryption information
+message EncryptionInfo {
+  // Whether the payload is encrypted
+  bool encrypted = 1;
+  
+  // Encryption algorithm used
+  string algorithm = 2;
+  
+  // Initialization vector
+  bytes iv = 3;
+  
+  // Encrypted symmetric key (if using hybrid encryption)
+  bytes encrypted_key = 4;
+}
+
+// DTN Node information
+message NodeInfo {
+  // Node identifier (DID-based)
+  string node_id = 1;
+  
+  // Node capabilities
+  repeated string capabilities = 2;
+  
+  // Current location (optional)
+  Location location = 3;
+  
+  // Network interfaces
+  repeated NetworkInterface interfaces = 4;
+  
+  // Storage capacity (bytes)
+  uint64 storage_capacity = 5;
+  
+  // Available storage (bytes)
+  uint64 available_storage = 6;
+  
+  // Last seen timestamp
+  google.protobuf.Timestamp last_seen = 7;
+}
+
+// Geographic location
+message Location {
+  // Latitude
+  double latitude = 1;
+  
+  // Longitude
+  double longitude = 2;
+  
+  // Altitude (meters)
+  double altitude = 3;
+  
+  // Accuracy (meters)
+  double accuracy = 4;
+  
+  // Timestamp of location fix
+  google.protobuf.Timestamp timestamp = 5;
+}
+
+// Network interface information
+message NetworkInterface {
+  // Interface type
+  string interface_type = 1;
+  
+  // Interface address
+  string address = 2;
+  
+  // Interface capabilities
+  repeated string capabilities = 3;
+  
+  // Bandwidth (bytes per second)
+  uint64 bandwidth = 4;
+  
+  // Current status
+  InterfaceStatus status = 5;
+}
+
+// Interface status enumeration
+enum InterfaceStatus {
+  INTERFACE_STATUS_UNSPECIFIED = 0;
+  INTERFACE_STATUS_UP = 1;
+  INTERFACE_STATUS_DOWN = 2;
+  INTERFACE_STATUS_ERROR = 3;
+}
+
+// DTN Store - Storage management for envelopes
+message StoreInfo {
+  // Store identifier
+  string store_id = 1;
+  
+  // Node that owns this store
+  string owner_node = 2;
+  
+  // Store capacity (bytes)
+  uint64 capacity = 3;
+  
+  // Used storage (bytes)
+  uint64 used_storage = 4;
+  
+  // Number of envelopes stored
+  uint32 envelope_count = 5;
+  
+  // Store policies
+  StorePolicies policies = 6;
+  
+  // Store statistics
+  StoreStats stats = 7;
+}
+
+// Store policies
+message StorePolicies {
+  // Maximum envelope size (bytes)
+  uint64 max_envelope_size = 1;
+  
+  // Maximum TTL for stored envelopes (seconds)
+  uint64 max_ttl = 2;
+  
+  // Eviction policy
+  EvictionPolicy eviction_policy = 3;
+  
+  // Priority handling
+  bool respect_priority = 4;
+  
+  // Duplicate detection
+  bool detect_duplicates = 5;
+}
+
+// Eviction policy enumeration
+enum EvictionPolicy {
+  EVICTION_POLICY_UNSPECIFIED = 0;
+  EVICTION_POLICY_FIFO = 1;           // First in, first out
+  EVICTION_POLICY_LRU = 2;            // Least recently used
+  EVICTION_POLICY_PRIORITY = 3;       // Priority-based
+  EVICTION_POLICY_TTL = 4;            // Time-to-live based
+  EVICTION_POLICY_SIZE = 5;            // Size-based
+}
+
+// Store statistics
+message StoreStats {
+  // Total envelopes received
+  uint64 total_received = 1;
+  
+  // Total envelopes delivered
+  uint64 total_delivered = 2;
+  
+  // Total envelopes expired
+  uint64 total_expired = 3;
+  
+  // Total envelopes dropped
+  uint64 total_dropped = 4;
+  
+  // Average storage time (seconds)
+  double avg_storage_time = 5;
+  
+  // Last cleanup timestamp
+  google.protobuf.Timestamp last_cleanup = 6;
+}
+
+// DTN Service interface
+service DTNService {
+  // Send an envelope
+  rpc SendEnvelope(SendEnvelopeRequest) returns (SendEnvelopeResponse);
+  
+  // Receive an envelope
+  rpc ReceiveEnvelope(ReceiveEnvelopeRequest) returns (ReceiveEnvelopeResponse);
+  
+  // Acknowledge envelope receipt
+  rpc AcknowledgeEnvelope(AcknowledgeEnvelopeRequest) returns (AcknowledgeEnvelopeResponse);
+  
+  // Query envelope status
+  rpc QueryEnvelope(QueryEnvelopeRequest) returns (QueryEnvelopeResponse);
+  
+  // Get node information
+  rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
+  
+  // Get store information
+  rpc GetStoreInfo(GetStoreInfoRequest) returns (GetStoreInfoResponse);
+  
+  // Clean up expired envelopes
+  rpc CleanupExpired(CleanupExpiredRequest) returns (CleanupExpiredResponse);
+}
+
+// Send envelope request
+message SendEnvelopeRequest {
+  // Envelope to send
+  Envelope envelope = 1;
+  
+  // Routing preferences
+  RoutingPreferences routing_prefs = 2;
+  
+  // Storage preferences
+  StoragePreferences storage_prefs = 3;
+}
+
+// Send envelope response
+message SendEnvelopeResponse {
+  // Whether the envelope was accepted
+  bool accepted = 1;
+  
+  // Envelope ID (if accepted)
+  string envelope_id = 2;
+  
+  // Error message (if not accepted)
+  string error_message = 3;
+  
+  // Estimated delivery time (seconds)
+  uint64 estimated_delivery_time = 4;
+}
+
+// Receive envelope request
+message ReceiveEnvelopeRequest {
+  // Node ID requesting envelopes
+  string node_id = 1;
+  
+  // Maximum number of envelopes to receive
+  uint32 max_envelopes = 2;
+  
+  // Filter criteria
+  EnvelopeFilter filter = 3;
+}
+
+// Receive envelope response
+message ReceiveEnvelopeResponse {
+  // List of envelopes
+  repeated Envelope envelopes = 1;
+  
+  // Whether more envelopes are available
+  bool more_available = 2;
+  
+  // Total count of available envelopes
+  uint32 total_available = 3;
+}
+
+// Acknowledge envelope request
+message AcknowledgeEnvelopeRequest {
+  // Envelope ID being acknowledged
+  string envelope_id = 1;
+  
+  // Node acknowledging
+  string ack_node = 2;
+  
+  // Acknowledgment type
+  AckType ack_type = 3;
+  
+  // Acknowledgment status
+  AckStatus status = 4;
+  
+  // Additional message
+  string message = 5;
+}
+
+// Acknowledge envelope response
+message AcknowledgeEnvelopeResponse {
+  // Whether acknowledgment was accepted
+  bool accepted = 1;
+  
+  // Error message (if not accepted)
+  string error_message = 2;
+}
+
+// Query envelope request
+message QueryEnvelopeRequest {
+  // Envelope ID to query
+  string envelope_id = 1;
+  
+  // Querying node
+  string query_node = 2;
+}
+
+// Query envelope response
+message QueryEnvelopeResponse {
+  // Envelope status
+  EnvelopeStatus status = 1;
+  
+  // Current location (if known)
+  string current_location = 2;
+  
+  // Acknowledgment status
+  repeated AckRecord ack_records = 3;
+  
+  // Estimated delivery time (seconds)
+  uint64 estimated_delivery_time = 4;
+}
+
+// Envelope status enumeration
+enum EnvelopeStatus {
+  ENVELOPE_STATUS_UNSPECIFIED = 0;
+  ENVELOPE_STATUS_PENDING = 1;
+  ENVELOPE_STATUS_IN_TRANSIT = 2;
+  ENVELOPE_STATUS_DELIVERED = 3;
+  ENVELOPE_STATUS_EXPIRED = 4;
+  ENVELOPE_STATUS_FAILED = 5;
+  ENVELOPE_STATUS_ACKNOWLEDGED = 6;
+}
+
+// Routing preferences
+message RoutingPreferences {
+  // Preferred routing strategy
+  RoutingStrategy preferred_strategy = 1;
+  
+  // Maximum delivery time (seconds)
+  uint64 max_delivery_time = 2;
+  
+  // Reliability requirement (0.0 to 1.0)
+  double reliability = 3;
+  
+  // Cost constraints
+  uint64 max_cost = 4;
+}
+
+// Storage preferences
+message StoragePreferences {
+  // Whether to store in local DTN
+  bool store_locally = 1;
+  
+  // Storage TTL (seconds)
+  uint64 storage_ttl = 2;
+  
+  // Replication factor
+  uint32 replication_factor = 3;
+  
+  // Storage priority
+  uint32 storage_priority = 4;
+}
+
+// Envelope filter
+message EnvelopeFilter {
+  // Message types to include
+  repeated string message_types = 1;
+  
+  // Priority range
+  uint32 min_priority = 2;
+  uint32 max_priority = 3;
+  
+  // Source nodes to include
+  repeated string source_nodes = 4;
+  
+  // Destination nodes to include
+  repeated string destination_nodes = 5;
+  
+  // Time range
+  google.protobuf.Timestamp from_time = 6;
+  google.protobuf.Timestamp to_time = 7;
+}
+
+// Get node info request
+message GetNodeInfoRequest {
+  // Node ID to query
+  string node_id = 1;
+}
+
+// Get node info response
+message GetNodeInfoResponse {
+  // Node information
+  NodeInfo node_info = 1;
+  
+  // Whether node was found
+  bool found = 2;
+}
+
+// Get store info request
+message GetStoreInfoRequest {
+  // Store ID to query
+  string store_id = 1;
+}
+
+// Get store info response
+message GetStoreInfoResponse {
+  // Store information
+  StoreInfo store_info = 1;
+  
+  // Whether store was found
+  bool found = 2;
+}
+
+// Cleanup expired request
+message CleanupExpiredRequest {
+  // Node ID requesting cleanup
+  string node_id = 1;
+  
+  // Whether to force cleanup
+  bool force = 2;
+}
+
+// Cleanup expired response
+message CleanupExpiredResponse {
+  // Number of envelopes cleaned up
+  uint32 cleaned_count = 1;
+  
+  // Storage freed (bytes)
+  uint64 storage_freed = 2;
+  
+  // Cleanup duration (milliseconds)
+  uint64 cleanup_duration = 3;
+}

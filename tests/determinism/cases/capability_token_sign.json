@@ -1,0 +1,32 @@
+{
+  "id": "capability_token_sign",
+  "name": "Capability Token Signing Determinism Test",
+  "command": "cargo",
+  "args": [
+    "run",
+    "--bin",
+    "capability_token_sign_test",
+    "--",
+    "sign",
+    "--algorithm",
+    "Dilithium3",
+    "--input",
+    "test_data/unsigned_token.json",
+    "--output",
+    "test_output/signed_token.json",
+    "--key",
+    "test_data/test_key.pem"
+  ],
+  "working_dir": "../../security/caps",
+  "env": {
+    "RUST_LOG": "info",
+    "DETERMINISM_MODE": "true",
+    "CRYPTO_SEED": "67890",
+    "DILITHIUM_SEED": "67890"
+  },
+  "input": null,
+  "expected_exit_code": 0,
+  "timeout": 120,
+  "seed": 67890
+}
+

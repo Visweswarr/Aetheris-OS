@@ -1,0 +1,140 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+broadcast = "broadcast"
+cache_path = "cache_forge"
+lib_path = "lib"
+gas_reports = ["*"]
+gas_reports_ignore = []
+solc = "0.8.19"
+optimizer = true
+optimizer_runs = 200
+via_ir = false
+auto_detect_remappings = true
+auto_detect_solc = true
+offline = false
+extra_output = ["storageLayout", "metadata"]
+extra_output_files = ["metadata"]
+fuzz = { runs = 256 }
+invariant = { runs = 256, depth = 15, fail_on_revert = false, call_override = false, dictionary_weight = 80, shrink_sequence = true, shrink_limit = 5000 }
+fs_permissions = [{ access = "read", path = "./" }]
+verbosity = 4
+
+[profile.default.fuzz]
+runs = 1000
+
+[profile.default.invariant]
+runs = 1000
+depth = 15
+
+[profile.ci]
+fuzz = { runs = 10000 }
+invariant = { runs = 10000, depth = 20 }
+gas_reports = ["*"]
+verbosity = 2
+
+[profile.optimized]
+optimizer = true
+optimizer_runs = 1000000
+via_ir = true
+fuzz = { runs = 1000 }
+invariant = { runs = 1000 }
+
+[rpc_endpoints]
+mainnet = "${MAINNET_RPC_URL}"
+sepolia = "${SEPOLIA_RPC_URL}"
+polygon = "${POLYGON_RPC_URL}"
+arbitrum = "${ARBITRUM_RPC_URL}"
+optimism = "${OPTIMISM_RPC_URL}"
+base = "${BASE_RPC_URL}"
+local = "http://localhost:8545"
+
+[etherscan]
+mainnet = { key = "${ETHERSCAN_API_KEY}" }
+sepolia = { key = "${ETHERSCAN_API_KEY}" }
+polygon = { key = "${POLYGONSCAN_API_KEY}" }
+arbitrum = { key = "${ARBISCAN_API_KEY}" }
+optimism = { key = "${OPTIMISM_API_KEY}" }
+base = { key = "${BASESCAN_API_KEY}" }
+
+[fmt]
+line_length = 120
+tab_width = 4
+bracket_spacing = false
+number_underscore = "thousands"
+multiline_func_header = "multiline"
+multiline_func_params = "multiline"
+quote_style = "double"
+multiline_import_threshold = 40
+explicit_trailing_comma = "none"
+spaces_around_operators = true
+multiline_bracket_same_line = false
+multiline_ternary_no_single_line = true
+multiline_imports_separate = false
+multiline_imports_wrap = false
+multiline_imports_sort = false
+multiline_imports_group = false
+multiline_imports_newline = false
+multiline_imports_trailing_comma = false
+multiline_imports_spaces = false
+multiline_imports_align = false
+multiline_imports_compact = false
+multiline_imports_compact_arrays = false
+multiline_imports_compact_structs = false
+multiline_imports_compact_enums = false
+multiline_imports_compact_functions = false
+multiline_imports_compact_contracts = false
+multiline_imports_compact_interfaces = false
+multiline_imports_compact_libraries = false
+multiline_imports_compact_abstract = false
+multiline_imports_compact_contracts_abi = false
+multiline_imports_compact_contracts_bytecode = false
+multiline_imports_compact_contracts_metadata = false
+multiline_imports_compact_contracts_storage = false
+multiline_imports_compact_contracts_ir = false
+multiline_imports_compact_contracts_asm = false
+multiline_imports_compact_contracts_opcodes = false
+multiline_imports_compact_contracts_source = false
+multiline_imports_compact_contracts_ast = false
+multiline_imports_compact_contracts_ir_optimized = false
+multiline_imports_compact_contracts_asm_optimized = false
+multiline_imports_compact_contracts_opcodes_optimized = false
+multiline_imports_compact_contracts_source_optimized = false
+multiline_imports_compact_contracts_ast_optimized = false
+multiline_imports_compact_contracts_ir_optimized_asm = false
+multiline_imports_compact_contracts_ir_optimized_opcodes = false
+multiline_imports_compact_contracts_ir_optimized_source = false
+multiline_imports_compact_contracts_ir_optimized_ast = false
+multiline_imports_compact_contracts_asm_optimized_opcodes = false
+multiline_imports_compact_contracts_asm_optimized_source = false
+multiline_imports_compact_contracts_asm_optimized_ast = false
+multiline_imports_compact_contracts_opcodes_optimized_source = false
+multiline_imports_compact_contracts_opcodes_optimized_ast = false
+multiline_imports_compact_contracts_source_optimized_ast = false
+multiline_imports_compact_contracts_ir_optimized_asm_optimized = false
+multiline_imports_compact_contracts_ir_optimized_asm_opcodes = false
+multiline_imports_compact_contracts_ir_optimized_asm_source = false
+multiline_imports_compact_contracts_ir_optimized_asm_ast = false
+multiline_imports_compact_contracts_ir_optimized_opcodes_source = false
+multiline_imports_compact_contracts_ir_optimized_opcodes_ast = false
+multiline_imports_compact_contracts_ir_optimized_source_ast = false
+multiline_imports_compact_contracts_asm_optimized_opcodes_source = false
+multiline_imports_compact_contracts_asm_optimized_opcodes_ast = false
+multiline_imports_compact_contracts_asm_optimized_source_ast = false
+multiline_imports_compact_contracts_opcodes_optimized_source_ast = false
+multiline_imports_compact_contracts_ir_optimized_asm_optimized_opcodes = false
+multiline_imports_compact_contracts_ir_optimized_asm_optimized_source = false
+multiline_imports_compact_contracts_ir_optimized_asm_optimized_ast = false
+multiline_imports_compact_contracts_ir_optimized_asm_opcodes_source = false
+multiline_imports_compact_contracts_ir_optimized_asm_opcodes_ast = false
+multiline_imports_compact_contracts_ir_optimized_asm_source_ast = false
+multiline_imports_compact_contracts_ir_optimized_opcodes_source_ast = false
+multiline_imports_compact_contracts_asm_optimized_opcodes_source_ast = false
+multiline_imports_compact_contracts_ir_optimized_asm_optimized_opcodes_source = false
+multiline_imports_compact_contracts_ir_optimized_asm_optimized_opcodes_ast = false
+multiline_imports_compact_contracts_ir_optimized_asm_optimized_source_ast = false
+multiline_imports_compact_contracts_asm_optimized_opcodes_source_ast = false
+multiline_imports_compact_contracts_ir_optimized_asm_optimized_opcodes_source_ast = false

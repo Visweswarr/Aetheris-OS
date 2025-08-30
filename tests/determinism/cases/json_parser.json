@@ -1,0 +1,29 @@
+{
+  "id": "json_parser",
+  "name": "JSON Parser Determinism Test",
+  "command": "cargo",
+  "args": [
+    "run",
+    "--bin",
+    "json_parser_test",
+    "--",
+    "parse",
+    "--input",
+    "test_data/complex_json.json",
+    "--output",
+    "test_output/parsed_json.json",
+    "--format",
+    "pretty"
+  ],
+  "working_dir": "../../",
+  "env": {
+    "RUST_LOG": "warn",
+    "DETERMINISM_MODE": "true",
+    "JSON_PARSER_SEED": "22222"
+  },
+  "input": null,
+  "expected_exit_code": 0,
+  "timeout": 30,
+  "seed": 22222
+}
+

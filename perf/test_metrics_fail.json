@@ -1,0 +1,125 @@
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "environment": "production",
+  "metrics": {
+    "identity.issuance.latency": {
+      "metric_type": "histogram",
+      "samples": 1000,
+      "values": {
+        "p50": 200.0,
+        "p95": 450.0,
+        "p99": 800.0,
+        "max": 1000.0,
+        "mean": 280.0
+      },
+      "metadata": {
+        "unit": "milliseconds",
+        "service": "identity-service",
+        "version": "1.0.0",
+        "load": "high"
+      }
+    },
+    "xr.mtp.latency": {
+      "metric_type": "histogram",
+      "samples": 5000,
+      "values": {
+        "p50": 15.0,
+        "p95": 35.0,
+        "p99": 65.0,
+        "max": 80.0,
+        "mean": 22.0
+      },
+      "metadata": {
+        "unit": "milliseconds",
+        "service": "xr-service",
+        "frame_rate": 90,
+        "performance_mode": "standard"
+      }
+    },
+    "auth.anonymous.confirm_latency": {
+      "metric_type": "histogram",
+      "samples": 500,
+      "values": {
+        "p50": 2000.0,
+        "p95": 4500.0,
+        "p99": 7000.0,
+        "max": 8000.0,
+        "mean": 3200.0
+      },
+      "metadata": {
+        "unit": "milliseconds",
+        "service": "auth-service",
+        "privacy_level": "maximum",
+        "network_latency": "high"
+      }
+    },
+    "mesh.sync.latency": {
+      "metric_type": "histogram",
+      "samples": 200,
+      "values": {
+        "p50": 45000.0,
+        "p95": 85000.0,
+        "p99": 120000.0,
+        "max": 150000.0,
+        "mean": 55000.0
+      },
+      "metadata": {
+        "unit": "milliseconds",
+        "service": "mesh-service",
+        "peer_count": 50,
+        "network_conditions": "degraded"
+      }
+    },
+    "privacy.budget.processing_latency": {
+      "metric_type": "histogram",
+      "samples": 2000,
+      "values": {
+        "p50": 60.0,
+        "p95": 150.0,
+        "p99": 280.0,
+        "max": 320.0,
+        "mean": 85.0
+      },
+      "metadata": {
+        "unit": "milliseconds",
+        "service": "privacy-service",
+        "epsilon": 0.01,
+        "computation_intensive": true
+      }
+    },
+    "keystore.operations.latency": {
+      "metric_type": "histogram",
+      "samples": 3000,
+      "values": {
+        "p50": 30.0,
+        "p95": 80.0,
+        "p99": 150.0,
+        "max": 180.0,
+        "mean": 45.0
+      },
+      "metadata": {
+        "unit": "milliseconds",
+        "service": "keystore-service",
+        "crypto_algorithm": "hybrid_dilithium_ed25519",
+        "key_size": "large"
+      }
+    },
+    "session.validation.latency": {
+      "metric_type": "histogram",
+      "samples": 4000,
+      "values": {
+        "p50": 20.0,
+        "p95": 45.0,
+        "p99": 80.0,
+        "max": 100.0,
+        "mean": 28.0
+      },
+      "metadata": {
+        "unit": "milliseconds",
+        "service": "session-service",
+        "validation_type": "comprehensive",
+        "constraint_complexity": "high"
+      }
+    }
+  }
+}

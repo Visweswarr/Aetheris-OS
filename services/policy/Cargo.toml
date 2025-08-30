@@ -1,0 +1,118 @@
+[package]
+name = "polymera-policy"
+version = "0.1.0"
+edition = "2021"
+authors = ["Polymera OS Team <team@polymera-os.org>"]
+description = "WebAssembly-based Policy Engine for Polymera OS"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/polymera-os/polymera-os"
+keywords = ["policy", "wasm", "rego", "security", "sandbox"]
+categories = ["security", "wasm", "system"]
+readme = "README.md"
+
+[dependencies]
+# Core dependencies
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# WASM runtime
+wasmtime = { version = "10.0", features = ["async"] }
+
+# Async runtime (optional)
+tokio = { version = "1.0", features = ["full"], optional = true }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", optional = true }
+
+# Configuration
+config = "0.13"
+toml = "0.8"
+
+# Utilities
+anyhow = "1.0"
+clap = { version = "4.0", features = ["derive"] }
+
+[dev-dependencies]
+# Testing
+tempfile = "3.0"
+assert_fs = "1.0"
+predicates = "3.0"
+mockall = "0.11"
+
+# Benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
+# Test utilities
+serde_test = "1.0"
+pretty_assertions = "1.0"
+
+[features]
+default = ["std", "sync", "logging"]
+std = []
+sync = []
+async = ["tokio"]
+logging = ["tracing-subscriber"]
+full = ["std", "sync", "async", "logging"]
+
+# Development features
+dev = ["full", "pretty_assertions"]
+bench = ["criterion"]
+
+[lib]
+name = "polymera_policy"
+path = "mod.rs"
+
+[[bin]]
+name = "policy-cli"
+path = "src/bin/cli.rs"
+required-features = ["std"]
+
+[[bin]]
+name = "policy-server"
+path = "src/bin/server.rs"
+required-features = ["async"]
+
+[[bin]]
+name = "policy-test"
+path = "src/bin/test.rs"
+required-features = ["std"]
+
+[[bin]]
+name = "policy-bench"
+path = "src/bin/bench.rs"
+required-features = ["bench"]
+
+[profile.dev]
+opt-level = 0
+debug = true
+strip = false
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+opt-level = 3
+debug = false
+strip = true
+lto = true
+codegen-units = 1
+
+[workspace]
+members = ["."]
+
+[workspace.metadata]
+name = "polymera-policy"
+description = "WebAssembly-based Policy Engine for Polymera OS"
+repository = "https://github.com/polymera-os/polymera-os"
+license = "MIT OR Apache-2.0"
+keywords = ["policy", "wasm", "rego", "security", "sandbox"]
+categories = ["security", "wasm", "system"]

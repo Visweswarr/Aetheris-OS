@@ -1,0 +1,2 @@
+# This file ensures the history directory is tracked in git
+# Performance history files will be stored here as JSONL entries

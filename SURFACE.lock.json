@@ -1,0 +1,134 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2024-12-19T00:00:00Z",
+  "surfaces": [
+    {
+      "id": "abi_public",
+      "paths": [
+        "kernel/src/syscall/ids.rs",
+        "include/abi/polymera_syscalls.h",
+        "docs/abi/SYSCALLS.md"
+      ],
+      "kind": "generated",
+      "owner": "@abi-owners",
+      "notes": "ABI numbers & signatures are immutable once released",
+      "golden_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "generator": "//tooling/abi:gen"
+    },
+    {
+      "id": "abi_errno",
+      "paths": [
+        "docs/abi/ERRNO.md",
+        "include/abi/polymera_errno.h"
+      ],
+      "kind": "generated",
+      "owner": "@abi-owners",
+      "notes": "Error code definitions and documentation",
+      "golden_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "generator": "//tooling/abi:gen"
+    },
+    {
+      "id": "abi_features",
+      "paths": [
+        "docs/abi/FEATURES.md",
+        "include/abi/polymera_features.h"
+      ],
+      "kind": "generated",
+      "owner": "@abi-owners",
+      "notes": "Feature flags and capabilities documentation",
+      "golden_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "generator": "//tooling/abi:gen"
+    },
+    {
+      "id": "audit_codes",
+      "paths": [
+        "kernel/src/secman/audit_codes.rs"
+      ],
+      "kind": "static",
+      "owner": "@security-owners",
+      "notes": "Audit code enum IDs and definitions",
+      "golden_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "generator": null
+    },
+    {
+      "id": "capability_schema",
+      "paths": [
+        "kernel/src/security/cap.rs"
+      ],
+      "kind": "static",
+      "owner": "@security-owners",
+      "notes": "Capability token header schema and serde definitions",
+      "golden_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "generator": null
+    },
+    {
+      "id": "timer_banner",
+      "paths": [
+        "docs/phase-2/APIC.md"
+      ],
+      "kind": "static",
+      "owner": "@kernel-owners",
+      "notes": "Timer boot banner format and APIC selection logic",
+      "golden_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "generator": null
+    },
+    {
+      "id": "perf_thresholds",
+      "paths": [
+        "perf/baselines/p2.json"
+      ],
+      "kind": "static",
+      "owner": "@perf-owners",
+      "notes": "Performance baseline thresholds and SLO gates",
+      "golden_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "generator": null
+    },
+    {
+      "id": "policy_wasm",
+      "paths": [
+        "policy/out/p2_boot.wasm"
+      ],
+      "kind": "generated",
+      "owner": "@policy-owners",
+      "notes": "Policy engine WebAssembly binary",
+      "golden_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "generator": "//policy:compile"
+    },
+    {
+      "id": "policy_guards",
+      "paths": [
+        "docs/phase-2/POLICY-GUARDS.md"
+      ],
+      "kind": "static",
+      "owner": "@policy-owners",
+      "notes": "Policy guard documentation and defaults",
+      "golden_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "generator": null
+    },
+    {
+      "id": "ci_workflow",
+      "paths": [
+        ".github/workflows/phase-2-gates.yml"
+      ],
+      "kind": "static",
+      "owner": "@ci-owners",
+      "notes": "Critical CI workflow steps and validation gates",
+      "golden_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "generator": null
+    },
+    {
+      "id": "intent_bus_abi",
+      "paths": [
+        "docs/abi/INTENT_BUS.md",
+        "include/abi/polymera_intent.h",
+        "kernel/include/intent_wire.rs",
+        "kernel/src/secman/audit_codes.rs"
+      ],
+      "kind": "generated",
+      "owner": "@abi-owners",
+      "notes": "Intent Bus ABI v1 wire format, syscalls, and audit codes",
+      "golden_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "generator": "//tooling/abi:gen"
+    }
+  ]
+}

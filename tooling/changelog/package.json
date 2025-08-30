@@ -1,0 +1,73 @@
+{
+  "name": "@polymera/changelog-generator",
+  "version": "1.0.0",
+  "description": "Automated changelog generator from conventional commits for Polymera OS",
+  "type": "module",
+  "main": "gen.js",
+  "bin": {
+    "polymera-changelog": "./gen.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test test/gen.test.js",
+    "test:watch": "node --test --watch test/gen.test.js",
+    "lint": "eslint *.ts test/*.ts",
+    "format": "prettier --write *.ts test/*.ts",
+    "prepack": "npm run build",
+    "generate": "node gen.js generate",
+    "bump": "node gen.js bump",
+    "validate": "node gen.js validate",
+    "release": "node gen.js release",
+    "full": "node gen.js full"
+  },
+  "keywords": [
+    "changelog",
+    "conventional-commits",
+    "release",
+    "automation",
+    "polymera-os",
+    "semver",
+    "git"
+  ],
+  "author": "Polymera OS Team",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/polymera-os/polymera-os.git",
+    "directory": "tooling/changelog"
+  },
+  "bugs": {
+    "url": "https://github.com/polymera-os/polymera-os/issues"
+  },
+  "homepage": "https://github.com/polymera-os/polymera-os#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "commander": "^11.1.0",
+    "conventional-commits-parser": "^5.0.0",
+    "semver": "^7.5.4",
+    "chalk": "^5.3.0",
+    "ora": "^7.0.1",
+    "inquirer": "^9.2.12"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0",
+    "@types/semver": "^7.5.4",
+    "@typescript-eslint/eslint-plugin": "^6.7.0",
+    "@typescript-eslint/parser": "^6.7.0",
+    "eslint": "^8.50.0",
+    "prettier": "^3.0.3",
+    "typescript": "^5.2.2"
+  },
+  "files": [
+    "gen.js",
+    "gen.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "version": "2.0",
+  "issuer_did": "did:aetheris:test:issuer",
+  "subject_did": "did:aetheris:test:user",
+  "capabilities": [
+    {
+      "operation": "read",
+      "resource": "vault:readonly-entry",
+      "conditions": null,
+      "expires_at": null
+    }
+  ],
+  "issued_at": "2024-01-01T00:00:00Z",
+  "expires_at": "2025-01-01T00:00:00Z",
+  "signature": "test_signature_for_restricted"
+}

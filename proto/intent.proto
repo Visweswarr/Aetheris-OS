@@ -1,0 +1,836 @@
+syntax = "proto3";
+
+package polymera.intent;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/any.proto";
+
+// Core Intent message representing a user's desired outcome
+message Intent {
+  // Unique identifier for this intent
+  string id = 1;
+  
+  // Human-readable description of what the user wants to achieve
+  string description = 2;
+  
+  // Type of intent
+  IntentType type = 3;
+  
+  // Priority level (0 = lowest, 100 = highest)
+  int32 priority = 4;
+  
+  // When this intent was created
+  google.protobuf.Timestamp created_at = 5;
+  
+  // When this intent should be executed (optional)
+  google.protobuf.Timestamp execute_at = 6;
+  
+  // When this intent expires (optional)
+  google.protobuf.Timestamp expires_at = 7;
+  
+  // User who created this intent
+  string user_id = 8;
+  
+  // Session context
+  string session_id = 9;
+  
+  // Intent-specific parameters
+  map<string, google.protobuf.Any> parameters = 10;
+  
+  // Constraints that must be satisfied
+  repeated Constraint constraints = 11;
+  
+  // Current status of the intent
+  IntentStatus status = 12;
+  
+  // Metadata for additional context
+  map<string, string> metadata = 13;
+}
+
+// Types of intents supported by the system
+enum IntentType {
+  INTENT_TYPE_UNSPECIFIED = 0;
+  
+  // Financial intents
+  INTENT_TYPE_TRANSFER = 1;
+  INTENT_TYPE_PAYMENT = 2;
+  INTENT_TYPE_TRADE = 3;
+  INTENT_TYPE_STAKE = 4;
+  INTENT_TYPE_UNSTAKE = 5;
+  
+  // Identity and access intents
+  INTENT_TYPE_AUTHENTICATE = 6;
+  INTENT_TYPE_AUTHORIZE = 7;
+  INTENT_TYPE_REVOKE_ACCESS = 8;
+  INTENT_TYPE_CREATE_IDENTITY = 9;
+  
+  // Data and privacy intents
+  INTENT_TYPE_SHARE_DATA = 10;
+  INTENT_TYPE_REVOKE_DATA = 11;
+  INTENT_TYPE_BACKUP_DATA = 12;
+  INTENT_TYPE_DELETE_DATA = 13;
+  
+  // System administration intents
+  INTENT_TYPE_CONFIGURE = 14;
+  INTENT_TYPE_DEPLOY = 15;
+  INTENT_TYPE_MONITOR = 16;
+  INTENT_TYPE_MAINTENANCE = 17;
+  
+  // Communication intents
+  INTENT_TYPE_MESSAGE = 18;
+  INTENT_TYPE_NOTIFICATION = 19;
+  INTENT_TYPE_BROADCAST = 20;
+  
+  // Custom intent for extensibility
+  INTENT_TYPE_CUSTOM = 21;
+}
+
+// Status of an intent in the system
+enum IntentStatus {
+  INTENT_STATUS_UNSPECIFIED = 0;
+  INTENT_STATUS_PENDING = 1;      // Waiting to be processed
+  INTENT_STATUS_PLANNING = 2;     // Plan is being generated
+  INTENT_STATUS_PLANNED = 3;      // Plan is ready for preview
+  INTENT_STATUS_PREVIEWING = 4;   // User is reviewing the plan
+  INTENT_STATUS_APPROVED = 5;     // User approved the plan
+  INTENT_STATUS_EXECUTING = 6;    // Plan is being executed
+  INTENT_STATUS_COMPLETED = 7;    // Successfully completed
+  INTENT_STATUS_FAILED = 8;       // Execution failed
+  INTENT_STATUS_CANCELLED = 9;    // Cancelled by user
+  INTENT_STATUS_EXPIRED = 10;     // Expired before execution
+}
+
+// Constraints that must be satisfied for intent execution
+message Constraint {
+  // Type of constraint
+  ConstraintType type = 1;
+  
+  // Human-readable description
+  string description = 2;
+  
+  // Constraint-specific parameters
+  map<string, google.protobuf.Any> parameters = 3;
+  
+  // Whether this constraint is required or optional
+  bool required = 4;
+  
+  // Priority of this constraint (higher = more important)
+  int32 priority = 5;
+}
+
+// Types of constraints
+enum ConstraintType {
+  CONSTRAINT_TYPE_UNSPECIFIED = 0;
+  
+  // Time-based constraints
+  CONSTRAINT_TYPE_TIME_WINDOW = 1;    // Must execute within time window
+  CONSTRAINT_TYPE_DEADLINE = 2;       // Must complete before deadline
+  CONSTRAINT_TYPE_DELAY = 3;          // Must wait before executing
+  
+  // Financial constraints
+  CONSTRAINT_TYPE_BUDGET_LIMIT = 4;   // Maximum cost/amount
+  CONSTRAINT_TYPE_BALANCE_CHECK = 5;  // Ensure sufficient balance
+  CONSTRAINT_TYPE_RATE_LIMIT = 6;     // Transaction rate limiting
+  
+  // Security constraints
+  CONSTRAINT_TYPE_AUTHENTICATION = 7; // Require specific auth level
+  CONSTRAINT_TYPE_AUTHORIZATION = 8;  // Require specific permissions
+  CONSTRAINT_TYPE_PRIVACY_LEVEL = 9;  // Minimum privacy protection
+  
+  // Resource constraints
+  CONSTRAINT_TYPE_RESOURCE_LIMIT = 10; // CPU/memory/storage limits
+  CONSTRAINT_TYPE_NETWORK_LIMIT = 11;  // Bandwidth/latency limits
+  CONSTRAINT_TYPE_DEPENDENCY = 12;     // Depends on other intents/resources
+  
+  // Geographic constraints
+  CONSTRAINT_TYPE_GEOGRAPHIC = 13;    // Geographic restrictions
+  CONSTRAINT_TYPE_JURISDICTION = 14;  // Legal jurisdiction requirements
+  
+  // Custom constraint for extensibility
+  CONSTRAINT_TYPE_CUSTOM = 15;
+}
+
+// Individual atomic action that can be executed
+message Action {
+  // Unique identifier for this action
+  string id = 1;
+  
+  // Human-readable description
+  string description = 2;
+  
+  // Type of action
+  ActionType type = 3;
+  
+  // Service or component that will execute this action
+  string executor = 4;
+  
+  // Action-specific parameters
+  map<string, google.protobuf.Any> parameters = 5;
+  
+  // Expected duration for this action
+  google.protobuf.Duration estimated_duration = 6;
+  
+  // Cost estimate (gas, fees, etc.)
+  CostEstimate cost_estimate = 7;
+  
+  // Risk assessment
+  RiskAssessment risk_assessment = 8;
+  
+  // Dependencies on other actions
+  repeated string depends_on = 9;
+  
+  // Current status
+  ActionStatus status = 10;
+  
+  // When this action was created
+  google.protobuf.Timestamp created_at = 11;
+  
+  // When this action started executing
+  google.protobuf.Timestamp started_at = 12;
+  
+  // When this action completed
+  google.protobuf.Timestamp completed_at = 13;
+  
+  // Error information if action failed
+  string error_message = 14;
+  
+  // Retry configuration
+  RetryConfig retry_config = 15;
+  
+  // Whether this action can be undone
+  bool reversible = 16;
+  
+  // Action to undo this action (if reversible)
+  Action undo_action = 17;
+}
+
+// Types of actions that can be executed
+enum ActionType {
+  ACTION_TYPE_UNSPECIFIED = 0;
+  
+  // Transaction actions
+  ACTION_TYPE_SEND_TRANSACTION = 1;
+  ACTION_TYPE_SIGN_MESSAGE = 2;
+  ACTION_TYPE_APPROVE_TOKEN = 3;
+  ACTION_TYPE_REVOKE_APPROVAL = 4;
+  
+  // Contract interaction actions
+  ACTION_TYPE_DEPLOY_CONTRACT = 5;
+  ACTION_TYPE_CALL_CONTRACT = 6;
+  ACTION_TYPE_UPGRADE_CONTRACT = 7;
+  
+  // Identity and authentication actions
+  ACTION_TYPE_CREATE_IDENTITY = 8;
+  ACTION_TYPE_VERIFY_IDENTITY = 9;
+  ACTION_TYPE_ROTATE_KEYS = 10;
+  ACTION_TYPE_BACKUP_KEYS = 11;
+  
+  // Data management actions
+  ACTION_TYPE_STORE_DATA = 12;
+  ACTION_TYPE_RETRIEVE_DATA = 13;
+  ACTION_TYPE_DELETE_DATA = 14;
+  ACTION_TYPE_ENCRYPT_DATA = 15;
+  ACTION_TYPE_DECRYPT_DATA = 16;
+  
+  // Network actions
+  ACTION_TYPE_SEND_MESSAGE = 17;
+  ACTION_TYPE_ESTABLISH_CONNECTION = 18;
+  ACTION_TYPE_CLOSE_CONNECTION = 19;
+  
+  // System actions
+  ACTION_TYPE_CONFIGURE_SYSTEM = 20;
+  ACTION_TYPE_START_SERVICE = 21;
+  ACTION_TYPE_STOP_SERVICE = 22;
+  ACTION_TYPE_RESTART_SERVICE = 23;
+  
+  // Validation actions
+  ACTION_TYPE_VALIDATE_SIGNATURE = 24;
+  ACTION_TYPE_VERIFY_PROOF = 25;
+  ACTION_TYPE_CHECK_BALANCE = 26;
+  
+  // Custom action for extensibility
+  ACTION_TYPE_CUSTOM = 27;
+}
+
+// Status of an individual action
+enum ActionStatus {
+  ACTION_STATUS_UNSPECIFIED = 0;
+  ACTION_STATUS_PENDING = 1;      // Waiting to be executed
+  ACTION_STATUS_READY = 2;        // Dependencies satisfied, ready to execute
+  ACTION_STATUS_EXECUTING = 3;    // Currently being executed
+  ACTION_STATUS_COMPLETED = 4;    // Successfully completed
+  ACTION_STATUS_FAILED = 5;       // Execution failed
+  ACTION_STATUS_CANCELLED = 6;    // Cancelled before execution
+  ACTION_STATUS_SKIPPED = 7;      // Skipped due to conditions
+  ACTION_STATUS_RETRYING = 8;     // Retrying after failure
+}
+
+// Cost estimation for an action
+message CostEstimate {
+  // Estimated gas cost
+  uint64 gas_estimate = 1;
+  
+  // Gas price estimate
+  uint64 gas_price = 2;
+  
+  // Total cost in native currency
+  string total_cost = 3;
+  
+  // Currency denomination
+  string currency = 4;
+  
+  // Network fees
+  string network_fee = 5;
+  
+  // Service fees
+  string service_fee = 6;
+  
+  // Confidence level of the estimate (0.0 - 1.0)
+  double confidence = 7;
+  
+  // Additional cost breakdown
+  map<string, string> cost_breakdown = 8;
+}
+
+// Risk assessment for an action
+message RiskAssessment {
+  // Overall risk level
+  RiskLevel risk_level = 1;
+  
+  // Risk score (0.0 = no risk, 1.0 = maximum risk)
+  double risk_score = 2;
+  
+  // Specific risk factors
+  repeated RiskFactor risk_factors = 3;
+  
+  // Mitigation strategies
+  repeated string mitigations = 4;
+  
+  // Confidence in risk assessment
+  double confidence = 5;
+}
+
+// Risk levels
+enum RiskLevel {
+  RISK_LEVEL_UNSPECIFIED = 0;
+  RISK_LEVEL_VERY_LOW = 1;
+  RISK_LEVEL_LOW = 2;
+  RISK_LEVEL_MEDIUM = 3;
+  RISK_LEVEL_HIGH = 4;
+  RISK_LEVEL_VERY_HIGH = 5;
+  RISK_LEVEL_CRITICAL = 6;
+}
+
+// Individual risk factor
+message RiskFactor {
+  // Type of risk
+  string risk_type = 1;
+  
+  // Description of the risk
+  string description = 2;
+  
+  // Impact if risk materializes
+  RiskLevel impact = 3;
+  
+  // Probability of risk occurring
+  double probability = 4;
+  
+  // Recommended mitigation
+  string mitigation = 5;
+}
+
+// Retry configuration for actions
+message RetryConfig {
+  // Maximum number of retries
+  int32 max_retries = 1;
+  
+  // Initial delay between retries
+  google.protobuf.Duration initial_delay = 2;
+  
+  // Maximum delay between retries
+  google.protobuf.Duration max_delay = 3;
+  
+  // Backoff multiplier
+  double backoff_multiplier = 4;
+  
+  // Whether to use exponential backoff
+  bool exponential_backoff = 5;
+  
+  // Conditions that trigger a retry
+  repeated RetryCondition retry_conditions = 6;
+}
+
+// Conditions under which an action should be retried
+message RetryCondition {
+  // Type of condition
+  RetryConditionType type = 1;
+  
+  // Condition-specific parameters
+  map<string, string> parameters = 2;
+}
+
+// Types of retry conditions
+enum RetryConditionType {
+  RETRY_CONDITION_TYPE_UNSPECIFIED = 0;
+  RETRY_CONDITION_TYPE_NETWORK_ERROR = 1;
+  RETRY_CONDITION_TYPE_TIMEOUT = 2;
+  RETRY_CONDITION_TYPE_INSUFFICIENT_GAS = 3;
+  RETRY_CONDITION_TYPE_NONCE_ERROR = 4;
+  RETRY_CONDITION_TYPE_RATE_LIMITED = 5;
+  RETRY_CONDITION_TYPE_SERVICE_UNAVAILABLE = 6;
+  RETRY_CONDITION_TYPE_CUSTOM = 7;
+}
+
+// Execution plan containing ordered actions to fulfill an intent
+message Plan {
+  // Unique identifier for this plan
+  string id = 1;
+  
+  // Intent this plan is for
+  string intent_id = 2;
+  
+  // Version of this plan (incremented on updates)
+  int32 version = 3;
+  
+  // Human-readable description of the plan
+  string description = 4;
+  
+  // Actions to be executed, in dependency order
+  repeated Action actions = 5;
+  
+  // Execution strategy
+  ExecutionStrategy strategy = 6;
+  
+  // Total estimated duration
+  google.protobuf.Duration estimated_duration = 7;
+  
+  // Total cost estimate
+  CostEstimate total_cost_estimate = 8;
+  
+  // Overall risk assessment
+  RiskAssessment risk_assessment = 9;
+  
+  // Plan status
+  PlanStatus status = 10;
+  
+  // When this plan was created
+  google.protobuf.Timestamp created_at = 11;
+  
+  // When this plan was last updated
+  google.protobuf.Timestamp updated_at = 12;
+  
+  // Who/what generated this plan
+  string created_by = 13;
+  
+  // Simulation results
+  SimulationResult simulation_result = 14;
+  
+  // Rollback plan in case of failure
+  Plan rollback_plan = 15;
+  
+  // Plan validation results
+  ValidationResult validation_result = 16;
+  
+  // Whether this plan requires user approval
+  bool requires_approval = 17;
+  
+  // Approval status if required
+  ApprovalStatus approval_status = 18;
+}
+
+// Execution strategies for plans
+enum ExecutionStrategy {
+  EXECUTION_STRATEGY_UNSPECIFIED = 0;
+  EXECUTION_STRATEGY_SEQUENTIAL = 1;   // Execute actions one by one
+  EXECUTION_STRATEGY_PARALLEL = 2;     // Execute independent actions in parallel
+  EXECUTION_STRATEGY_OPTIMISTIC = 3;   // Execute optimistically with rollback
+  EXECUTION_STRATEGY_CONSERVATIVE = 4; // Execute with maximum safety checks
+  EXECUTION_STRATEGY_ATOMIC = 5;       // All actions succeed or all fail
+  EXECUTION_STRATEGY_BEST_EFFORT = 6;  // Execute as many actions as possible
+}
+
+// Status of a plan
+enum PlanStatus {
+  PLAN_STATUS_UNSPECIFIED = 0;
+  PLAN_STATUS_DRAFT = 1;        // Plan is being created
+  PLAN_STATUS_VALIDATING = 2;   // Plan is being validated
+  PLAN_STATUS_VALID = 3;        // Plan is valid and ready
+  PLAN_STATUS_INVALID = 4;      // Plan validation failed
+  PLAN_STATUS_SIMULATING = 5;   // Plan is being simulated
+  PLAN_STATUS_SIMULATED = 6;    // Simulation completed
+  PLAN_STATUS_APPROVED = 7;     // Plan approved for execution
+  PLAN_STATUS_REJECTED = 8;     // Plan rejected by user/system
+  PLAN_STATUS_EXECUTING = 9;    // Plan is being executed
+  PLAN_STATUS_COMPLETED = 10;   // Plan executed successfully
+  PLAN_STATUS_FAILED = 11;      // Plan execution failed
+  PLAN_STATUS_CANCELLED = 12;   // Plan cancelled by user
+  PLAN_STATUS_ROLLED_BACK = 13; // Plan was rolled back
+}
+
+// Results of plan simulation
+message SimulationResult {
+  // Whether simulation was successful
+  bool success = 1;
+  
+  // Simulated execution time
+  google.protobuf.Duration execution_time = 2;
+  
+  // Simulated final state
+  map<string, google.protobuf.Any> final_state = 3;
+  
+  // State changes during simulation
+  repeated StateChange state_changes = 4;
+  
+  // Warnings encountered during simulation
+  repeated string warnings = 5;
+  
+  // Errors encountered during simulation
+  repeated string errors = 6;
+  
+  // Confidence in simulation results
+  double confidence = 7;
+  
+  // Resource usage during simulation
+  ResourceUsage resource_usage = 8;
+}
+
+// A state change during plan execution
+message StateChange {
+  // Component or resource affected
+  string component = 1;
+  
+  // Property that changed
+  string property = 2;
+  
+  // Previous value
+  google.protobuf.Any old_value = 3;
+  
+  // New value
+  google.protobuf.Any new_value = 4;
+  
+  // When the change occurred
+  google.protobuf.Timestamp timestamp = 5;
+  
+  // Action that caused this change
+  string action_id = 6;
+}
+
+// Resource usage information
+message ResourceUsage {
+  // CPU usage (percentage)
+  double cpu_usage = 1;
+  
+  // Memory usage (bytes)
+  uint64 memory_usage = 2;
+  
+  // Network bandwidth used (bytes)
+  uint64 network_usage = 3;
+  
+  // Storage used (bytes)
+  uint64 storage_usage = 4;
+  
+  // Gas consumed
+  uint64 gas_consumed = 5;
+  
+  // Custom resource metrics
+  map<string, double> custom_metrics = 6;
+}
+
+// Plan validation results
+message ValidationResult {
+  // Whether plan is valid
+  bool is_valid = 1;
+  
+  // Validation errors
+  repeated ValidationError errors = 2;
+  
+  // Validation warnings
+  repeated ValidationWarning warnings = 3;
+  
+  // Suggestions for improvement
+  repeated string suggestions = 4;
+  
+  // Validation score (0.0 - 1.0)
+  double validation_score = 5;
+}
+
+// Validation error
+message ValidationError {
+  // Error code
+  string code = 1;
+  
+  // Human-readable message
+  string message = 2;
+  
+  // Severity level
+  ValidationSeverity severity = 3;
+  
+  // Component that caused the error
+  string component = 4;
+  
+  // Suggested fix
+  string suggested_fix = 5;
+}
+
+// Validation warning
+message ValidationWarning {
+  // Warning code
+  string code = 1;
+  
+  // Human-readable message
+  string message = 2;
+  
+  // Component that caused the warning
+  string component = 3;
+  
+  // Suggestion to address warning
+  string suggestion = 4;
+}
+
+// Validation severity levels
+enum ValidationSeverity {
+  VALIDATION_SEVERITY_UNSPECIFIED = 0;
+  VALIDATION_SEVERITY_INFO = 1;
+  VALIDATION_SEVERITY_WARNING = 2;
+  VALIDATION_SEVERITY_ERROR = 3;
+  VALIDATION_SEVERITY_CRITICAL = 4;
+}
+
+// Approval status for plans requiring approval
+enum ApprovalStatus {
+  APPROVAL_STATUS_UNSPECIFIED = 0;
+  APPROVAL_STATUS_PENDING = 1;     // Waiting for approval
+  APPROVAL_STATUS_APPROVED = 2;    // Approved by user/system
+  APPROVAL_STATUS_REJECTED = 3;    // Rejected by user/system
+  APPROVAL_STATUS_EXPIRED = 4;     // Approval request expired
+  APPROVAL_STATUS_AUTO_APPROVED = 5; // Automatically approved
+}
+
+// Preview of a plan before execution, with user-friendly formatting
+message Preview {
+  // Unique identifier for this preview
+  string id = 1;
+  
+  // Plan this preview is for
+  string plan_id = 2;
+  
+  // Intent this preview relates to
+  string intent_id = 3;
+  
+  // Summary of what will happen
+  string summary = 4;
+  
+  // Detailed steps in human-readable format
+  repeated PreviewStep steps = 5;
+  
+  // Total estimated time
+  string estimated_time = 6;
+  
+  // Total estimated cost in user-friendly format
+  string estimated_cost = 7;
+  
+  // Risk level summary
+  string risk_summary = 8;
+  
+  // Important warnings for the user
+  repeated string warnings = 9;
+  
+  // Required confirmations from user
+  repeated Confirmation required_confirmations = 10;
+  
+  // What the user will gain from this plan
+  repeated string benefits = 11;
+  
+  // What the user might lose or spend
+  repeated string costs = 12;
+  
+  // Dependencies that must be satisfied
+  repeated string prerequisites = 13;
+  
+  // When this preview was generated
+  google.protobuf.Timestamp generated_at = 14;
+  
+  // When this preview expires
+  google.protobuf.Timestamp expires_at = 15;
+  
+  // Visual representation hints for UI
+  PreviewVisualization visualization = 16;
+  
+  // Comparison with alternative plans
+  repeated PlanComparison alternatives = 17;
+}
+
+// A single step in the preview
+message PreviewStep {
+  // Step number in sequence
+  int32 step_number = 1;
+  
+  // Human-readable description
+  string description = 2;
+  
+  // What this step will accomplish
+  string outcome = 3;
+  
+  // Estimated time for this step
+  string estimated_time = 4;
+  
+  // Estimated cost for this step
+  string estimated_cost = 5;
+  
+  // Risk level for this step
+  RiskLevel risk_level = 6;
+  
+  // Whether this step is reversible
+  bool reversible = 7;
+  
+  // Dependencies for this step
+  repeated string dependencies = 8;
+  
+  // Visual hints for UI
+  map<string, string> visual_hints = 9;
+  
+  // Additional details (expandable in UI)
+  map<string, string> details = 10;
+}
+
+// Required user confirmation
+message Confirmation {
+  // Type of confirmation required
+  ConfirmationType type = 1;
+  
+  // What the user is confirming
+  string description = 2;
+  
+  // Prompt to show the user
+  string prompt = 3;
+  
+  // Default response (if any)
+  bool default_response = 4;
+  
+  // Whether this confirmation is required
+  bool required = 5;
+  
+  // Additional context for the confirmation
+  map<string, string> context = 6;
+}
+
+// Types of confirmations
+enum ConfirmationType {
+  CONFIRMATION_TYPE_UNSPECIFIED = 0;
+  CONFIRMATION_TYPE_SPEND_AMOUNT = 1;    // Confirm spending specific amount
+  CONFIRMATION_TYPE_RISK_ACCEPTANCE = 2; // Accept identified risks
+  CONFIRMATION_TYPE_DATA_SHARING = 3;    // Confirm data sharing
+  CONFIRMATION_TYPE_PERMISSION_GRANT = 4; // Grant specific permissions
+  CONFIRMATION_TYPE_IRREVERSIBLE_ACTION = 5; // Confirm irreversible action
+  CONFIRMATION_TYPE_EXTERNAL_INTERACTION = 6; // Confirm external service interaction
+  CONFIRMATION_TYPE_CUSTOM = 7;          // Custom confirmation
+}
+
+// Visual representation hints for the preview
+message PreviewVisualization {
+  // Suggested layout type
+  string layout_type = 1;
+  
+  // Color scheme suggestions
+  map<string, string> colors = 2;
+  
+  // Icon suggestions for each step
+  map<string, string> icons = 3;
+  
+  // Progress indicators
+  repeated ProgressIndicator progress_indicators = 4;
+  
+  // Charts or graphs to display
+  repeated ChartSpec charts = 5;
+  
+  // Timeline visualization
+  TimelineSpec timeline = 6;
+}
+
+// Progress indicator specification
+message ProgressIndicator {
+  // Type of progress indicator
+  string type = 1;
+  
+  // Total steps or units
+  int32 total = 2;
+  
+  // Current position
+  int32 current = 3;
+  
+  // Label for the indicator
+  string label = 4;
+}
+
+// Chart specification for visualization
+message ChartSpec {
+  // Type of chart (bar, pie, line, etc.)
+  string chart_type = 1;
+  
+  // Chart title
+  string title = 2;
+  
+  // Data to display
+  map<string, double> data = 3;
+  
+  // Chart configuration
+  map<string, string> config = 4;
+}
+
+// Timeline specification
+message TimelineSpec {
+  // Timeline events
+  repeated TimelineEvent events = 1;
+  
+  // Timeline scale (minutes, hours, days)
+  string scale = 2;
+  
+  // Whether to show dependencies
+  bool show_dependencies = 3;
+}
+
+// Timeline event
+message TimelineEvent {
+  // Event name
+  string name = 1;
+  
+  // Start time offset
+  google.protobuf.Duration start_offset = 2;
+  
+  // Duration of event
+  google.protobuf.Duration duration = 3;
+  
+  // Event type
+  string event_type = 4;
+  
+  // Dependencies
+  repeated string dependencies = 5;
+}
+
+// Comparison with alternative plans
+message PlanComparison {
+  // Alternative plan ID
+  string plan_id = 1;
+  
+  // Brief description of alternative
+  string description = 2;
+  
+  // Cost comparison
+  string cost_difference = 3;
+  
+  // Time comparison
+  string time_difference = 4;
+  
+  // Risk comparison
+  string risk_difference = 5;
+  
+  // Pros of this alternative
+  repeated string pros = 6;
+  
+  // Cons of this alternative
+  repeated string cons = 7;
+  
+  // Recommendation score (0.0 - 1.0)
+  double recommendation_score = 8;
+}

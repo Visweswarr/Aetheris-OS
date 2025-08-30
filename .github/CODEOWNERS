@@ -1,0 +1,352 @@
+# Polymera OS Code Ownership
+# This file defines who is responsible for different parts of the codebase
+
+# Global owners - Core team leads
+* @polymera-core-team
+
+# Kernel Layer - Core OS functionality
+/kernel/ @kernel-team
+/kernel/src/ @kernel-team
+/kernel/proto/ @kernel-team
+/kernel/tests/ @kernel-team
+
+# Services Layer - System services
+/services/ @services-team
+/services/devicekit/ @device-team
+/services/polyaudio/ @audio-team
+/services/polynet/ @networking-team
+/services/keyvault/ @security-team
+/services/ngfs/ @storage-team
+/services/polyimage/ @media-team
+/services/attestation/ @security-team
+/services/wallet/ @security-team
+
+# Runtime Layer - Language bridges and WASI
+/runtime/ @runtime-team
+/runtime/wasi/ @runtime-team
+/runtime/python/ @python-team
+/runtime/jvm/ @jvm-team
+/runtime/clr/ @clr-team
+
+# UI Layer - Graphics and user interface
+/ui/ @ui-team
+/ui/spectra/ @graphics-team
+/ui/omniprompt/ @cli-team
+/ui/web/ @web-team
+/ui/desktop/ @desktop-team
+
+# Tooling - Build systems and development tools
+/tooling/ @tooling-team
+/tooling/bazel/ @tooling-team
+/tooling/nix/ @tooling-team
+/tooling/agents/ @automation-team
+/tooling/perf/ @performance-team
+
+# Performance baselines and history
+/perf/ @performance-team
+/perf/baselines/ @performance-team
+/perf/history/ @performance-team
+
+# Infrastructure - CI/CD and deployment
+/infra/ @infra-team
+/infra/ci/ @ci-team
+/infra/k8s/ @platform-team
+/infra/monitoring/ @platform-team
+
+# Documentation
+/docs/ @docs-team
+/specs/ @docs-team
+*.md @docs-team
+
+# Configuration files
+*.nix @tooling-team
+WORKSPACE @tooling-team
+BUILD @tooling-team
+BUILD.bazel @tooling-team
+
+# CI/CD and GitHub workflows
+.github/ @ci-team
+.github/workflows/ @ci-team
+.github/CODEOWNERS @ci-team
+
+# Security and compliance
+CI_POLICIES.md @security-team
+SECURITY.md @security-team
+*.proto @security-team
+
+# Performance and SLO testing
+/tests/performance/ @performance-team
+/tests/slo/ @performance-team
+benchmarks/ @performance-team
+
+# Fuzz testing
+/tests/fuzz/ @security-team
+fuzz/ @security-team
+
+# Protocol definitions
+/proto/ @api-team
+*.proto @api-team
+
+# WebAssembly and WASI
+*.wasm @runtime-team
+*.wat @runtime-team
+
+# Cryptography and security implementations
+/crypto/ @security-team
+/zk/ @security-team
+/pqc/ @security-team
+
+# Network and mesh implementations
+/mesh/ @networking-team
+/libp2p/ @networking-team
+/quic/ @networking-team
+
+# XR and graphics implementations
+/xr/ @graphics-team
+/vulkan/ @graphics-team
+/opengl/ @graphics-team
+
+# Data layer implementations
+/data/ @data-team
+/kafka/ @data-team
+/postgres/ @data-team
+/redis/ @data-team
+/duckdb/ @data-team
+
+# Policy engine
+/policy/ @policy-team
+/opa/ @policy-team
+/rego/ @policy-team
+
+# Language-specific files
+*.rs @rust-team
+*.cpp @cpp-team
+*.hpp @cpp-team
+*.ts @typescript-team
+*.tsx @typescript-team
+*.py @python-team
+*.js @javascript-team
+*.jsx @javascript-team
+
+# Test files
+*_test.rs @test-team
+*_test.py @test-team
+*_test.ts @test-team
+*_test.cpp @test-team
+test_*.rs @test-team
+test_*.py @test-team
+test_*.ts @test-team
+test_*.cpp @test-team
+
+# Configuration and environment
+.env* @infra-team
+config/ @infra-team
+*.config @infra-team
+*.toml @tooling-team
+*.yaml @tooling-team
+*.yml @tooling-team
+*.json @tooling-team
+
+# Dependencies and lock files
+Cargo.lock @tooling-team
+package-lock.json @tooling-team
+yarn.lock @tooling-team
+pnpm-lock.yaml @tooling-team
+flake.lock @tooling-team
+
+# Generated files (read-only)
+/target/ @tooling-team
+/dist/ @tooling-team
+/build/ @tooling-team
+*.generated.* @tooling-team
+
+# Documentation generation
+/docs/generated/ @docs-team
+/site/ @docs-team
+
+# Examples and samples
+/examples/ @docs-team
+/samples/ @docs-team
+/demos/ @docs-team
+
+# Scripts and automation
+/scripts/ @automation-team
+*.sh @automation-team
+*.ps1 @automation-team
+*.bat @automation-team
+
+# Docker and containerization
+Dockerfile* @infra-team
+.dockerignore @infra-team
+docker-compose*.yml @infra-team
+
+# Kubernetes and orchestration
+*.yaml @platform-team
+*.yml @platform-team
+k8s/ @platform-team
+helm/ @platform-team
+
+# Monitoring and observability
+/prometheus/ @platform-team
+/grafana/ @platform-team
+/logging/ @platform-team
+/metrics/ @platform-team
+
+# Backup and fallback
+# If no specific team is assigned, these teams are responsible
+*.rs @rust-team @kernel-team
+*.cpp @cpp-team @graphics-team
+*.ts @typescript-team @ui-team
+*.py @python-team @tooling-team
+*.proto @api-team @security-team
+*.md @docs-team @polymera-core-team
+
+# Governance and policy files
+LICENSE @polymera-core-team
+CODE_OF_CONDUCT.md @polymera-core-team
+CONTRIBUTING.md @docs-team @polymera-core-team
+SECURITY.md @security-team @polymera-core-team
+
+# Configuration files
+.editorconfig @tooling-team
+.commitlintrc.js @tooling-team @ci-team
+*.nix @tooling-team
+WORKSPACE @tooling-team
+BUILD @tooling-team
+BUILD.bazel @tooling-team
+
+# CI/CD and GitHub workflows
+.github/ @ci-team
+.github/workflows/ @ci-team
+.github/ISSUE_TEMPLATE/ @ci-team @docs-team
+.github/PULL_REQUEST_TEMPLATE.md @ci-team @docs-team
+.github/CODEOWNERS @ci-team @polymera-core-team
+
+# Documentation
+docs/ @docs-team
+*.md @docs-team
+*.rst @docs-team
+*.txt @docs-team
+
+# Security and compliance
+CI_POLICIES.md @security-team @polymera-core-team
+SECURITY.md @security-team @polymera-core-team
+*.proto @security-team @api-team
+
+# Performance and SLO testing
+/tests/performance/ @performance-team
+/tests/slo/ @performance-team
+benchmarks/ @performance-team
+
+# Fuzz testing
+/tests/fuzz/ @security-team
+fuzz/ @security-team
+
+# Protocol definitions
+/proto/ @api-team
+*.proto @api-team
+
+# WebAssembly and WASI
+*.wasm @runtime-team
+*.wat @runtime-team
+
+# Cryptography and security implementations
+/crypto/ @security-team
+/zk/ @security-team
+/pqc/ @security-team
+
+# Network and mesh implementations
+/mesh/ @networking-team
+/libp2p/ @networking-team
+/quic/ @networking-team
+
+# XR and graphics implementations
+/xr/ @graphics-team
+/vulkan/ @graphics-team
+/opengl/ @graphics-team
+
+# Data layer implementations
+/data/ @data-team
+/kafka/ @data-team
+/postgres/ @data-team
+/redis/ @data-team
+/duckdb/ @data-team
+
+# Policy engine
+/policy/ @policy-team
+/opa/ @policy-team
+/rego/ @policy-team
+
+# Language-specific files
+*.rs @rust-team
+*.cpp @cpp-team
+*.hpp @cpp-team
+*.ts @typescript-team
+*.tsx @typescript-team
+*.py @python-team
+*.js @javascript-team
+*.jsx @javascript-team
+
+# Test files
+*_test.rs @test-team
+*_test.py @test-team
+*_test.ts @test-team
+*_test.cpp @test-team
+test_*.rs @test-team
+test_*.py @test-team
+test_*.ts @test-team
+test_*.cpp @test-team
+
+# Configuration and environment
+.env* @infra-team
+config/ @infra-team
+*.config @infra-team
+*.toml @tooling-team
+*.yaml @tooling-team
+*.yml @tooling-team
+*.json @tooling-team
+
+# Dependencies and lock files
+Cargo.lock @tooling-team
+package-lock.json @tooling-team
+yarn.lock @tooling-team
+pnpm-lock.yaml @tooling-team
+flake.lock @tooling-team
+
+# Generated files (read-only)
+/target/ @tooling-team
+/dist/ @tooling-team
+/build/ @tooling-team
+*.generated.* @tooling-team
+
+# Documentation generation
+/docs/generated/ @docs-team
+/site/ @docs-team
+
+# Examples and samples
+/examples/ @docs-team
+/samples/ @docs-team
+/demos/ @docs-team
+
+# Scripts and automation
+/scripts/ @automation-team
+*.sh @automation-team
+*.ps1 @automation-team
+*.bat @automation-team
+
+# Docker and containerization
+Dockerfile* @infra-team
+.dockerignore @infra-team
+docker-compose*.yml @infra-team
+
+# Kubernetes and orchestration
+*.yaml @platform-team
+*.yml @platform-team
+k8s/ @platform-team
+helm/ @platform-team
+
+# Monitoring and observability
+/prometheus/ @platform-team
+/grafana/ @platform-team
+/logging/ @platform-team
+/metrics/ @platform-team

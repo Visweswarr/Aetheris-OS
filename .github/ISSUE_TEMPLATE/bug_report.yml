@@ -1,0 +1,120 @@
+name: 🐛 Bug Report
+description: Report a bug in Polymera OS
+title: "[BUG] "
+labels: ["bug", "needs-triage"]
+assignees: ["@polymera-core-team"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+
+        **Before submitting, please:**
+        1. Check if this bug has already been reported
+        2. Ensure you're using the latest version
+        3. Verify the bug occurs in a clean environment
+
+  - type: input
+    id: version
+    attributes:
+      label: Polymera OS Version
+      description: What version of Polymera OS are you using?
+      placeholder: "e.g., 0.1.0, main branch, specific commit hash"
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: What platform are you running on?
+      placeholder: "e.g., Linux x86_64, macOS ARM64, Windows x86_64"
+    validations:
+      required: true
+
+  - type: input
+    id: component
+    attributes:
+      label: Component
+      description: Which component is affected?
+      placeholder: "e.g., kernel, crypto, services, runtime, ui"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is
+      placeholder: "Describe the bug in detail..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Go to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen
+      placeholder: "Describe what you expected to happen..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened
+      placeholder: "Describe what actually happened..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and Error Messages
+      description: Include any relevant logs, error messages, or stack traces
+      placeholder: |
+        ```
+        [Include logs, error messages, or stack traces here]
+        ```
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment Details
+      description: Additional details about your environment
+      placeholder: |
+        - OS: [e.g., Ubuntu 22.04, macOS 14.0, Windows 11]
+        - Architecture: [e.g., x86_64, ARM64]
+        - Rust Version: [e.g., 1.75.0]
+        - Bazel Version: [e.g., 7.0.0]
+        - Nix Version: [e.g., 2.18.0]
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context about the problem
+      placeholder: "Add any other context about the problem here..."
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our Code of Conduct
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true

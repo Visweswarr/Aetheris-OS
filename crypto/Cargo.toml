@@ -1,0 +1,106 @@
+[package]
+name = "polymera-crypto"
+version = "0.1.0"
+edition = "2021"
+authors = ["Polymera OS Team <team@polymera-os.org>"]
+description = "Post-Quantum Cryptography for Polymera OS"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/polymera-os/polymera-os"
+keywords = ["cryptography", "post-quantum", "kyber", "dilithium", "security"]
+categories = ["cryptography", "security", "no-std"]
+readme = "README.md"
+
+[dependencies]
+# Core dependencies
+libc = "0.2"
+thiserror = "1.0"
+
+# Optional dependencies
+serde = { version = "1.0", optional = true, features = ["derive"] }
+serde_json = { version = "1.0", optional = true }
+
+# Build dependencies
+bindgen = "0.69"
+cc = "1.0"
+
+[build-dependencies]
+bindgen = "0.69"
+cc = "1.0"
+
+[features]
+default = ["std"]
+std = []
+kyber = ["kyber-kem"]
+dilithium = ["dilithium-sig"]
+full = ["std", "kyber", "dilithium", "crypto", "async"]
+crypto = ["sha2", "ed25519", "p256", "rsa"]
+async = ["tokio"]
+serde = ["dep:serde", "dep:serde_json"]
+
+# Internal features
+kyber-kem = []
+dilithium-sig = []
+
+[dev-dependencies]
+# Testing
+tempfile = "3.8"
+assert_fs = "1.1"
+predicates = "3.0"
+mockall = "0.12"
+criterion = "0.5"
+
+# Benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[lib]
+name = "polymera_crypto"
+path = "src/lib.rs"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[[bin]]
+name = "crypto-bench"
+path = "src/bin/bench.rs"
+required-features = ["full"]
+
+[[bin]]
+name = "crypto-test"
+path = "src/bin/test.rs"
+required-features = ["full"]
+
+[profile.dev]
+opt-level = 0
+debug = true
+overflow-checks = true
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+overflow-checks = false
+
+[profile.test]
+opt-level = 1
+debug = true
+overflow-checks = true
+
+[profile.bench]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+overflow-checks = false
+
+[workspace]
+members = ["."]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[package.metadata.cargo-udeps.ignore]
+normal = ["libc"]
+
+[package.metadata.cargo-udeps.ignore-bin]
+crypto-bench = ["criterion"]
+crypto-test = ["tempfile", "assert_fs", "predicates", "mockall"]

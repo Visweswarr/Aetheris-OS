@@ -1,0 +1,9 @@
+{
+  "operation": "increment",
+  "value": 42,
+  "metadata": {
+    "user_id": "user123",
+    "timestamp": "2024-01-15T10:00:00Z",
+    "session_id": "session_abc"
+  }
+}

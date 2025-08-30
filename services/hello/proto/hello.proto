@@ -1,0 +1,145 @@
+syntax = "proto3";
+
+package hello.v1;
+
+option go_package = "github.com/polymera-os/polymera-os/services/hello/proto;hello";
+option java_multiple_files = true;
+option java_package = "com.polymera.os.hello.v1";
+option java_outer_classname = "HelloProto";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// Hello Service provides basic gRPC functionality with health checks and metrics
+service HelloService {
+  // SayHello returns a personalized greeting
+  rpc SayHello(SayHelloRequest) returns (SayHelloResponse);
+  
+  // SayHelloStream streams personalized greetings
+  rpc SayHelloStream(SayHelloStreamRequest) returns (stream SayHelloResponse);
+  
+  // Health check endpoint
+  rpc HealthCheck(google.protobuf.Empty) returns (HealthCheckResponse);
+  
+  // Get metrics endpoint
+  rpc GetMetrics(google.protobuf.Empty) returns (MetricsResponse);
+  
+  // Echo service for testing
+  rpc Echo(EchoRequest) returns (EchoResponse);
+}
+
+// SayHelloRequest contains the request for a greeting
+message SayHelloRequest {
+  string name = 1;
+  string language = 2;
+  map<string, string> metadata = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+// SayHelloResponse contains the greeting response
+message SayHelloResponse {
+  string message = 1;
+  string language = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  ResponseMetadata metadata = 4;
+}
+
+// SayHelloStreamRequest contains the request for streaming greetings
+message SayHelloStreamRequest {
+  string name = 1;
+  string language = 2;
+  int32 count = 3;
+  int32 interval_ms = 4;
+}
+
+// EchoRequest contains the echo request
+message EchoRequest {
+  string message = 1;
+  bool uppercase = 2;
+  int32 repeat_count = 3;
+  map<string, string> headers = 4;
+}
+
+// EchoResponse contains the echo response
+message EchoResponse {
+  string message = 1;
+  int32 length = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  ResponseMetadata metadata = 4;
+}
+
+// HealthCheckResponse contains the health check status
+message HealthCheckResponse {
+  enum Status {
+    UNKNOWN = 0;
+    SERVING = 1;
+    NOT_SERVING = 2;
+    SERVICE_UNKNOWN = 3;
+  }
+  
+  Status status = 1;
+  string message = 2;
+  map<string, string> details = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  ServiceInfo service_info = 5;
+}
+
+// MetricsResponse contains service metrics
+message MetricsResponse {
+  repeated Metric metrics = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string service_name = 3;
+  string version = 4;
+}
+
+// Metric represents a single metric
+message Metric {
+  string name = 1;
+  string description = 2;
+  string unit = 3;
+  MetricType type = 4;
+  oneof value {
+    double gauge_value = 5;
+    double counter_value = 6;
+    HistogramData histogram_value = 7;
+  }
+  map<string, string> labels = 8;
+  google.protobuf.Timestamp timestamp = 9;
+}
+
+// MetricType represents the type of metric
+enum MetricType {
+  UNSPECIFIED = 0;
+  GAUGE = 1;
+  COUNTER = 2;
+  HISTOGRAM = 3;
+}
+
+// HistogramData represents histogram metric data
+message HistogramData {
+  repeated double buckets = 1;
+  repeated int64 counts = 2;
+  double sum = 3;
+  int64 count = 4;
+  double min = 5;
+  double max = 6;
+}
+
+// ResponseMetadata contains metadata about the response
+message ResponseMetadata {
+  string request_id = 1;
+  string trace_id = 2;
+  string span_id = 3;
+  map<string, string> headers = 4;
+  google.protobuf.Timestamp timestamp = 5;
+}
+
+// ServiceInfo contains information about the service
+message ServiceInfo {
+  string name = 1;
+  string version = 2;
+  string build_date = 3;
+  string git_commit = 4;
+  string uptime = 5;
+  map<string, string> environment = 6;
+}

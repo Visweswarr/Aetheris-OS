@@ -1,0 +1,341 @@
+// Generated from abi/intent.yaml - DO NOT EDIT
+// Intent Bus ABI v{{ schema.version }} wire format
+
+use core::mem::size_of;
+use core::ptr::copy_nonoverlapping;
+
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IntentHeaderV1 {
+    pub version: u16,
+    pub lane: u8,
+    pub reserved: u8,
+    pub intent_id: u128,
+    pub parent_id: u128,
+    pub scope_flags: u64,
+    pub ttl_ms: u32,
+    pub text_len: u32,
+    pub plan_len: u32,
+    pub preview_len: u16,
+    pub whylog_len: u16,
+    pub hash: [u8; 32],
+    pub purpose_hash: [u8; 32],
+}
+
+impl IntentHeaderV1 {
+    pub const SIZE: usize = size_of::<Self>();
+    
+    pub fn is_valid(&self) -> bool {
+        self.version == 1 &&
+        self.lane <= 2 &&
+        self.text_len <= {{ schema.limits.text_max }} &&
+        self.plan_len <= {{ schema.limits.plan_max }} &&
+        self.preview_len <= {{ schema.limits.preview_max }} &&
+        self.whylog_len <= {{ schema.limits.whylog_max }} &&
+        self.ttl_ms > 0
+    }
+    
+    pub fn total_payload_size(&self) -> usize {
+        self.text_len as usize + 
+        self.plan_len as usize + 
+        self.preview_len as usize + 
+        self.whylog_len as usize
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IntentStatusV1 {
+    pub intent_id: u128,
+    pub state: u8,
+    pub progress: u8,
+    pub last_update: u64,
+    pub error: u32,
+}
+
+impl IntentStatusV1 {
+    pub const SIZE: usize = size_of::<Self>();
+}
+
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IntentEvent {
+    pub intent_id: u128,
+    pub event_type: u8,
+    pub timestamp: u64,
+    pub data_len: u16,
+    pub data: [u8; 0], // Flexible array member
+}
+
+impl IntentEvent {
+    pub const BASE_SIZE: usize = size_of::<Self>();
+    
+    pub fn total_size(&self) -> usize {
+        Self::BASE_SIZE + self.data_len as usize
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IntentPollFilter {
+    pub lane_mask: u8,
+    pub since_ts: u64,
+    pub max_items: u16,
+    pub state_mask: u8,
+}
+
+impl IntentPollFilter {
+    pub const SIZE: usize = size_of::<Self>();
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntentLane {
+    RT = 0,
+    HIGH = 1,
+    BEST = 2,
+}
+
+impl IntentLane {
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(IntentLane::RT),
+            1 => Some(IntentLane::HIGH),
+            2 => Some(IntentLane::BEST),
+            _ => None,
+        }
+    }
+    
+    pub fn queue_capacity(&self) -> usize {
+        match self {
+            IntentLane::RT => {{ schema.limits.queue_rt_max }},
+            IntentLane::HIGH => {{ schema.limits.queue_high_max }},
+            IntentLane::BEST => {{ schema.limits.queue_best_max }},
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntentState {
+    Submitted = 0,
+    Queued = 1,
+    Running = 2,
+    Completed = 3,
+    Denied = 4,
+    Cancelled = 5,
+    Failed = 6,
+}
+
+impl IntentState {
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(IntentState::Submitted),
+            1 => Some(IntentState::Queued),
+            2 => Some(IntentState::Running),
+            3 => Some(IntentState::Completed),
+            4 => Some(IntentState::Denied),
+            5 => Some(IntentState::Cancelled),
+            6 => Some(IntentState::Failed),
+            _ => None,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntentEventType {
+    Accepted = 0,
+    Running = 1,
+    ToolCall = 2,
+    Completed = 3,
+    Denied = 4,
+    Cancelled = 5,
+    Failed = 6,
+}
+
+impl IntentEventType {
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(IntentEventType::Accepted),
+            1 => Some(IntentEventType::Running),
+            2 => Some(IntentEventType::ToolCall),
+            3 => Some(IntentEventType::Completed),
+            4 => Some(IntentEventType::Denied),
+            5 => Some(IntentEventType::Cancelled),
+            6 => Some(IntentEventType::Failed),
+            _ => None,
+        }
+    }
+}
+
+// Serialization helpers
+pub trait Serialize {
+    fn serialize(&self, buf: &mut [u8]) -> Result<usize, &'static str>;
+}
+
+pub trait Deserialize: Sized {
+    fn deserialize(buf: &[u8]) -> Result<Self, &'static str>;
+}
+
+impl Serialize for IntentHeaderV1 {
+    fn serialize(&self, buf: &mut [u8]) -> Result<usize, &'static str> {
+        if buf.len() < Self::SIZE {
+            return Err("Buffer too small for IntentHeaderV1");
+        }
+        
+        unsafe {
+            copy_nonoverlapping(
+                self as *const _ as *const u8,
+                buf.as_mut_ptr(),
+                Self::SIZE
+            );
+        }
+        
+        Ok(Self::SIZE)
+    }
+}
+
+impl Deserialize for IntentHeaderV1 {
+    fn deserialize(buf: &[u8]) -> Result<Self, &'static str> {
+        if buf.len() < Self::SIZE {
+            return Err("Buffer too small for IntentHeaderV1");
+        }
+        
+        let mut header = core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            copy_nonoverlapping(
+                buf.as_ptr(),
+                header.as_mut_ptr() as *mut u8,
+                Self::SIZE
+            );
+            Ok(header.assume_init())
+        }
+    }
+}
+
+impl Serialize for IntentStatusV1 {
+    fn serialize(&self, buf: &mut [u8]) -> Result<usize, &'static str> {
+        if buf.len() < Self::SIZE {
+            return Err("Buffer too small for IntentStatusV1");
+        }
+        
+        unsafe {
+            copy_nonoverlapping(
+                self as *const _ as *const u8,
+                buf.as_mut_ptr(),
+                Self::SIZE
+            );
+        }
+        
+        Ok(Self::SIZE)
+    }
+}
+
+impl Deserialize for IntentStatusV1 {
+    fn deserialize(buf: &[u8]) -> Result<Self, &'static str> {
+        if buf.len() < Self::SIZE {
+            return Err("Buffer too small for IntentStatusV1");
+        }
+        
+        let mut status = core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            copy_nonoverlapping(
+                buf.as_ptr(),
+                status.as_mut_ptr() as *mut u8,
+                Self::SIZE
+            );
+            Ok(status.assume_init())
+        }
+    }
+}
+
+// Constants
+pub const INTENT_HEADER_SIZE: usize = IntentHeaderV1::SIZE;
+pub const INTENT_STATUS_SIZE: usize = IntentStatusV1::SIZE;
+pub const INTENT_EVENT_BASE_SIZE: usize = IntentEvent::BASE_SIZE;
+
+// Limits
+pub const INTENT_TEXT_MAX: usize = {{ schema.limits.text_max }};
+pub const INTENT_PLAN_MAX: usize = {{ schema.limits.plan_max }};
+pub const INTENT_PREVIEW_MAX: usize = {{ schema.limits.preview_max }};
+pub const INTENT_WHYLOG_MAX: usize = {{ schema.limits.whylog_max }};
+
+pub const INTENT_QUEUE_RT_MAX: usize = {{ schema.limits.queue_rt_max }};
+pub const INTENT_QUEUE_HIGH_MAX: usize = {{ schema.limits.queue_high_max }};
+pub const INTENT_QUEUE_BEST_MAX: usize = {{ schema.limits.queue_best_max }};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_intent_header_size() {
+        assert_eq!(IntentHeaderV1::SIZE, 88);
+        assert_eq!(IntentStatusV1::SIZE, 32);
+        assert_eq!(IntentEvent::BASE_SIZE, 32);
+    }
+    
+    #[test]
+    fn test_intent_lane_queue_capacity() {
+        assert_eq!(IntentLane::RT.queue_capacity(), {{ schema.limits.queue_rt_max }});
+        assert_eq!(IntentLane::HIGH.queue_capacity(), {{ schema.limits.queue_high_max }});
+        assert_eq!(IntentLane::BEST.queue_capacity(), {{ schema.limits.queue_best_max }});
+    }
+    
+    #[test]
+    fn test_intent_header_validation() {
+        let mut header = IntentHeaderV1 {
+            version: 1,
+            lane: 0,
+            reserved: 0,
+            intent_id: 1,
+            parent_id: 0,
+            scope_flags: 0,
+            ttl_ms: 1000,
+            text_len: 100,
+            plan_len: 0,
+            preview_len: 0,
+            whylog_len: 0,
+            hash: [0; 32],
+            purpose_hash: [0; 32],
+        };
+        
+        assert!(header.is_valid());
+        
+        header.version = 2;
+        assert!(!header.is_valid());
+        
+        header.version = 1;
+        header.ttl_ms = 0;
+        assert!(!header.is_valid());
+    }
+    
+    #[test]
+    fn test_serialization() {
+        let header = IntentHeaderV1 {
+            version: 1,
+            lane: 1,
+            reserved: 0,
+            intent_id: 12345,
+            parent_id: 0,
+            scope_flags: 0x42,
+            ttl_ms: 5000,
+            text_len: 100,
+            plan_len: 50,
+            preview_len: 25,
+            whylog_len: 10,
+            hash: [1; 32],
+            purpose_hash: [2; 32],
+        };
+        
+        let mut buf = [0u8; IntentHeaderV1::SIZE];
+        let written = header.serialize(&mut buf).unwrap();
+        assert_eq!(written, IntentHeaderV1::SIZE);
+        
+        let deserialized = IntentHeaderV1::deserialize(&buf).unwrap();
+        assert_eq!(header.version, deserialized.version);
+        assert_eq!(header.intent_id, deserialized.intent_id);
+        assert_eq!(header.scope_flags, deserialized.scope_flags);
+    }
+}

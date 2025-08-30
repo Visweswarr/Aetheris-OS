@@ -1,0 +1,25 @@
+[package]
+name = "determinism-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+clap = "2.33"
+chrono = { version = "0.4", features = ["serde"] }
+tempfile = "3.0"
+
+[profile.release]
+overflow-checks = true
+debug = true
+
+[profile.dev]
+overflow-checks = true
+debug = true
+
+[[bin]]
+name = "determinism-runner"
+path = "main.rs"

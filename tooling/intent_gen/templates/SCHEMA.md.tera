@@ -1,0 +1,255 @@
+# Intent Kernel v0 Schema Documentation
+
+**Generated from:** `intent/schema/intent.yaml`  
+**Schema Hash:** `{{ schema.schema_hash }}`  
+**Version:** `{{ schema.version }}`
+
+## Overview
+
+This document describes the canonical CBOR schema for Intent Kernel v0. All structures use field tags for stable serialization and are designed for deterministic behavior.
+
+## Schema Constants
+
+### Size Limits
+- **Intent Max Size:** {{ schema.limits.intent_max_size }} bytes
+- **Plan Preview Max Size:** {{ schema.limits.plan_preview_max_size }} bytes
+- **Why Record Max Size:** {{ schema.limits.why_record_max_size }} bytes
+- **Metadata Max Entries:** {{ schema.limits.metadata_max_entries }}
+- **Constraints Max Count:** {{ schema.limits.constraints_max_count }}
+- **Actions Max Count:** {{ schema.limits.actions_max_count }}
+
+### Intent Types
+{% for name, value in schema.intent_types %}
+- **{{ name }}:** {{ value }}
+{% endfor %}
+
+### Action Kinds
+{% for name, value in schema.action_kinds %}
+- **{{ name }}:** {{ value }}
+{% endfor %}
+
+### Constraint Types
+{% for name, value in schema.constraint_types %}
+- **{{ name }}:** {{ value }}
+{% endfor %}
+
+### Priority Levels
+{% for name, value in schema.priorities %}
+- **{{ name }}:** {{ value }}
+{% endfor %}
+
+### Intent States
+{% for name, value in schema.intent_states %}
+- **{{ name }}:** {{ value }}
+{% endfor %}
+
+## Data Structures
+
+### IntentV1
+
+The core intent structure representing a high-level task request.
+
+**Field Tags:**
+{% for name, value in schema.field_tags.intent %}
+- **{{ name }}:** {{ value }}
+{% endfor %}
+
+**Fields:**
+- `version`: Schema version (must be {{ schema.version }})
+- `id`: Unique 128-bit identifier
+- `description`: Human-readable description
+- `intent_type`: Numeric intent type from constants
+- `priority`: Priority level (0-4)
+- `constraints`: Array of constraint objects
+- `metadata`: Key-value metadata pairs
+- `requested_caps`: Array of capability IDs
+- `deadline_ms`: Deadline in milliseconds
+- `did`: Optional DID identifier
+- `nonce`: Optional nonce for uniqueness
+
+**Validation Rules:**
+- ID must be in range: {{ schema.validation.intent_id_range }}
+- Priority must be in range: {{ schema.validation.priority_range }}
+- Deadline must be between {{ schema.validation.deadline_min_ms }}ms and {{ schema.validation.deadline_max_ms }}ms
+- Total cost must not exceed {{ schema.validation.cost_max }}
+- Total time must not exceed {{ schema.validation.time_max_ms }}ms
+
+### ConstraintV1
+
+Represents a constraint that must be satisfied for the intent.
+
+**Field Tags:**
+{% for name, value in schema.field_tags.constraint %}
+- **{{ name }}:** {{ value }}
+{% endfor %}
+
+**Fields:**
+- `kind`: Constraint type from constants
+- `value_type`: Type of value (3=bytes, 4=scalar, 5=string)
+- `value_bytes`: Byte array value (when value_type=3)
+- `value_scalar`: Numeric value (when value_type=4)
+- `value_string`: String value (when value_type=5)
+
+### ActionV1
+
+Represents a concrete action to be executed.
+
+**Field Tags:**
+{% for name, value in schema.field_tags.action %}
+- **{{ name }}:** {{ value }}
+{% endfor %}
+
+**Fields:**
+- `kind`: Action type from constants
+- `params`: Key-value parameter pairs
+- `cost_estimate`: Estimated resource cost
+- `time_estimate`: Estimated execution time in milliseconds
+
+### PlanV1
+
+Represents a sequence of actions to fulfill an intent.
+
+**Field Tags:**
+{% for name, value in schema.field_tags.plan %}
+- **{{ name }}:** {{ value }}
+{% endfor %}
+
+**Fields:**
+- `intent_id`: Reference to the original intent
+- `actions`: Array of action objects
+- `total_cost`: Sum of all action costs
+- `total_time`: Sum of all action times
+- `constraints_applied`: Constraints that were applied during planning
+
+### PlanPreviewV1
+
+Represents a preview of a plan with risk assessment.
+
+**Field Tags:**
+{% for name, value in schema.field_tags.plan_preview %}
+- **{{ name }}:** {{ value }}
+{% endfor %}
+
+**Fields:**
+- `plan`: The underlying plan
+- `risks`: Array of identified risks
+- `notes`: Array of planning notes
+- `confidence`: Confidence level (0-100)
+
+### WhyRecordV1
+
+Represents an entry in the append-only why-log chain.
+
+**Field Tags:**
+{% for name, value in schema.field_tags.why_record %}
+- **{{ name }}:** {{ value }}
+{% endfor %}
+
+**Fields:**
+- `seq`: Sequential number
+- `ts`: Timestamp
+- `actor`: Entity that performed the action
+- `event`: Description of the event
+- `data_hash`: Hash of the associated data
+- `prev_hash`: Hash of the previous record
+- `signature`: Cryptographic signature
+- `justification`: Human-readable justification
+
+## CBOR Encoding
+
+### Field Tagging
+All fields use explicit tags for stable serialization across schema versions. This ensures that:
+- Field reordering doesn't break compatibility
+- New fields can be added without breaking existing code
+- Field names can change without affecting wire format
+
+### Encoding Rules
+- **Field Ordering:** Tagged (stable)
+- **String Encoding:** UTF-8
+- **Integer Encoding:** Little-endian
+- **Float Encoding:** IEEE754
+- **Array Encoding:** Canonical
+- **Map Encoding:** Sorted keys
+
+### Example CBOR Structure
+```
+{
+  1: 1,                    # version
+  2: 123456789,            # id
+  3: "Backup database",    # description
+  4: 1,                    # intent_type (BACKUP)
+  5: 2,                    # priority (NORMAL)
+  6: [...],                # constraints array
+  7: {...},                # metadata map
+  8: [...],                # requested_caps array
+  9: 86400000,            # deadline_ms (24 hours)
+  10: "did:example:123",   # did
+  11: "nonce123"           # nonce
+}
+```
+
+## Usage Guidelines
+
+### Creating Intents
+1. Always set the correct schema version
+2. Use predefined constants for types and priorities
+3. Validate all constraints before submission
+4. Ensure metadata doesn't exceed limits
+
+### Handling Constraints
+1. Check constraint compatibility before planning
+2. Apply constraints in priority order
+3. Validate constraint values against limits
+4. Log constraint application in why-log
+
+### Why-Log Management
+1. Never delete or modify existing records
+2. Always verify chain integrity before reading
+3. Use cryptographic signatures for verification
+4. Maintain append-only semantics
+
+## Migration and Compatibility
+
+### Schema Versioning
+- Version 1: Initial schema (current)
+- Future versions will maintain backward compatibility
+- New fields will be optional with sensible defaults
+- Deprecated fields will be marked but not removed
+
+### CBOR Compatibility
+- All CBOR implementations should support this schema
+- Field tags ensure stable parsing
+- Unknown fields should be ignored
+- Validation should be strict for known fields
+
+## Security Considerations
+
+### Cryptographic Integrity
+- Why-log entries are cryptographically chained
+- Signatures prevent tampering
+- Hash verification ensures chain integrity
+- Append-only nature prevents deletion
+
+### Capability Enforcement
+- All intents require appropriate capabilities
+- Constraints are enforced during planning
+- Resource limits are strictly enforced
+- Audit logging captures all operations
+
+## Testing and Validation
+
+### Schema Validation
+- All structures must pass size validation
+- Field constraints must be enforced
+- CBOR round-trip must succeed
+- Hash consistency must be maintained
+
+### Deterministic Behavior
+- Identical input must produce identical output
+- No external dependencies allowed
+- Virtual clock used for timestamps
+- All operations must be reproducible
+
+---
+
+*This document is automatically generated. Do not edit manually.*

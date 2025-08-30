@@ -1,0 +1,38 @@
+[package]
+name = "polymera-kernel-fuzz"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+polymera-os-kernel = { path = ".." }
+
+[[bin]]
+name = "fuzz_inbox"
+path = "fuzz_inbox.rs"
+
+[[bin]]
+name = "fuzz_caps"
+path = "fuzz_caps.rs"
+
+[[bin]]
+name = "fuzz_vm"
+path = "fuzz_vm.rs"
+
+[profile.release]
+debug = true
+overflow-checks = true
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+debug = true
+overflow-checks = true
+panic = "abort"
+
+

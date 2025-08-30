@@ -1,0 +1,63 @@
+[
+  {
+    "timestamp": "2024-01-15T10:00:00Z",
+    "commit": "sample-commit-sha-1",
+    "metrics": {
+      "latency_p50": 150,
+      "latency_p95": 250,
+      "latency_p99": 350,
+      "throughput": 1000,
+      "memory_usage": 512,
+      "cpu_usage": 25
+    },
+    "status": "pass",
+    "config": {
+      "apic": true,
+      "hpet": true,
+      "jitter": true,
+      "auth": true,
+      "cap_policy": "open"
+    }
+  },
+  {
+    "timestamp": "2024-01-16T10:00:00Z",
+    "commit": "sample-commit-sha-2",
+    "metrics": {
+      "latency_p50": 155,
+      "latency_p95": 255,
+      "latency_p99": 355,
+      "throughput": 995,
+      "memory_usage": 515,
+      "cpu_usage": 26
+    },
+    "status": "pass",
+    "config": {
+      "apic": true,
+      "hpet": true,
+      "jitter": true,
+      "auth": true,
+      "cap_policy": "open"
+    }
+  },
+  {
+    "timestamp": "2024-01-17T10:00:00Z",
+    "commit": "sample-commit-sha-3",
+    "metrics": {
+      "latency_p50": 148,
+      "latency_p95": 248,
+      "latency_p99": 348,
+      "throughput": 1005,
+      "memory_usage": 510,
+      "cpu_usage": 24
+    },
+    "status": "pass",
+    "config": {
+      "apic": true,
+      "hpet": true,
+      "jitter": true,
+      "auth": true,
+      "cap_policy": "open"
+    }
+  }
+]
+

@@ -1,0 +1,155 @@
+name: 📚 Documentation Issue
+description: Report documentation problems or request documentation improvements
+title: "[DOCS] "
+labels: ["documentation", "needs-triage"]
+assignees: ["@docs-team"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Polymera OS documentation!
+
+        **Before submitting, please:**
+        1. Check if this documentation issue has already been reported
+        2. Ensure you're looking at the latest documentation
+        3. Consider if this is a documentation issue or a feature request
+
+  - type: dropdown
+    id: doc_type
+    attributes:
+      label: Documentation Type
+      description: What type of documentation is affected?
+      options:
+        - "User Guide - End-user documentation"
+        - "Developer Guide - Contributor documentation"
+        - "API Documentation - Code API documentation"
+        - "Architecture Documentation - System design docs"
+        - "Installation Guide - Setup and installation"
+        - "Troubleshooting Guide - Problem-solving docs"
+        - "Other - Other documentation types"
+    validations:
+      required: true
+
+  - type: input
+    id: doc_location
+    attributes:
+      label: Documentation Location
+      description: Where is this documentation located?
+      placeholder: "e.g., README.md, docs/install.md, CONTRIBUTING.md, specific URL"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Issue Type
+      description: What type of documentation issue is this?
+      options:
+        - "Missing - Documentation is missing"
+        - "Outdated - Documentation is outdated or incorrect"
+        - "Unclear - Documentation is unclear or confusing"
+        - "Incomplete - Documentation is incomplete"
+        - "Wrong - Documentation contains errors"
+        - "Improvement - Documentation could be improved"
+        - "Translation - Need translation to another language"
+        - "Other - Other documentation issues"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Issue Description
+      description: A clear and concise description of the documentation issue
+      placeholder: "Describe the documentation issue in detail..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_content
+    attributes:
+      label: Current Documentation
+      description: What does the current documentation say? (if applicable)
+      placeholder: |
+        If the documentation exists but is problematic, include the current content:
+        ```
+        [Paste current documentation content here]
+        ```
+
+  - type: textarea
+    id: expected_content
+    attributes:
+      label: Expected Documentation
+      description: What should the documentation say or include?
+      placeholder: "Describe what the documentation should say or include..."
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: How does this documentation issue affect users or contributors?
+      placeholder: |
+        Describe the impact:
+        - **For Users**: [how does this affect end users?]
+        - **For Contributors**: [how does this affect contributors?]
+        - **For Maintainers**: [how does this affect maintainers?]
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Provide additional context about when this issue occurs
+      placeholder: |
+        - **When**: [when does this issue occur?]
+        - **Where**: [where in the documentation?]
+        - **Who**: [who is affected?]
+        - **Why**: [why is this important?]
+
+  - type: textarea
+    id: suggestions
+    attributes:
+      label: Suggestions
+      description: Do you have suggestions for how to fix this?
+      placeholder: |
+        If you have suggestions for improvements:
+        - [Suggestion 1]
+        - [Suggestion 2]
+        - [Suggestion 3]
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Examples
+      description: Provide examples of good documentation (if applicable)
+      placeholder: |
+        If you have examples of good documentation:
+        - [Example 1]
+        - [Example 2]
+        - [Example 3]
+
+  - type: textarea
+    id: related
+    attributes:
+      label: Related Issues
+      label: Related Issues or Documentation
+      description: Are there related issues or documentation that might be affected?
+      placeholder: |
+        - Related GitHub issues: [link to issues]
+        - Related documentation: [link to docs]
+        - Related code: [link to code]
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, or information about the documentation issue
+      placeholder: "Add any other context about the documentation issue here..."
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our Code of Conduct
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true

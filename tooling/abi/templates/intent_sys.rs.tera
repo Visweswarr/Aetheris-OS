@@ -1,0 +1,198 @@
+// Generated from abi/intent.yaml - DO NOT EDIT
+// Intent Bus ABI v{{ schema.version }} syscall implementations
+
+use crate::intent::{IntentManager, IntentError};
+use crate::intent::wire::{
+    IntentHeaderV1, IntentStatusV1, IntentEvent, IntentPollFilter,
+    IntentLane, IntentState, IntentEventType
+};
+use crate::syscall::{SyscallContext, SyscallResult};
+use crate::user::{copy_from_user, copy_to_user, UserPtr};
+use crate::secman::audit::{audit_log, AuditCode};
+
+pub const SYS_INTENT_SUBMIT: u32 = {{ schema.syscalls[0].id }};
+pub const SYS_INTENT_POLL: u32 = {{ schema.syscalls[1].id }};
+pub const SYS_INTENT_CANCEL: u32 = {{ schema.syscalls[2].id }};
+pub const SYS_INTENT_STATUS: u32 = {{ schema.syscalls[3].id }};
+
+pub fn handle_intent_submit(
+    ctx: &mut SyscallContext,
+    header_ptr: UserPtr<IntentHeaderV1>,
+    text_buf: UserPtr<u8>,
+    plan_buf: UserPtr<u8>,
+    preview_buf: UserPtr<u8>,
+    whylog_buf: UserPtr<u8>,
+) -> SyscallResult {
+    let mut header = IntentHeaderV1::default();
+    
+    if let Err(e) = copy_from_user(header_ptr, &mut header) {
+        return Err(e);
+    }
+    
+    if !header.is_valid() {
+        audit_log(AuditCode::INTENT_SCHEMA, ctx.pid, "Invalid intent header");
+        return Err(libc::EINVAL);
+    }
+    
+    let total_payload = header.total_payload_size();
+    if total_payload > {{ schema.limits.text_max + schema.limits.plan_max + schema.limits.preview_max + schema.limits.whylog_max }} {
+        audit_log(AuditCode::INTENT_OVERSIZE, ctx.pid, "Intent payload too large");
+        return Err(libc::E2BIG);
+    }
+    
+    let mut text_data = Vec::new();
+    let mut plan_data = Vec::new();
+    let mut preview_data = Vec::new();
+    let mut whylog_data = Vec::new();
+    
+    if header.text_len > 0 {
+        text_data.resize(header.text_len as usize, 0);
+        if let Err(e) = copy_from_user(text_buf, &mut text_data) {
+            return Err(e);
+        }
+    }
+    
+    if header.plan_len > 0 {
+        plan_data.resize(header.plan_len as usize, 0);
+        if let Err(e) = copy_from_user(plan_buf, &mut plan_data) {
+            return Err(e);
+        }
+    }
+    
+    if header.preview_len > 0 {
+        preview_data.resize(header.preview_len as usize, 0);
+        if let Err(e) = copy_from_user(preview_buf, &mut preview_data) {
+            return Err(e);
+        }
+    }
+    
+    if header.whylog_len > 0 {
+        whylog_data.resize(header.whylog_len as usize, 0);
+        if let Err(e) = copy_from_user(whylog_buf, &mut whylog_data) {
+            return Err(e);
+        }
+    }
+    
+    match IntentManager::submit_intent(ctx.pid, header, text_data, plan_data, preview_data, whylog_data) {
+        Ok(()) => {
+            audit_log(AuditCode::INTENT_ACCEPT, ctx.pid, "Intent accepted");
+            Ok(0)
+        }
+        Err(IntentError::PolicyDenied(reason)) => {
+            audit_log(AuditCode::INTENT_DENY, ctx.pid, &reason);
+            Err(libc::EPERM)
+        }
+        Err(IntentError::QueueFull) => {
+            audit_log(AuditCode::INTENT_QUEUE_FULL, ctx.pid, "Intent queue full");
+            Err(libc::EAGAIN)
+        }
+        Err(IntentError::InvalidInput) => {
+            audit_log(AuditCode::INTENT_SCHEMA, ctx.pid, "Invalid intent input");
+            Err(libc::EINVAL)
+        }
+        Err(_) => {
+            audit_log(AuditCode::INTENT_POLICY_ERROR, ctx.pid, "Policy evaluation error");
+            Err(libc::EINVAL)
+        }
+    }
+}
+
+pub fn handle_intent_poll(
+    ctx: &mut SyscallContext,
+    filter_ptr: UserPtr<IntentPollFilter>,
+    events_buf: UserPtr<IntentEvent>,
+    events_len: usize,
+) -> SyscallResult {
+    let mut filter = IntentPollFilter::default();
+    
+    if let Err(e) = copy_from_user(filter_ptr, &mut filter) {
+        return Err(e);
+    }
+    
+    if events_len < IntentEvent::BASE_SIZE {
+        return Err(libc::EINVAL);
+    }
+    
+    let max_events = (events_len / IntentEvent::BASE_SIZE).min(filter.max_items as usize);
+    let events = IntentManager::poll_events(ctx.pid, &filter, max_events);
+    
+    let mut written = 0;
+    for (i, event) in events.iter().enumerate() {
+        if written + event.total_size() > events_len {
+            break;
+        }
+        
+        let event_ptr = events_buf.offset(i as isize);
+        if let Err(e) = copy_to_user(event_ptr, event) {
+            return Err(e);
+        }
+        
+        written += event.total_size();
+    }
+    
+    Ok(written as i32)
+}
+
+pub fn handle_intent_cancel(
+    ctx: &mut SyscallContext,
+    intent_id: u128,
+) -> SyscallResult {
+    match IntentManager::cancel_intent(ctx.pid, intent_id) {
+        Ok(()) => {
+            audit_log(AuditCode::INTENT_CANCELLED, ctx.pid, "Intent cancelled");
+            Ok(0)
+        }
+        Err(IntentError::NotFound) => {
+            Err(libc::ESRCH)
+        }
+        Err(IntentError::AlreadyRunning) => {
+            Err(libc::EBUSY)
+        }
+        Err(IntentError::PermissionDenied) => {
+            Err(libc::EPERM)
+        }
+        Err(_) => {
+            Err(libc::EINVAL)
+        }
+    }
+}
+
+pub fn handle_intent_status(
+    ctx: &mut SyscallContext,
+    intent_id: u128,
+    status_buf: UserPtr<IntentStatusV1>,
+) -> SyscallResult {
+    let status = match IntentManager::get_status(ctx.pid, intent_id) {
+        Ok(status) => status,
+        Err(IntentError::NotFound) => {
+            return Err(libc::ESRCH);
+        }
+        Err(IntentError::PermissionDenied) => {
+            return Err(libc::EPERM);
+        }
+        Err(_) => {
+            return Err(libc::EINVAL);
+        }
+    };
+    
+    if let Err(e) = copy_to_user(status_buf, &status) {
+        return Err(e);
+    }
+    
+    Ok(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::user::UserPtr;
+    use crate::syscall::SyscallContext;
+    
+    #[test]
+    fn test_syscall_constants() {
+        assert_eq!(SYS_INTENT_SUBMIT, {{ schema.syscalls[0].id }});
+        assert_eq!(SYS_INTENT_POLL, {{ schema.syscalls[1].id }});
+        assert_eq!(SYS_INTENT_CANCEL, {{ schema.syscalls[2].id }});
+        assert_eq!(SYS_INTENT_STATUS, {{ schema.syscalls[3].id }});
+    }
+}

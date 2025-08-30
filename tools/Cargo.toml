@@ -1,0 +1,17 @@
+[package]
+name = "polymera-tools"
+version = "0.1.0"
+edition = "2021"
+authors = ["Polymera OS Team"]
+description = "Development tools for Polymera OS"
+
+[[bin]]
+name = "rotate-dev-vault-key"
+path = "rotate-dev-vault-key.rs"
+
+[dependencies]
+clap = "2.33"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+

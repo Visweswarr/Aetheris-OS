@@ -1,0 +1,93 @@
+use serde::{Serialize, Deserialize};
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::collections::BTreeMap;
+
+pub const SCHEMA_VERSION: u16 = {{ schema.version }};
+pub const SCHEMA_HASH: &[u8; 32] = &[/* TODO: computed at build time */];
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(C)]
+pub struct EntityId(pub u128);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(C)]
+pub struct PredId(pub u64);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[repr(C)]
+pub enum ValueAtom {
+    #[serde(rename = "u64")]
+    U64(u64),
+    #[serde(rename = "i64")]
+    I64(i64),
+    #[serde(rename = "f64")]
+    F64(f64),
+    #[serde(rename = "bool")]
+    Bool(bool),
+    #[serde(rename = "bytes")]
+    Bytes(Vec<u8>),
+    #[serde(rename = "string")]
+    String(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[repr(C)]
+pub struct FactV1 {
+    #[serde(rename = "s")]
+    pub subject: EntityId,
+    #[serde(rename = "p")]
+    pub predicate: PredId,
+    #[serde(rename = "o")]
+    pub object: ValueAtom,
+    #[serde(rename = "ts")]
+    pub ts_vclock: u64,
+    #[serde(rename = "prov")]
+    pub provenance: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[repr(C)]
+pub struct SnapshotId(pub u64);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[repr(C)]
+pub struct SegmentId(pub u64);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[repr(C)]
+pub struct IndexEntry {
+    pub segment_id: SegmentId,
+    pub offset: u32,
+}
+
+pub const ENTITY_TYPES: &[(u64, &str)] = &[
+{% for (name, id) in schema.entity_types %}
+    ({{ id }}, "{{ name }}"),
+{% endfor %}
+];
+
+pub const PREDICATE_TYPES: &[(u64, &str)] = &[
+{% for (name, id) in schema.predicate_types %}
+    ({{ id }}, "{{ name }}"),
+{% endfor %}
+];
+
+pub const VALUE_TYPES: &[(u64, &str)] = &[
+{% for (name, id) in schema.value_types %}
+    ({{ id }}, "{{ name }}"),
+{% endfor %}
+];
+
+pub const LIMITS: &[(&str, u64)] = &[
+    ("fact_max_size", {{ schema.limits.fact_max_size }}),
+    ("snapshot_max_count", {{ schema.limits.snapshot_max_count }}),
+    ("segment_max_size", {{ schema.limits.segment_max_size }}),
+    ("budget_mib", {{ schema.limits.budget_mib }}),
+    ("query_max_limit", {{ schema.limits.query_max_limit }}),
+    ("query_max_offset", {{ schema.limits.query_max_offset }}),
+];
+
+pub fn schema_hash() -> [u8; 32] {
+    *SCHEMA_HASH
+}

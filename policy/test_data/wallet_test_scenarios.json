@@ -1,0 +1,259 @@
+{
+  "test_scenarios": {
+    "wallet_spend_limits": [
+      {
+        "name": "valid_spend_within_limits",
+        "input": {
+          "operation": "spend",
+          "user_id": "user123",
+          "amount": 1000.0,
+          "currency": "USD",
+          "timestamp": "2024-01-15T14:00:00Z",
+          "session_token": "valid_session_token_12345",
+          "recipient_id": "merchant456",
+          "location": {"latitude": 40.7128, "longitude": -74.0060},
+          "device_id": "device_abc123"
+        },
+        "data": {
+          "users": {
+            "user123": {
+              "tier": "premium",
+              "spending_history": {
+                "average_transaction": {"USD": 500.0}
+              },
+              "activity_patterns": {
+                "typical_hours": [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+              },
+              "recipients": ["merchant456"],
+              "typical_locations": [
+                {"latitude": 40.7128, "longitude": -74.0060}
+              ],
+              "trusted_devices": ["device_abc123"]
+            }
+          },
+          "policy_config": {
+            "tiers": {
+              "premium": {
+                "daily_limits": {"USD": 10000.0},
+                "max_transaction": {"USD": 5000.0},
+                "velocity_limits": {"transactions_per_5min": 10},
+                "max_risk_score": 50
+              }
+            },
+            "fees": {
+              "USD": {"base": 1.0, "percentage": 0.5}
+            }
+          },
+          "balances": {
+            "user123": {"USD": 15000.0}
+          },
+          "transactions": {
+            "user123": {
+              "2024-01-15": {
+                "USD": [
+                  {"amount": 500.0, "timestamp": "2024-01-15T10:00:00Z"}
+                ]
+              }
+            }
+          }
+        },
+        "expected": {
+          "allow": true,
+          "rationale_contains": ["transaction approved", "daily spend"]
+        }
+      },
+      {
+        "name": "deny_daily_limit_exceeded",
+        "input": {
+          "operation": "spend",
+          "user_id": "user123",
+          "amount": 9600.0,
+          "currency": "USD",
+          "timestamp": "2024-01-15T14:00:00Z",
+          "session_token": "valid_session_token_12345",
+          "recipient_id": "merchant456",
+          "location": {"latitude": 40.7128, "longitude": -74.0060},
+          "device_id": "device_abc123"
+        },
+        "data": {
+          "users": {
+            "user123": {
+              "tier": "premium",
+              "spending_history": {
+                "average_transaction": {"USD": 500.0}
+              },
+              "activity_patterns": {
+                "typical_hours": [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+              },
+              "recipients": ["merchant456"],
+              "typical_locations": [
+                {"latitude": 40.7128, "longitude": -74.0060}
+              ],
+              "trusted_devices": ["device_abc123"]
+            }
+          },
+          "policy_config": {
+            "tiers": {
+              "premium": {
+                "daily_limits": {"USD": 10000.0},
+                "max_transaction": {"USD": 5000.0},
+                "velocity_limits": {"transactions_per_5min": 10},
+                "max_risk_score": 50
+              }
+            },
+            "fees": {
+              "USD": {"base": 1.0, "percentage": 0.5}
+            }
+          },
+          "balances": {
+            "user123": {"USD": 15000.0}
+          },
+          "transactions": {
+            "user123": {
+              "2024-01-15": {
+                "USD": [
+                  {"amount": 500.0, "timestamp": "2024-01-15T10:00:00Z"}
+                ]
+              }
+            }
+          }
+        },
+        "expected": {
+          "allow": false,
+          "rationale_contains": ["daily limit exceeded"]
+        }
+      },
+      {
+        "name": "deny_insufficient_balance",
+        "input": {
+          "operation": "spend",
+          "user_id": "user456",
+          "amount": 900.0,
+          "currency": "USD",
+          "timestamp": "2024-01-15T14:00:00Z",
+          "session_token": "valid_session_token_67890",
+          "recipient_id": "merchant456",
+          "location": {"latitude": 34.0522, "longitude": -118.2437},
+          "device_id": "device_def456"
+        },
+        "data": {
+          "users": {
+            "user456": {
+              "tier": "basic",
+              "spending_history": {
+                "average_transaction": {"USD": 50.0}
+              },
+              "activity_patterns": {
+                "typical_hours": [9, 10, 11, 12, 13, 14, 15, 16, 17]
+              },
+              "recipients": [],
+              "typical_locations": [
+                {"latitude": 34.0522, "longitude": -118.2437}
+              ],
+              "trusted_devices": ["device_def456"]
+            }
+          },
+          "policy_config": {
+            "tiers": {
+              "basic": {
+                "daily_limits": {"USD": 1000.0},
+                "max_transaction": {"USD": 500.0},
+                "velocity_limits": {"transactions_per_5min": 3},
+                "max_risk_score": 30
+              }
+            },
+            "fees": {
+              "USD": {"base": 1.0, "percentage": 0.5}
+            }
+          },
+          "balances": {
+            "user456": {"USD": 800.0}
+          },
+          "transactions": {
+            "user456": {
+              "2024-01-15": {"USD": []}
+            }
+          }
+        },
+        "expected": {
+          "allow": false,
+          "rationale_contains": ["insufficient balance"]
+        }
+      },
+      {
+        "name": "deny_blacklisted_user",
+        "input": {
+          "operation": "spend",
+          "user_id": "blacklisted_user",
+          "amount": 100.0,
+          "currency": "USD",
+          "timestamp": "2024-01-15T14:00:00Z",
+          "session_token": "valid_session_token_12345"
+        },
+        "data": {
+          "users": {
+            "blacklisted_user": {
+              "tier": "basic"
+            }
+          },
+          "policy_config": {
+            "tiers": {
+              "basic": {
+                "daily_limits": {"USD": 1000.0},
+                "max_transaction": {"USD": 500.0},
+                "velocity_limits": {"transactions_per_5min": 3},
+                "max_risk_score": 30
+              }
+            }
+          },
+          "balances": {
+            "blacklisted_user": {"USD": 1000.0}
+          },
+          "security": {
+            "blacklisted_users": ["blacklisted_user"]
+          }
+        },
+        "expected": {
+          "allow": false,
+          "rationale_contains": ["blacklisted"]
+        }
+      },
+      {
+        "name": "allow_emergency_override",
+        "input": {
+          "operation": "spend",
+          "user_id": "user123",
+          "amount": 20000.0,
+          "currency": "USD",
+          "timestamp": "2024-01-15T14:00:00Z",
+          "session_token": "valid_session_token_12345",
+          "emergency_token": "emergency_12345",
+          "admin_user_id": "admin123"
+        },
+        "data": {
+          "users": {
+            "user123": {"tier": "premium"}
+          },
+          "policy_config": {
+            "tiers": {
+              "premium": {
+                "daily_limits": {"USD": 10000.0},
+                "max_transaction": {"USD": 5000.0}
+              }
+            }
+          },
+          "balances": {
+            "user123": {"USD": 25000.0}
+          },
+          "admins": {
+            "admin123": {"emergency_access": true}
+          }
+        },
+        "expected": {
+          "allow": true,
+          "rationale_contains": ["emergency override"]
+        }
+      }
+    ]
+  }
+}

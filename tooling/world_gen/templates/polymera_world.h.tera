@@ -1,0 +1,118 @@
+#ifndef POLYMERA_WORLD_H
+#define POLYMERA_WORLD_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define WORLD_SCHEMA_VERSION {{ schema.version }}
+#define WORLD_SCHEMA_HASH_SIZE 32
+
+typedef uint128_t entity_id_t;
+typedef uint64_t pred_id_t;
+typedef uint64_t snapshot_id_t;
+typedef uint64_t segment_id_t;
+
+typedef enum {
+{% for (name, id) in schema.value_types %}
+    VALUE_{{ name }} = {{ id }},
+{% endfor %}
+} value_type_t;
+
+typedef struct {
+    value_type_t type;
+    union {
+        uint64_t u64_val;
+        int64_t i64_val;
+        double f64_val;
+        bool bool_val;
+        struct {
+            uint8_t *data;
+            uint32_t len;
+        } bytes_val;
+        struct {
+            char *data;
+            uint32_t len;
+        } string_val;
+    };
+} value_atom_t;
+
+typedef struct {
+    entity_id_t subject;
+    pred_id_t predicate;
+    value_atom_t object;
+    uint64_t ts_vclock;
+    char provenance[64];
+} fact_v1_t;
+
+typedef struct {
+    segment_id_t segment_id;
+    uint32_t offset;
+} index_entry_t;
+
+typedef struct {
+    entity_id_t subject;
+    pred_id_t predicate;
+    value_atom_t object;
+} pattern_t;
+
+typedef struct {
+    uint64_t ts_min;
+    uint64_t ts_max;
+} range_t;
+
+typedef struct {
+    pattern_t pattern;
+    range_t *ts_range;
+    uint16_t limit;
+    uint32_t offset;
+} query_request_t;
+
+typedef struct {
+    fact_v1_t *rows;
+    uint32_t count;
+    uint32_t next_offset;
+} query_response_t;
+
+typedef struct {
+    uint32_t ok_count;
+    snapshot_id_t snapshot_id;
+} put_response_t;
+
+typedef struct {
+    snapshot_id_t id;
+    bool created;
+    uint32_t bytes_estimate;
+} snapshot_response_t;
+
+typedef struct {
+    uint8_t *cbor_blob;
+    uint32_t len;
+} export_response_t;
+
+#define ENTITY_TYPES \
+{% for (name, id) in schema.entity_types %}
+    ENTITY_{{ name }} = {{ id }}, \
+{% endfor %}
+
+#define PREDICATE_TYPES \
+{% for (name, id) in schema.predicate_types %}
+    PRED_{{ name }} = {{ id }}, \
+{% endfor %}
+
+#define WORLD_LIMITS \
+    FACT_MAX_SIZE = {{ schema.limits.fact_max_size }}, \
+    SNAPSHOT_MAX_COUNT = {{ schema.limits.snapshot_max_count }}, \
+    SEGMENT_MAX_SIZE = {{ schema.limits.segment_max_size }}, \
+    BUDGET_MIB = {{ schema.limits.budget_mib }}, \
+    QUERY_MAX_LIMIT = {{ schema.limits.query_max_limit }}, \
+    QUERY_MAX_OFFSET = {{ schema.limits.query_max_offset }}
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

@@ -1,0 +1,29 @@
+{
+  "id": "base64_encoding",
+  "name": "Base64 Encoding Determinism Test",
+  "command": "cargo",
+  "args": [
+    "run",
+    "--bin",
+    "base64_test",
+    "--",
+    "encode",
+    "--input",
+    "test_data/binary_data.bin",
+    "--output",
+    "test_output/encoded_data.txt",
+    "--format",
+    "standard"
+  ],
+  "working_dir": "../../",
+  "env": {
+    "RUST_LOG": "warn",
+    "DETERMINISM_MODE": "true",
+    "BASE64_SEED": "33333"
+  },
+  "input": null,
+  "expected_exit_code": 0,
+  "timeout": 20,
+  "seed": 33333
+}
+
