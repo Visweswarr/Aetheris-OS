@@ -1,0 +1,19 @@
+{
+  "name": "aetheris-os",
+  "version": "0.4.0-phase4-ready",
+  "description": "Third party licenses for Go dependencies",
+  "generated": "2025-01-07T17:44:00.000Z",
+  "dependencies": {
+    "github.com/spf13/cobra": {
+      "version": "v1.8.0",
+      "license": "Apache-2.0",
+      "copyright": "Copyright (c) 2013-2023 The Cobra Authors"
+    },
+    "github.com/spf13/viper": {
+      "version": "v1.18.2",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2014 Steve Francia"
+    }
+  },
+  "note": "This is a placeholder. Run 'go list -m -json all' to generate the complete list."
+}

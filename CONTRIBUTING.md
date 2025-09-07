@@ -1,380 +1,192 @@
-# Contributing to Polymera OS
+# Contributing to Aetheris OS
 
-Thank you for your interest in contributing to Polymera OS! This document provides comprehensive guidelines for contributing to our next-generation quantum-ready operating system.
+Thank you for your interest in contributing to Aetheris OS! This document provides guidelines and information for contributors.
 
-## 🚀 Quick Start
+## Quick Start
 
-1. **Fork** the repository
-2. **Clone** your fork locally
-3. **Create** a feature branch from `develop`
-4. **Make** your changes following our standards
-5. **Test** your changes thoroughly
-6. **Commit** using conventional commit format
-7. **Push** and create a pull request
-8. **Wait** for review and address feedback
+1. **Fork the repository** on GitHub
+2. **Clone your fork** locally
+3. **Create a feature branch** from `main`
+4. **Make your changes** following our coding standards
+5. **Test your changes** thoroughly
+6. **Submit a pull request** with a clear description
 
-## 📋 Table of Contents
-
-- [Code of Conduct](#code-of-conduct)
-- [Project Overview](#project-overview)
-- [Development Setup](#development-setup)
-- [Contribution Workflow](#contribution-workflow)
-- [Code Standards](#code-standards)
-- [Testing Requirements](#testing-requirements)
-- [Commit Guidelines](#commit-guidelines)
-- [Pull Request Process](#pull-request-process)
-- [Review Process](#review-process)
-- [Release Process](#release-process)
-- [Community Guidelines](#community-guidelines)
-
-## 📜 Code of Conduct
-
-This project and everyone participating in it is governed by our [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
-
-## 🎯 Project Overview
-
-Polymera OS is a next-generation operating system designed for the quantum era, built with:
-- **Security First**: Post-quantum cryptography and zero-knowledge proofs
-- **Deterministic Performance**: Predictable, bounded latency with SLOs
-- **Verifiable Computing**: Cryptographic attestation and reproducible builds
-- **Privacy by Design**: Zero-knowledge privacy guarantees
-
-### Technology Stack Requirements
-
-- **Kernel/Systems/Crypto/Net**: Must be written in **Rust**
-- **Graphics Paths**: Must be written in **C++**
-- **Web/Desktop UI**: Must be written in **TypeScript**
-- **Agents/Tooling**: Must be written in **Python**
-
-### Mandatory Technologies
-
-- **Cryptography**: Kyber/Dilithium hybrids
-- **Zero-Knowledge**: Noir/Halo2 for ZK flows
-- **Policy Engine**: OPA/Rego→WASM for policy
-- **Networking**: libp2p/QUIC for mesh networking
-- **XR Support**: OpenXR+Vulkan for extended reality
-
-## 🛠️ Development Setup
+## Development Setup
 
 ### Prerequisites
 
-- **Rust**: 1.75+ (stable and nightly)
-- **Bazel**: 7.0+
-- **Nix**: Package manager
-- **QEMU**: For emulation testing
-- **Git**: Latest version
+- **Rust 1.79.0+** (see `rust-toolchain.toml`)
+- **Go 1.22+** (see `go.mod` files)
+- **Node.js 20+** (see `.nvmrc`)
+- **Python 3.11+** (see `.python-version`)
+- **Git LFS** for large assets
 
-### Environment Setup
-
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/polymera-os/polymera-os.git
-   cd polymera-os
-   ```
-
-2. **Enter development environment**:
-   ```bash
-   nix-shell
-   ```
-
-3. **Verify setup**:
-   ```bash
-   bazel build //kernel:all
-   cargo test
-   ```
-
-### Development Container
-
-We provide a VS Code dev container with all required tools:
-
-1. **Install VS Code** and the Dev Containers extension
-2. **Open the repository** in VS Code
-3. **Reopen in Container** when prompted
-4. **Wait** for the container to build and start
-
-## 🔄 Contribution Workflow
-
-### Branch Strategy
-
-- **`main`**: Production-ready releases only
-- **`develop`**: Integration branch for all features
-- **`feature/*`**: Feature development branches
-- **`hotfix/*`**: Critical bug fixes for production
-- **`release/*`**: Release preparation branches
-
-### Feature Development
-
-1. **Start from develop**:
-   ```bash
-   git checkout develop
-   git pull origin develop
-   ```
-
-2. **Create feature branch**:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-3. **Make your changes** following our standards
-
-4. **Test thoroughly**:
-   ```bash
-   cargo test
-   bazel test //...
-   ```
-
-5. **Commit with conventional format**:
-   ```bash
-   git commit -m "feat(kernel): implement basic process management"
-   ```
-
-6. **Push and create PR**:
-   ```bash
-   git push origin feature/your-feature-name
-   # Create PR on GitHub
-   ```
-
-## 📝 Code Standards
-
-### Language-Specific Standards
-
-#### Rust (Kernel, Systems, Crypto, Net)
-- Use `rustfmt` with project-specific rules
-- Follow Rust naming conventions
-- Use `clippy` with strict warnings enabled
-- Document all public APIs
-- Write comprehensive tests
-
-#### C++ (Graphics)
-- Use `clang-format` with project rules
-- Follow modern C++ standards (C++20)
-- Use `clang-tidy` for static analysis
-- Document all public interfaces
-- Write unit tests for all components
-
-#### TypeScript (Web/Desktop UI)
-- Use `prettier` with project rules
-- Follow TypeScript best practices
-- Use strict type checking
-- Write unit tests with Jest
-- Document component APIs
-
-#### Python (Agents/Tooling)
-- Use `black` with project rules
-- Follow PEP 8 guidelines
-- Use type hints
-- Write unit tests with pytest
-- Document all functions and classes
-
-### General Standards
-
-- **Documentation**: All code must be documented
-- **Testing**: >90% code coverage required
-- **Error Handling**: Comprehensive error handling
-- **Security**: Follow security best practices
-- **Performance**: Meet specified SLOs
-
-## 🧪 Testing Requirements
-
-### Test Categories
-
-- **Unit Tests**: Individual component testing
-- **Integration Tests**: Component interaction testing
-- **Performance Tests**: SLO compliance testing
-- **Security Tests**: Security validation testing
-- **Fuzz Tests**: Where applicable (crypto, parsing)
-
-### Test Coverage
-
-- **Minimum Coverage**: >90% for all components
-- **Coverage Reporting**: Automated in CI pipeline
-- **Coverage Enforcement**: PRs blocked if coverage drops
-
-### Running Tests
+### Bootstrap
 
 ```bash
-# Run all tests
-cargo test
-bazel test //...
+# Clone and setup
+git clone https://github.com/Visweswarr/Aetheris-OS.git
+cd Aetheris-OS
+git lfs install
 
-# Run specific test categories
-cargo test --test integration
-bazel test //kernel:unit_tests
+# Bootstrap the environment
+make bootstrap
 
-# Run with coverage
-cargo tarpaulin
+# Verify Phase 4 readiness
+bash scripts/phase4-verify.sh
 ```
 
-## 📝 Commit Guidelines
+## Coding Standards
 
-### Conventional Commit Format
+### Commit Messages
+
+We follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
-<type>[optional scope]: <description>
+type(scope): description
 
-[optional body]
-
-[optional footer(s)]
+feat(xr): add multi-user synchronization
+fix(hal): resolve GPIO timing issue
+docs(ai): update model documentation
 ```
 
-### Commit Types
+### Code Style
 
-- **`feat`**: New feature for the user
-- **`fix`**: Bug fix for the user
-- **`docs`**: Documentation only changes
-- **`style`**: Changes that do not affect code meaning
-- **`refactor`**: Code change that neither fixes a bug nor adds a feature
-- **`perf`**: Code change that improves performance
-- **`test`**: Adding missing tests or correcting existing tests
-- **`chore`**: Changes to the build process or auxiliary tools
+- **Rust**: Use `cargo fmt` and `cargo clippy`
+- **Go**: Use `gofmt` and `golangci-lint`
+- **TypeScript**: Use `prettier` and `eslint`
+- **Python**: Use `black` and `ruff`
 
-### Commit Scopes
+### Testing
 
-- **`kernel`**: Kernel-related changes
-- **`crypto`**: Cryptographic implementations
-- **`services`**: Service layer changes
-- **`runtime`**: Runtime layer changes
-- **`ui`**: User interface changes
-- **`tooling`**: Build and development tools
-- **`ci`**: CI/CD pipeline changes
-- **`docs`**: Documentation changes
+- **Unit tests**: Required for all new features
+- **Integration tests**: For cross-component functionality
+- **Performance tests**: For critical paths
+- **Deterministic tests**: For AI/ML components
 
-### Commit Examples
+## Pull Request Process
 
-```bash
-feat(kernel): implement basic process management
+### Before Submitting
 
-feat(crypto): add CRYSTALS-Kyber implementation
-
-fix(services): resolve memory leak in PolyNet
-
-docs(api): add comprehensive API documentation
-
-chore(ci): update GitHub Actions workflow
-```
-
-## 🔀 Pull Request Process
+1. **Run tests**: `make test`
+2. **Check formatting**: `make fmt`
+3. **Run linting**: `make lint`
+4. **Verify Phase 4**: `bash scripts/phase4-verify.sh`
 
 ### PR Requirements
 
-- **Description**: Clear description of changes
-- **Related Issues**: Link to related issues
-- **Testing**: Describe testing performed
-- **Documentation**: Document any new features
-- **Breaking Changes**: Note any breaking changes
-- **Checklist**: Complete all required checks
+- **Clear title**: Use conventional commit format
+- **Detailed description**: What, why, and how
+- **Tests included**: Unit and integration tests
+- **Documentation updated**: If applicable
+- **Performance impact**: Documented if significant
 
-### PR Template
+### Review Process
 
-Use our [Pull Request Template](.github/PULL_REQUEST_TEMPLATE.md) which includes:
+1. **Automated checks** must pass
+2. **Code review** by maintainers
+3. **Security review** for sensitive changes
+4. **Performance review** for critical paths
 
-- Change description
-- Related issues
-- Testing performed
-- Documentation updates
-- Breaking changes
-- Checklist for requirements
+## Architecture Guidelines
 
-### PR Validation
+### Phase 4 Components
 
-All PRs must pass:
+- **XR**: Extended Reality rendering and synchronization
+- **HAL**: Hardware Abstraction Layer
+- **AI**: Machine Learning inference and training
+- **Contracts**: Web3 smart contracts
+- **Relay**: Network communication layer
 
-- [ ] **Code Review**: At least one maintainer approval
-- [ ] **CI Checks**: All automated tests passing
-- [ ] **Coverage**: Test coverage maintained or improved
-- [ ] **Documentation**: Documentation updated
-- [ ] **Conventional Commits**: Commit messages follow format
-- [ ] **License Headers**: All source files have headers
+### Design Principles
 
-## 👀 Review Process
+- **Deterministic**: Reproducible results across runs
+- **Performant**: Meet latency and throughput targets
+- **Secure**: Defense in depth
+- **Modular**: Clear separation of concerns
+- **Testable**: Comprehensive test coverage
 
-### Review Requirements
+## Security
 
-- **All Changes**: Every change requires code review
-- **Maintainer Approval**: At least one maintainer must approve
-- **CI Passing**: All CI checks must pass
-- **Documentation**: Code changes must include documentation updates
+### Reporting Vulnerabilities
 
-### Review Guidelines
+Please report security vulnerabilities privately:
 
-- **Be Respectful**: Provide constructive feedback
-- **Be Specific**: Point to specific issues
-- **Be Helpful**: Suggest improvements
-- **Be Timely**: Respond within 48 hours
+1. **Email**: security@aetheris-os.org
+2. **Include**: Detailed description and reproduction steps
+3. **Do not**: Open public issues for security vulnerabilities
 
-### Review Checklist
+### Security Guidelines
 
-- [ ] **Code Quality**: Follows project standards
-- [ ] **Functionality**: Implements requirements correctly
-- [ ] **Testing**: Adequate test coverage
-- [ ] **Documentation**: Clear and complete
-- [ ] **Performance**: Meets SLO requirements
-- [ ] **Security**: No security issues introduced
+- **Input validation**: Sanitize all inputs
+- **Authentication**: Use strong authentication
+- **Authorization**: Principle of least privilege
+- **Encryption**: Use industry-standard algorithms
+- **Secrets**: Never commit secrets to version control
 
-## 🚀 Release Process
+## Performance
 
-### Release Schedule
+### Benchmarks
 
-- **Monthly Releases**: First Monday of each month
-- **Hotfix Releases**: Critical security or bug fixes as needed
-- **Versioning**: Semantic versioning (MAJOR.MINOR.PATCH)
+We maintain performance baselines in `artifacts/bench/`:
 
-### Release Process
+- **XR**: 90 FPS target, <11ms latency
+- **HAL**: <1μs GPIO operations
+- **AI**: <100ms inference latency
 
-1. **Feature Freeze**: 1 week before release
-2. **Testing**: Comprehensive testing of release candidate
-3. **Release Notes**: Generate changelog from conventional commits
-4. **Release**: Tag and publish release
-5. **Announcement**: Community announcement and documentation update
+### Performance Guidelines
 
-### Release Checklist
+- **Profile first**: Measure before optimizing
+- **Cache appropriately**: Balance memory and speed
+- **Avoid allocations**: In hot paths
+- **Use async**: For I/O operations
+- **Monitor regressions**: CI gates prevent performance degradation
 
-- [ ] **All Tests Passing**: CI pipeline green
-- [ ] **Documentation Updated**: All changes documented
-- [ ] **Release Notes**: Changelog generated
-- [ ] **Version Tagged**: Git tag created
-- [ ] **Artifacts Published**: Release artifacts available
-- [ ] **Community Notified**: Release announcement posted
+## Documentation
 
-## 🤝 Community Guidelines
+### Required Documentation
 
-### Communication
+- **API docs**: For all public interfaces
+- **Architecture docs**: For system design
+- **User guides**: For end-user features
+- **Developer guides**: For contributor workflows
 
-- **Be Respectful**: Treat all contributors with respect
-- **Be Inclusive**: Welcome contributors from all backgrounds
-- **Be Helpful**: Help newcomers and answer questions
-- **Be Patient**: Development takes time
+### Documentation Standards
+
+- **Clear and concise**: Easy to understand
+- **Examples included**: Show usage patterns
+- **Up to date**: Keep current with code
+- **Searchable**: Use consistent terminology
+
+## Community
 
 ### Getting Help
 
-- **GitHub Issues**: For bugs and feature requests
-- **GitHub Discussions**: For questions and general discussion
-- **Discord**: For real-time community chat
-- **Email**: For security issues (security@polymera-os.org)
+- **GitHub Discussions**: For questions and ideas
+- **Discord**: For real-time chat
+- **Matrix**: For decentralized communication
+- **GitHub Issues**: For bug reports and feature requests
 
-### Recognition
+### Code of Conduct
 
-- **Contributors**: All contributors recognized in CONTRIBUTORS.md
-- **Maintainers**: Active contributors may become maintainers
-- **Hall of Fame**: Special recognition for significant contributions
+We are committed to providing a welcoming and inclusive environment. Please:
 
-## 📚 Additional Resources
+- **Be respectful**: Treat everyone with dignity
+- **Be constructive**: Focus on improving the project
+- **Be patient**: Remember we're all volunteers
+- **Be inclusive**: Welcome newcomers and diverse perspectives
 
-- **Project Documentation**: [docs.polymera-os.org](https://docs.polymera-os.org)
-- **Architecture Guide**: [DESIGN.md](DESIGN.md)
-- **Development Tasks**: [TASKS.md](TASKS.md)
-- **CI Policies**: [CI_POLICIES.md](CI_POLICIES.md)
-- **Security Policy**: [SECURITY.md](SECURITY.md)
+## License
 
-## 🆘 Need Help?
+By contributing to Aetheris OS, you agree that your contributions will be licensed under the same license as the project.
 
-If you need help with contributing:
+## Questions?
 
-1. **Check Documentation**: Review this guide and project docs
-2. **Search Issues**: Look for similar questions in GitHub issues
-3. **Ask Community**: Post in GitHub discussions or Discord
-4. **Contact Maintainers**: Reach out to project maintainers
+If you have questions about contributing, please:
 
----
+1. Check existing documentation
+2. Search GitHub Issues and Discussions
+3. Ask in Discord or Matrix
+4. Open a new issue if needed
 
-*Thank you for contributing to Polymera OS! Your contributions help build a more secure and performant computing future.*
+Thank you for contributing to Aetheris OS! 🚀

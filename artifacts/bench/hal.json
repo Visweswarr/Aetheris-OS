@@ -1,0 +1,40 @@
+{
+  "benchmark": "HAL Performance",
+  "timestamp": "2025-09-07T17:50:05Z",
+  "iterations": 1000,
+  "results": {
+    "gpio_read": {
+      "latency_us": 0,
+      "latency_p95_us": 0,
+      "latency_p99_us": 0,
+      "throughput_ops_per_sec": 0
+    },
+    "gpio_write": {
+      "latency_us": 0,
+      "latency_p95_us": 0,
+      "latency_p99_us": 0,
+      "throughput_ops_per_sec": 0
+    },
+    "adc_sample": {
+      "latency_us": 0,
+      "latency_p95_us": 0,
+      "latency_p99_us": 0,
+      "throughput_samples_per_sec": 0
+    },
+    "pwm_control": {
+      "latency_us": 0,
+      "latency_p95_us": 0,
+      "latency_p99_us": 0,
+      "throughput_updates_per_sec": 0
+    },
+    "device_discovery": {
+      "latency_ms": 0,
+      "devices_found": 0
+    }
+  },
+  "environment": {
+    "os": "Linux",
+    "provider": "deterministic",
+    "mock": true
+  }
+}
