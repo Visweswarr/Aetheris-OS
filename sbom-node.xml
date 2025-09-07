@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.4" version="1" serialNumber="urn:uuid:3e671687-395b-41ea-91b3-35ea1f6e22e4">
+  <metadata>
+    <timestamp>2025-01-07T17:44:00.000Z</timestamp>
+    <tools>
+      <tool>
+        <vendor>CycloneDX</vendor>
+        <name>cyclonedx-npm</name>
+        <version>3.0.0</version>
+      </tool>
+    </tools>
+    <component type="application" bom-ref="pkg:npm/aetheris-os@0.4.0-phase4-ready">
+      <name>aetheris-os</name>
+      <version>0.4.0-phase4-ready</version>
+      <description>Aetheris OS - Phase 4 Ready</description>
+    </component>
+  </metadata>
+  <components>
+    <component type="library" bom-ref="pkg:npm/js-yaml@4.1.0">
+      <name>js-yaml</name>
+      <version>4.1.0</version>
+      <licenses>
+        <license>
+          <id>MIT</id>
+        </license>
+      </licenses>
+    </component>
+    <component type="library" bom-ref="pkg:npm/ts-node@10.9.1">
+      <name>ts-node</name>
+      <version>10.9.1</version>
+      <licenses>
+        <license>
+          <id>MIT</id>
+        </license>
+      </licenses>
+    </component>
+  </components>
+</bom>
