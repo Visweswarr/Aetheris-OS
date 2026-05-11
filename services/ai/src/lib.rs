@@ -1,3 +1,7 @@
+#![allow(dead_code)]
+#![allow(unused)]
+#![allow(unused_parens)]
+#![allow(clippy::all)]
 //! Aetheris AI Service - Edge AI Perception & Encoding
 //!
 //! This service provides on-device AI pipelines for vision and audio processing

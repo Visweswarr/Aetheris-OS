@@ -1,5 +1,7 @@
 #![allow(dead_code)]
-#![allow(clippy::too_many_arguments)]
+#![allow(unused)]
+#![allow(unused_parens)]
+#![allow(clippy::all)]
 //! Aetheris AI Core Service Library
 
 pub mod generated;
