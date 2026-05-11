@@ -1,0 +1,88 @@
+[package]
+name = "aetheris-ai-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["Aetheris OS Team"]
+description = "AI Core Service - Long-running assistant daemon for Aetheris OS"
+license = "MIT"
+repository = "https://github.com/aetheris-os/polymera-os"
+
+[dependencies]
+# Core async runtime
+tokio = { version = "1.0", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_cbor = "0.11"
+serde_json = "1.0"
+prost = "0.12"
+prost-types = "0.12"
+
+# IPC and networking
+interprocess = "1.2"
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Utilities
+uuid = { version = "1.0", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.0", features = ["derive"] }
+
+# Async traits
+async-trait = "0.1"
+
+# Math and crypto
+rand = "0.8"
+sha2 = "0.10"
+blake3 = "1.5"
+
+# Runtime dependencies
+num_cpus = "1.0"
+bytes = "1.0"
+
+# Memory store dependencies
+regex = "1.10"
+
+# Tool registry dependencies
+jsonschema = "0.18"
+
+# Capability tokens (CapTokens v2) - using ed25519 for now
+ed25519-dalek = "2.0"
+base64 = "0.21"
+p256 = { version = "0.13", features = ["ecdsa"] }
+
+# Optional LLM backends
+llama_cpp = { version = "0.1", optional = true }
+reqwest = { version = "0.11", features = ["json"], optional = true }
+
+# LLM integration (optional features)
+[features]
+default = ["mock"]
+mock = []
+llama = ["dep:llama_cpp"]
+openai = ["dep:reqwest"]
+anthropic = ["dep:reqwest"]
+
+# Development dependencies
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.0"
+criterion = "0.5"
+toml = "0.8"
+
+[[example]]
+name = "client"
+path = "examples/client.rs"
+
+[build-dependencies]
+prost-build = "0.12"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.27", features = ["socket", "user"] }

@@ -1,0 +1,28 @@
+{
+  "id": "open_app",
+  "name": "Open Application",
+  "description": "Open an application on the system",
+  "version": "1.0.0",
+  "parameters_schema": {
+    "type": "object",
+    "properties": {
+      "app_name": {
+        "type": "string",
+        "description": "Name of the application to open"
+      },
+      "args": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Command line arguments for the application"
+      }
+    },
+    "required": ["app_name"]
+  },
+  "required_capabilities": ["system.apps.execute"],
+  "category": "system",
+  "tags": ["application", "system"],
+  "implementation_type": "builtin",
+  "timeout_seconds": 30,
+  "requires_confirmation": false,
+  "metadata": {}
+}

@@ -3,124 +3,90 @@
 
 # Set default behavior to automatically normalize line endings
 * text=auto
-
 # Force LF line endings for shell scripts
 *.sh text eol=lf
-
 # Force LF line endings for PowerShell scripts (cross-platform compatibility)
 *.ps1 text eol=lf
-
 # Force LF line endings for Python files
 *.py text eol=lf
-
 # Force LF line endings for JavaScript/TypeScript files
 *.js text eol=lf
 *.ts text eol=lf
 *.jsx text eol=lf
 *.tsx text eol=lf
-
 # Force LF line endings for JSON files
 *.json text eol=lf
-
 # Force LF line endings for YAML files
 *.yml text eol=lf
 *.yaml text eol=lf
-
 # Force LF line endings for Markdown files
 *.md text eol=lf
-
 # Force LF line endings for Rust files
 *.rs text eol=lf
-
 # Force LF line endings for Go files
 *.go text eol=lf
-
 # Force LF line endings for C/C++ files
 *.c text eol=lf
 *.cpp text eol=lf
 *.h text eol=lf
 *.hpp text eol=lf
-
 # Force LF line endings for configuration files
 *.toml text eol=lf
 *.ini text eol=lf
 *.cfg text eol=lf
-
 # Force LF line endings for Docker files
 Dockerfile* text eol=lf
-
 # Force LF line endings for CI/CD files
 .github/**/*.yml text eol=lf
 .github/**/*.yaml text eol=lf
-
 # Force LF line endings for package files
 package.json text eol=lf
 package-lock.json text eol=lf
 Cargo.toml text eol=lf
 go.mod text eol=lf
 go.sum text eol=lf
-
 # Force LF line endings for requirements files
 requirements*.txt text eol=lf
-
 # Force LF line endings for CMake files
 CMakeLists.txt text eol=lf
 *.cmake text eol=lf
-
 # Force LF line endings for XML files
 *.xml text eol=lf
-
 # Force LF line endings for HTML files
 *.html text eol=lf
-
 # Force LF line endings for CSS files
 *.css text eol=lf
 *.scss text eol=lf
-
 # Force LF line endings for SQL files
 *.sql text eol=lf
-
 # Force LF line endings for protocol buffer files
 *.proto text eol=lf
-
 # Force LF line endings for CDDL files
 *.cddl text eol=lf
-
 # Force LF line endings for license files
 LICENSE* text eol=lf
-
 # Force LF line endings for README files
 README* text eol=lf
-
 # Force LF line endings for CHANGELOG files
 CHANGELOG* text eol=lf
-
 # Force LF line endings for Makefile
 Makefile text eol=lf
-
 # Force LF line endings for EditorConfig
 .editorconfig text eol=lf
-
 # Force LF line endings for Git attributes
 .gitattributes text eol=lf
-
 # Force LF line endings for Git ignore
 .gitignore text eol=lf
-
 # Force LF line endings for Git modules
 .gitmodules text eol=lf
-
 # Force LF line endings for Git config
 .gitconfig text eol=lf
-
 # Force LF line endings for Git hooks
 .git/hooks/* text eol=lf
-
 # Force LF line endings for assembly files
 *.s text eol=lf
 *.S text eol=lf
 *.asm text eol=lf
-
 # Binary files - lock as binary
 *.png binary
 *.jpg binary
@@ -136,24 +102,20 @@ Makefile text eol=lf
 *.xz binary
 *.7z binary
 *.rar binary
-
 # WebAssembly files - lock as binary
 *.wasm binary
-
 # Executable files - lock as binary
 *.exe binary
 *.bin binary
 *.so binary
 *.dylib binary
 *.dll binary
-
 # Font files - lock as binary
 *.ttf binary
 *.otf binary
 *.woff binary
 *.woff2 binary
 *.eot binary
-
 # Audio/Video files - lock as binary
 *.mp3 binary
 *.mp4 binary
@@ -163,67 +125,48 @@ Makefile text eol=lf
 *.webm binary
 *.ogg binary
 *.wav binary
-
 # Archive files - lock as binary
-*.tar binary
-*.gz binary
-*.bz2 binary
-*.xz binary
-*.7z binary
-*.rar binary
-*.zip binary
-
 # Object files - lock as binary
 *.o binary
 *.obj binary
 *.a binary
 *.lib binary
-
 # Debug files - lock as binary
 *.pdb binary
 *.dSYM binary
-
 # Core dumps - lock as binary
 core binary
 *.core binary
-
 # Temporary files - lock as binary
 *.tmp binary
 *.temp binary
 *.swp binary
 *.swo binary
 *~ binary
-
 # IDE files - lock as binary
 *.sublime-project binary
 *.sublime-workspace binary
 *.vscode/settings.json binary
 *.vscode/launch.json binary
 *.vscode/tasks.json binary
-
 # OS files - lock as binary
 .DS_Store binary
 Thumbs.db binary
 desktop.ini binary
-
 # Language-specific attributes
-
 # Rust
 *.rs linguist-language=Rust
 Cargo.toml linguist-language=TOML
 Cargo.lock linguist-language=TOML
-
 # Go
 *.go linguist-language=Go
 go.mod linguist-language=Go
 go.sum linguist-language=Go
-
 # Python
 *.py linguist-language=Python
 requirements*.txt linguist-language=Text
 setup.py linguist-language=Python
 setup.cfg linguist-language=INI
-
 # JavaScript/TypeScript
 *.js linguist-language=JavaScript
 *.ts linguist-language=TypeScript
@@ -231,94 +174,69 @@ setup.cfg linguist-language=INI
 *.tsx linguist-language=TypeScript
 package.json linguist-language=JSON
 package-lock.json linguist-language=JSON
-
 # C/C++
 *.c linguist-language=C
 *.cpp linguist-language=C++
 *.h linguist-language=C
 *.hpp linguist-language=C++
-
 # Shell
 *.sh linguist-language=Shell
 *.bash linguist-language=Shell
 *.zsh linguist-language=Shell
-
 # PowerShell
 *.ps1 linguist-language=PowerShell
-
 # Markdown
 *.md linguist-language=Markdown
-
 # YAML
 *.yml linguist-language=YAML
 *.yaml linguist-language=YAML
-
 # JSON
 *.json linguist-language=JSON
-
 # XML
 *.xml linguist-language=XML
-
 # HTML
 *.html linguist-language=HTML
-
 # CSS
 *.css linguist-language=CSS
 *.scss linguist-language=SCSS
-
 # SQL
 *.sql linguist-language=SQL
-
 # Protocol Buffers
 *.proto linguist-language=Protocol Buffer
-
 # CDDL
 *.cddl linguist-language=CDDL
-
 # CMake
 CMakeLists.txt linguist-language=CMake
 *.cmake linguist-language=CMake
-
 # Docker
 Dockerfile* linguist-language=Dockerfile
-
 # Git
 .gitignore linguist-language=Git
 .gitattributes linguist-language=Git
 .gitmodules linguist-language=Git
-
 # EditorConfig
 .editorconfig linguist-language=EditorConfig
-
 # Makefile
 Makefile linguist-language=Makefile
-
 # Assembly
 *.s linguist-language=Assembly
 *.S linguist-language=Assembly
 *.asm linguist-language=Assembly
-
 # Diff
 *.diff linguist-language=Diff
 *.patch linguist-language=Diff
-
 # Log
 *.log linguist-language=Text
-
 # License
 LICENSE* linguist-language=Text
-
 # README
 README* linguist-language=Markdown
-
 # CHANGELOG
 CHANGELOG* linguist-language=Markdown
-
 # Configuration files
 *.toml linguist-language=TOML
 *.ini linguist-language=INI
 *.cfg linguist-language=INI
-
 # Archive files
 *.tar linguist-language=Archive
 *.gz linguist-language=Archive
@@ -327,14 +245,12 @@ CHANGELOG* linguist-language=Markdown
 *.7z linguist-language=Archive
 *.rar linguist-language=Archive
 *.zip linguist-language=Archive
-
 # Binary files
 *.exe linguist-language=Binary
 *.bin linguist-language=Binary
 *.so linguist-language=Binary
 *.dylib linguist-language=Binary
 *.dll linguist-language=Binary
-
 # Image files
 *.png linguist-language=Image
 *.jpg linguist-language=Image
@@ -342,14 +258,12 @@ CHANGELOG* linguist-language=Markdown
 *.gif linguist-language=Image
 *.ico linguist-language=Image
 *.svg linguist-language=SVG
-
 # Font files
 *.ttf linguist-language=Font
 *.otf linguist-language=Font
 *.woff linguist-language=Font
 *.woff2 linguist-language=Font
 *.eot linguist-language=Font
-
 # Audio/Video files
 *.mp3 linguist-language=Audio
 *.mp4 linguist-language=Video
@@ -359,43 +273,35 @@ CHANGELOG* linguist-language=Markdown
 *.webm linguist-language=Video
 *.ogg linguist-language=Audio
 *.wav linguist-language=Audio
-
 # WebAssembly
 *.wasm linguist-language=WebAssembly
-
 # Object files
 *.o linguist-language=Object
 *.obj linguist-language=Object
 *.a linguist-language=Archive
 *.lib linguist-language=Archive
-
 # Debug files
 *.pdb linguist-language=Debug
 *.dSYM linguist-language=Debug
-
 # Core dumps
 core linguist-language=Core
 *.core linguist-language=Core
-
 # Temporary files
 *.tmp linguist-language=Text
 *.temp linguist-language=Text
 *.swp linguist-language=Text
 *.swo linguist-language=Text
 *~ linguist-language=Text
-
 # IDE files
 *.sublime-project linguist-language=JSON
 *.sublime-workspace linguist-language=JSON
 *.vscode/settings.json linguist-language=JSON
 *.vscode/launch.json linguist-language=JSON
 *.vscode/tasks.json linguist-language=JSON
-
 # OS files
 .DS_Store linguist-language=OS
 Thumbs.db linguist-language=OS
 desktop.ini linguist-language=OS
-
 # Git LFS tracking for large assets
 *.onnx filter=lfs diff=lfs merge=lfs -text
 *.bin filter=lfs diff=lfs merge=lfs -text
@@ -407,3 +313,8 @@ desktop.ini linguist-language=OS
 *.mkv filter=lfs diff=lfs merge=lfs -text
 *.wav filter=lfs diff=lfs merge=lfs -text
 *.flac filter=lfs diff=lfs merge=lfs -text
+seeds/ai/test_audio_1.wav !text !filter !merge !diff
+seeds/ai/test_audio_2.wav !text !filter !merge !diff
+services/ai_core/tests/fixtures/ask.wav !text !filter !merge !diff
+services/ai_core/tests/fixtures/sample_audio.wav !text !filter !merge !diff
+services/ai_core/tests/fixtures/spanish_audio.wav !text !filter !merge !diff

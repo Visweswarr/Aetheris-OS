@@ -1,0 +1,41 @@
+{
+  "id": "create_note",
+  "name": "Create Note",
+  "description": "Create a new note or document",
+  "version": "1.0.0",
+  "parameters_schema": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "description": "Title of the note"
+      },
+      "content": {
+        "type": "string",
+        "description": "Content of the note"
+      },
+      "format": {
+        "type": "string",
+        "enum": ["markdown", "text", "html"],
+        "description": "Format of the note"
+      },
+      "tags": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Tags for the note"
+      },
+      "location": {
+        "type": "string",
+        "description": "File path where to save the note"
+      }
+    },
+    "required": ["title", "content"]
+  },
+  "required_capabilities": ["filesystem.write"],
+  "category": "productivity",
+  "tags": ["note", "document"],
+  "implementation_type": "builtin",
+  "timeout_seconds": 30,
+  "requires_confirmation": false,
+  "metadata": {}
+}
