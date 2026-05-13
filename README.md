@@ -1,10 +1,10 @@
-# Polymera OS
+# Aetheris OS
 
 A next-generation operating system designed for the quantum era, built with security-first principles, deterministic performance, and zero-knowledge privacy guarantees.
 
 ## 🚀 Vision
 
-Polymera OS combines microkernel architecture with advanced cryptographic primitives to deliver a secure, performant, and verifiable computing platform that's ready for the quantum computing era.
+Aetheris OS combines microkernel architecture with advanced cryptographic primitives to deliver a secure, performant, and verifiable computing platform that's ready for the quantum computing era.
 
 ## 🔐 Security First
 
@@ -24,7 +24,7 @@ Polymera OS combines microkernel architecture with advanced cryptographic primit
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Polymera OS Stack                       │
+│                    Aetheris OS Stack                       │
 ├─────────────────────────────────────────────────────────────┤
 │  Applications (WASI, CPython, JVM, CLR)                   │
 ├─────────────────────────────────────────────────────────────┤
