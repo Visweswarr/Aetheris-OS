@@ -89,6 +89,11 @@ impl Instant {
         self.nanos / 1_000_000
     }
 
+    /// Microseconds since boot represented by this instant.
+    pub const fn as_micros(&self) -> u64 {
+        self.nanos / 1_000
+    }
+
     /// Nanoseconds since boot represented by this instant.
     pub const fn as_nanos(&self) -> u64 {
         self.nanos

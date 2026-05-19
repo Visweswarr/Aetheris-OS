@@ -39,7 +39,8 @@ on the dashboard).
 | After Cluster O (IPC caps) | 259    | −17    | canonical `security::cap_v2` for IPC   |
 | After Cluster P (IPC payload/syscall) | 237 | −22 | payload bytes, policy unwrap, trace casts |
 | After Cluster Q (HPET)     | 221    | −16    | usize MMIO offsets, Copy mode, rdtsc asm |
-| **Current**                | **221** | **−398** | **64% of baseline cleared**         |
+| After Cluster R (MM/TLB)   | 213    | −8     | flush page start addr, lazy statics, as_micros |
+| **Current**                | **213** | **−406** | **66% of baseline cleared**         |
 
 ## Landed commits (in order)
 
@@ -61,7 +62,8 @@ on the dashboard).
 16. `e51316b kernel: make LLM schema session and backend consistent` — Cluster N
 17. `f0f93e9 kernel: canonicalize IPC V2 capability validation` — Cluster O
 18. `ef64bc2 kernel: align IPC message payload and syscall helpers` — Cluster P
-19. `TBD kernel: normalize HPET register arithmetic and TSC read` — Cluster Q
+19. `f1b4805 kernel: normalize HPET register arithmetic and TSC read` — Cluster Q
+20. `TBD kernel: align TLB flush and timing boundaries` — Cluster R
 
 ## Remaining error clusters
 
