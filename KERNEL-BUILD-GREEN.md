@@ -34,7 +34,8 @@ on the dashboard).
 | After Cluster D (RING)     | 356    | −8     | derive Copy on AuditEntry              |
 | After Cluster K (PQC serde) | 352   | −4     | serde derives on insecure-toy stubs    |
 | After Cluster L (spin locks) | 325  | −27    | normalize `spin::Mutex::lock()` usage  |
-| **Current**                | **325** | **−294** | **47% of baseline cleared**         |
+| After Cluster M (IDT ABI)  | 307    | −18    | x86_64 IDT field names + handler ABI   |
+| **Current**                | **307** | **−312** | **50% of baseline cleared**         |
 
 ## Landed commits (in order)
 
@@ -52,6 +53,7 @@ on the dashboard).
 12. `549b58b kernel: derive Copy on AuditEntry so drain paths can snapshot by value` — Cluster D
 13. `1481bf5 kernel: serde derives on insecure-toy PQC stub types` — Cluster K
 14. `TBD kernel: normalize spin::Mutex lock usage` — Cluster L
+15. `TBD kernel: repair x86_64 IDT handler ABI` — Cluster M
 
 ## Remaining error clusters
 
@@ -180,6 +182,17 @@ Several kernel subsystems used `spin::Mutex` as though `lock()` returned
 `spin`, locks are non-poisoning and return the guard directly. Cleared
 across HAL timer/APIC/HPET jitter, scheduler jitter, secman policy,
 assertion macros, intent counters, and WASI hostcall context snapshotting.
+
+### ✅ Cluster M — x86_64 IDT field names and handler ABI (CLEARED)
+
+The IDT setup used old/nonexistent field names (`divide_by_zero`,
+`floating_point_exception`, `simd_floating_point_exception`,
+`virtualization_exception`) and assigned Rust closures where the
+`x86_64` crate requires `extern "x86-interrupt"` handler function
+pointers. The table now uses the actual 0.14.13 field names and named
+handlers with the exact no-error, with-error, page-fault, and diverging
+machine-check signatures. IDT loading uses `load_unsafe()` instead of
+trying to synthesize a descriptor pointer from a `MutexGuard`.
 
 ## Recommended attack order
 

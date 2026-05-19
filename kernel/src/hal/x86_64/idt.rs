@@ -4,12 +4,10 @@
 /// page fault handling v2 with memory safety features, guard checks, and
 /// robust error reporting.
 
-use crate::{kprintln, klog, kprintln};
+use crate::{kprintln, klog};
 use crate::log::Level;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
-use x86_64::structures::DescriptorTablePointer;
 use x86_64::instructions::interrupts;
-use x86_64::instructions::tables::lidt;
 use x86_64::VirtAddr;
 use lazy_static::lazy_static;
 use spin::Mutex;
@@ -64,9 +62,9 @@ impl From<PageFaultErrorCode> for PageFaultError {
     fn from(error_code: PageFaultErrorCode) -> Self {
         Self {
             protection_violation: error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION),
-            write_access: error_code.contains(PageFaultErrorCode::WRITE_ACCESS),
+            write_access: error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE),
             user_mode: error_code.contains(PageFaultErrorCode::USER_MODE),
-            reserved_violation: error_code.contains(PageFaultErrorCode::RESERVED_BIT),
+            reserved_violation: error_code.contains(PageFaultErrorCode::MALFORMED_TABLE),
             instruction_fetch: error_code.contains(PageFaultErrorCode::INSTRUCTION_FETCH),
         }
     }
@@ -125,7 +123,7 @@ pub extern "x86-interrupt" fn page_fault_handler_v2(
     // Disable interrupts during fault handling
     interrupts::disable();
     
-    let fault_address = x86_64::registers::control::Cr2::read();
+    let fault_address = x86_64::registers::control::Cr2::read().as_u64();
     let error = PageFaultError::from(error_code);
     
     kprintln!("");
@@ -182,13 +180,13 @@ fn check_stack_overflow(stack_frame: &InterruptStackFrame) -> Option<StackOverfl
     
     // Check red-zone canaries at various stack locations
     let canary_locations = [
-        current_sp + 0x1000,  // 4KB below current SP
-        current_sp + 0x2000,  // 8KB below current SP
-        current_sp + 0x4000,  // 16KB below current SP
+        current_sp + 0x1000u64,  // 4KB below current SP
+        current_sp + 0x2000u64,  // 8KB below current SP
+        current_sp + 0x4000u64,  // 16KB below current SP
     ];
     
     for &canary_addr in &canary_locations {
-        if let Some(overflow_info) = check_canary_at_address(canary_addr) {
+        if let Some(overflow_info) = check_canary_at_address(canary_addr.as_u64()) {
             return Some(overflow_info);
         }
     }
@@ -260,27 +258,27 @@ fn print_annotated_stack_trace(stack_frame: &InterruptStackFrame) {
     kprintln!("Frame 0: 0x{:016x} (fault location)", stack_frame.instruction_pointer);
     
     // Walk the stack to find call sites
-    let mut current_sp = stack_frame.stack_pointer;
+    let mut current_sp = stack_frame.stack_pointer.as_u64();
     let mut frame_count = 1;
-    
+
     // Limit stack walk to prevent infinite loops
     const MAX_FRAMES: usize = 20;
-    
+
     while frame_count < MAX_FRAMES && current_sp != 0 {
         // Read return address from stack
         let return_addr = unsafe { *(current_sp as *const u64) };
-        
+
         // Check if return address looks valid (within kernel space)
         if return_addr >= 0xffff800000000000 && return_addr < 0xffffffffffffffff {
             kprintln!("Frame {}: 0x{:016x} (return address)", frame_count, return_addr);
             frame_count += 1;
         }
-        
+
         // Move to next frame
-        current_sp += 8;
-        
+        current_sp += 8u64;
+
         // Safety check to prevent invalid memory access
-        if current_sp > 0xfffffffffffffff0 {
+        if current_sp > 0xfffffffffffffff0u64 {
             break;
         }
     }
@@ -467,6 +465,70 @@ pub extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: InterruptStack
     }
 }
 
+extern "x86-interrupt" fn nmi_handler(_stack_frame: InterruptStackFrame) {
+    kprintln!("[IDT] Non-maskable interrupt received");
+}
+
+extern "x86-interrupt" fn overflow_handler(_stack_frame: InterruptStackFrame) {
+    kprintln!("[IDT] Overflow exception");
+}
+
+extern "x86-interrupt" fn bound_range_handler(_stack_frame: InterruptStackFrame) {
+    kprintln!("[IDT] Bound range exceeded");
+}
+
+extern "x86-interrupt" fn device_not_available_handler(_stack_frame: InterruptStackFrame) {
+    kprintln!("[IDT] Device not available");
+}
+
+extern "x86-interrupt" fn invalid_tss_handler(_stack_frame: InterruptStackFrame, error_code: u64) {
+    kprintln!("[IDT] Invalid TSS error_code=0x{:04x}", error_code);
+}
+
+extern "x86-interrupt" fn segment_not_present_handler(
+    _stack_frame: InterruptStackFrame,
+    error_code: u64,
+) {
+    kprintln!("[IDT] Segment not present error_code=0x{:04x}", error_code);
+}
+
+extern "x86-interrupt" fn stack_segment_fault_handler(
+    _stack_frame: InterruptStackFrame,
+    error_code: u64,
+) {
+    kprintln!("[IDT] Stack segment fault error_code=0x{:04x}", error_code);
+}
+
+extern "x86-interrupt" fn x87_floating_point_handler(_stack_frame: InterruptStackFrame) {
+    kprintln!("[IDT] x87 floating point exception");
+}
+
+extern "x86-interrupt" fn alignment_check_handler(_stack_frame: InterruptStackFrame, error_code: u64) {
+    kprintln!("[IDT] Alignment check error_code=0x{:04x}", error_code);
+}
+
+extern "x86-interrupt" fn machine_check_handler(_stack_frame: InterruptStackFrame) -> ! {
+    kprintln!("[IDT] Machine check");
+    loop {
+        x86_64::instructions::hlt();
+    }
+}
+
+extern "x86-interrupt" fn simd_floating_point_handler(_stack_frame: InterruptStackFrame) {
+    kprintln!("[IDT] SIMD floating point exception");
+}
+
+extern "x86-interrupt" fn virtualization_handler(_stack_frame: InterruptStackFrame) {
+    kprintln!("[IDT] Virtualization exception");
+}
+
+extern "x86-interrupt" fn security_exception_handler(
+    _stack_frame: InterruptStackFrame,
+    error_code: u64,
+) {
+    kprintln!("[IDT] Security exception error_code=0x{:04x}", error_code);
+}
+
 //=============================================================================
 // IDT MANAGEMENT
 //=============================================================================
@@ -483,64 +545,30 @@ pub fn init_idt() {
     let mut idt = IDT.lock();
     
     // Set up exception handlers
-    idt.divide_by_zero.set_handler_fn(divide_by_zero_handler);
+    idt.divide_error.set_handler_fn(divide_by_zero_handler);
     idt.debug.set_handler_fn(breakpoint_handler);
-    idt.non_maskable_interrupt.set_handler_fn(|_| {
-        kprintln!("[IDT] Non-maskable interrupt received");
-    });
+    idt.non_maskable_interrupt.set_handler_fn(nmi_handler);
     idt.breakpoint.set_handler_fn(breakpoint_handler);
-    idt.overflow.set_handler_fn(|_| {
-        kprintln!("[IDT] Overflow exception");
-    });
-    idt.bound_range_exceeded.set_handler_fn(|_| {
-        kprintln!("[IDT] Bound range exceeded");
-    });
+    idt.overflow.set_handler_fn(overflow_handler);
+    idt.bound_range_exceeded.set_handler_fn(bound_range_handler);
     idt.invalid_opcode.set_handler_fn(invalid_opcode_handler);
-    idt.device_not_available.set_handler_fn(|_| {
-        kprintln!("[IDT] Device not available");
-    });
+    idt.device_not_available.set_handler_fn(device_not_available_handler);
     idt.double_fault.set_handler_fn(double_fault_handler);
-    idt.coprocessor_segment_overrun.set_handler_fn(|_| {
-        kprintln!("[IDT] Coprocessor segment overrun");
-    });
-    idt.invalid_tss.set_handler_fn(|_| {
-        kprintln!("[IDT] Invalid TSS");
-    });
-    idt.segment_not_present.set_handler_fn(|_| {
-        kprintln!("[IDT] Segment not present");
-    });
-    idt.stack_segment_fault.set_handler_fn(|_| {
-        kprintln!("[IDT] Stack segment fault");
-    });
+    idt.invalid_tss.set_handler_fn(invalid_tss_handler);
+    idt.segment_not_present.set_handler_fn(segment_not_present_handler);
+    idt.stack_segment_fault.set_handler_fn(stack_segment_fault_handler);
     idt.general_protection_fault.set_handler_fn(general_protection_fault_handler);
     idt.page_fault.set_handler_fn(page_fault_handler_v2);
-    idt.floating_point_exception.set_handler_fn(|_| {
-        kprintln!("[IDT] Floating point exception");
-    });
-    idt.alignment_check.set_handler_fn(|_| {
-        kprintln!("[IDT] Alignment check");
-    });
-    idt.machine_check.set_handler_fn(|_| {
-        kprintln!("[IDT] Machine check");
-    });
-    idt.simd_floating_point_exception.set_handler_fn(|_| {
-        kprintln!("[IDT] SIMD floating point exception");
-    });
-    idt.virtualization_exception.set_handler_fn(|_| {
-        kprintln!("[IDT] Virtualization exception");
-    });
-    idt.security_exception.set_handler_fn(|_| {
-        kprintln!("[IDT] Security exception");
-    });
+    idt.x87_floating_point.set_handler_fn(x87_floating_point_handler);
+    idt.alignment_check.set_handler_fn(alignment_check_handler);
+    idt.machine_check.set_handler_fn(machine_check_handler);
+    idt.simd_floating_point.set_handler_fn(simd_floating_point_handler);
+    idt.virtualization.set_handler_fn(virtualization_handler);
+    idt.security_exception.set_handler_fn(security_exception_handler);
     
     // Load the IDT
-    let idt_pointer = DescriptorTablePointer {
-        base: VirtAddr::new(idt.as_ptr() as u64),
-        limit: (core::mem::size_of::<InterruptDescriptorTable>() - 1) as u16,
-    };
-    
     unsafe {
-        lidt(&idt_pointer);
+        idt.load_unsafe();
     }
     
     kprintln!("[IDT] Interrupt Descriptor Table initialized successfully");
@@ -567,6 +595,17 @@ pub fn test_page_fault() {
 pub fn test_breakpoint() {
     kprintln!("[IDT] Testing breakpoint handler...");
     x86_64::instructions::interrupts::int3();
+}
+
+/// Test the double fault handler by recursing the stack until it faults.
+#[allow(dead_code)]
+pub fn test_double_fault() {
+    kprintln!("[IDT] Testing double fault handler...");
+    #[allow(unconditional_recursion)]
+    fn recurse() {
+        recurse();
+    }
+    recurse();
 }
 
 /// Test the divide by zero handler (for debugging)
