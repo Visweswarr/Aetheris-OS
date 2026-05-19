@@ -16,20 +16,15 @@ pub fn convert_to_cap_token_v2(token: &crate::security::cap::CapToken) -> CapTok
     
     // Create a minimal CapTokenV2 from the legacy token
     let header = CapTokenHeader::new(
-        "did:legacy:converted".to_string(), // Placeholder DID
-        token.subject_pid,
-        token.dst_pid,
+        token.id,
+        token.dst,
         scope_v2::SEND, // Default to SEND permission
-        0, // not_before
-        3600000, // not_after (1 hour from now)
-        token.id as u64, // Use token ID as nonce
-        [0u8; 32], // purpose hash
+        token.expiry_ms,
     );
     
     let signature = CapTokenSignature::new(
+        SignatureAlgorithm::Dilithium,
         vec![0u8; 64], // Placeholder signature
-        None, // no Kyber ciphertext
-        SignatureAlgorithm::Dilithium2,
     );
     
     let metadata = CapTokenMetadata::new(0, vec![]);

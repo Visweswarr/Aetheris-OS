@@ -36,7 +36,8 @@ on the dashboard).
 | After Cluster L (spin locks) | 325  | −27    | normalize `spin::Mutex::lock()` usage  |
 | After Cluster M (IDT ABI)  | 307    | −18    | x86_64 IDT field names + handler ABI   |
 | After Cluster N (LLM)      | 276    | −31    | schema/session/backend consistency     |
-| **Current**                | **276** | **−343** | **55% of baseline cleared**         |
+| After Cluster O (IPC caps) | 259    | −17    | canonical `security::cap_v2` for IPC   |
+| **Current**                | **259** | **−360** | **58% of baseline cleared**         |
 
 ## Landed commits (in order)
 
@@ -56,6 +57,7 @@ on the dashboard).
 14. `TBD kernel: normalize spin::Mutex lock usage` — Cluster L
 15. `TBD kernel: repair x86_64 IDT handler ABI` — Cluster M
 16. `TBD kernel: make LLM schema/session/backend consistent` — Cluster N
+17. `TBD kernel: canonicalize IPC V2 capability validation` — Cluster O
 
 ## Remaining error clusters
 
@@ -207,6 +209,16 @@ tuple `SessionHandle`, a session object with `send_prompt` /
 `receive_chunks` / `close` / `get_info`, completion chunks with
 token/tool/finish fields, backend availability checks, and a `spin::Once`
 global service.
+
+### ✅ Cluster O — IPC V2 capability validation split (CLEARED)
+
+`ipc/auth.rs` was validating `security::cap_v2::CapTokenV2` by calling
+the legacy `secman::cap_store` API, which returned incompatible
+`secman::cap_v2` result types. IPC authentication now calls
+`CapTokenV2::validate()` directly and maps `Success` / `Failure` into
+the IPC auth result. Legacy-to-V2 conversion now uses the canonical
+`security::cap_v2` constructor shapes, and the V2 header exposes a stable
+byte representation for IPC capability IDs.
 
 ## Recommended attack order
 

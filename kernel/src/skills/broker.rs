@@ -42,7 +42,7 @@ impl BrokerSession {
     }
     
     pub fn has_capability(&self, required_cap: u64) -> bool {
-        self.caps.iter().any(|cap| cap.scope_flags & required_cap != 0)
+        self.caps.iter().any(|cap| cap.header.scope & required_cap != 0)
     }
     
     pub fn get_capabilities(&self) -> &[CapTokenV2] {

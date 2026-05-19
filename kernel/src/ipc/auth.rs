@@ -7,10 +7,8 @@
 
 use super::header::{IpcHeaderV2, AuthMode, MAC_TAG_SIZE};
 use crate::security::cap_v2::{CapTokenV2, CapValidationResult, CapValidationFailure};
-use crate::secman::cap_store::validate_capability_token;
-use crate::secman::audit::{AuditEntry, ops};
+use crate::secman::audit::AuditEntry;
 use alloc::vec::Vec;
-use core::time::Duration;
 
 /// Authentication result for IPC messages
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,23 +102,18 @@ impl IpcAuthManager {
         // Update statistics
         self.stats.total_auth_attempts += 1;
         
-        // Validate capability token first
-        let cap_result = validate_capability_token(
-            cap_token,
-            header.receiver.0,
-            crate::security::cap_v2::scope_v2::SEND,
-        );
+        // Validate capability token first. IPC V2 uses security::cap_v2 as the
+        // canonical capability surface; secman::cap_v2 remains legacy.
+        let cap_result = cap_token.validate();
         
-        if !cap_result.is_valid {
+        if let CapValidationResult::Failure(reason) = cap_result.clone() {
             self.stats.auth_fail += 1;
             return IpcAuthResult {
                 authenticated: false,
                 auth_mode: header.auth_mode,
                 cap_result: Some(cap_result),
                 mac_valid: None,
-                failure_reason: Some(IpcAuthFailure::CapabilityFailed(
-                    cap_result.failure_reason.unwrap_or(CapValidationFailure::Unknown)
-                )),
+                failure_reason: Some(IpcAuthFailure::CapabilityFailed(reason)),
                 auth_overhead_us: get_high_res_time() - start_time,
             };
         }
