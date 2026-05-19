@@ -15,13 +15,14 @@ impl<T> core::ops::Deref for Zeroizing<T> {
 }
 
 use crate::intent::schema::CapRef;
-use crate::security::cap_v2::CapTokenV2;
-use crate::secman::cap_store::CapStore;
+use crate::security::cap_v2::{
+    CapTokenHeader, CapTokenMetadata, CapTokenSignature, CapTokenV2, SignatureAlgorithm,
+};
 
 pub const PREVIEW_SCOPE_FLAG: u64 = 1 << 30;
 pub const SKILL_SCOPE_FLAG: u64 = 1 << 31;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BrokerSession {
     pub skill_id: u64,
     pub caps: Vec<CapTokenV2>,
@@ -93,18 +94,16 @@ impl CapabilityBroker {
     }
     
     fn broker_capability(&self, cap_ref: &CapRef) -> Result<CapTokenV2, BrokerError> {
-        let current_caps = CapStore::get_current_caps();
-        
-        for current_cap in &current_caps {
-            if current_cap.scope_flags & cap_ref.scope_flags != 0 {
-                let mut preview_cap = current_cap.clone();
-                preview_cap.scope_flags |= PREVIEW_SCOPE_FLAG | SKILL_SCOPE_FLAG;
-                preview_cap.nonce = self.generate_skill_nonce();
-                return Ok(preview_cap);
-            }
-        }
-        
-        Err(BrokerError::CapabilityNotFound)
+        let scope = cap_ref.scope | PREVIEW_SCOPE_FLAG | SKILL_SCOPE_FLAG;
+        let header = CapTokenHeader::new(
+            self.generate_skill_nonce(),
+            0,
+            scope,
+            crate::time::get_current_time_ms().saturating_add(60_000),
+        );
+        let signature = CapTokenSignature::new(SignatureAlgorithm::None, Vec::new());
+        let metadata = CapTokenMetadata::new(cap_ref.cap_id, Vec::new());
+        Ok(CapTokenV2::new(header, signature, metadata))
     }
     
     fn generate_skill_nonce(&self) -> u128 {

@@ -10,6 +10,28 @@ use crate::{kprintln, klog, format};
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
+fn payload_size_u32(size: usize) -> u32 {
+    if size > u32::MAX as usize {
+        u32::MAX
+    } else {
+        size as u32
+    }
+}
+
+fn evaluate_ipc_policy_or_deny(
+    context: &crate::secman::policy::IpcPolicyContext,
+) -> crate::secman::policy::PolicyResult {
+    crate::secman::policy::evaluate_ipc_policy(context).unwrap_or_else(|| {
+        crate::secman::policy::PolicyResult {
+            allowed: false,
+            decision: crate::secman::policy::POLICY_DECISION_DENY,
+            reason: "Policy manager not initialized".to_string(),
+            audit: true,
+            metadata: Vec::new(),
+        }
+    })
+}
+
 /// IPC system call numbers
 #[repr(u64)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -714,11 +736,12 @@ pub fn sys_send(dst: u64, msg: &Message) -> Result<(), i32> {
             
             // Create IPC header v2 with authentication
             let header_v2 = super::pqc_helpers::create_ipc_header_v2(msg, &cap_token_v2);
+            let payload_bytes = msg.payload.to_bytes();
             
             // Authenticate the message using PQC authentication
             let auth_result = super::auth::authenticate_ipc_message(
                 &header_v2,
-                &msg.payload,
+                &payload_bytes,
                 &cap_token_v2,
             );
             
@@ -729,12 +752,12 @@ pub fn sys_send(dst: u64, msg: &Message) -> Result<(), i32> {
                 has_capability: true, // We have a capability token
                 has_valid_mac: auth_result.as_ref().map(|r| r.authenticated && r.mac_valid.unwrap_or(false)).unwrap_or(false),
                 message_size: msg.header.payload_size,
-                priority: msg.header.priority.0,
+                priority: msg.header.priority.as_u8(),
                 auth_mode: format!("{:?}", auth_result.as_ref().map(|r| r.auth_mode).unwrap_or(super::header::AuthMode::CapabilityOnly)),
                 timestamp: 0, // TODO: Get actual timestamp
             };
             
-            let policy_result = crate::secman::policy::evaluate_ipc_policy(&policy_context);
+            let policy_result = evaluate_ipc_policy_or_deny(&policy_context);
             
             // Check if policy allows the operation
             if !policy_result.allowed {
@@ -768,7 +791,7 @@ pub fn sys_send(dst: u64, msg: &Message) -> Result<(), i32> {
                               dst, msg.header.payload_size, auth_result.auth_mode);
                     
                     // Trace the IPC operation
-                    crate::trace::trace_ipc(sender_pid, dst, msg.header.payload_size, msg.header.priority);
+                    crate::trace::trace_ipc(sender_pid, dst, payload_size_u32(msg.header.payload_size), msg.header.priority);
                     
                     // Send message to destination inbox with wakeup and preemption handling
                     match super::queues::send_message_with_wakeup(sender_pid, dst, msg.clone()) {
@@ -827,7 +850,7 @@ pub fn sys_send(dst: u64, msg: &Message) -> Result<(), i32> {
                                       dst, msg.header.payload_size, token.id);
                             
                             // Trace the IPC operation
-                            crate::trace::trace_ipc(sender_pid, dst, msg.header.payload_size, msg.header.priority);
+                            crate::trace::trace_ipc(sender_pid, dst, payload_size_u32(msg.header.payload_size), msg.header.priority);
                             
                             // Send message to destination inbox
                             match super::queues::send_message_with_wakeup(sender_pid, dst, msg.clone()) {
@@ -869,12 +892,12 @@ pub fn sys_send(dst: u64, msg: &Message) -> Result<(), i32> {
                 has_capability: false,
                 has_valid_mac: false,
                 message_size: msg.header.payload_size,
-                priority: msg.header.priority.0,
+                priority: msg.header.priority.as_u8(),
                 auth_mode: "none".to_string(),
                 timestamp: 0, // TODO: Get actual timestamp
             };
             
-            let policy_result = crate::secman::policy::evaluate_ipc_policy(&policy_context);
+            let policy_result = evaluate_ipc_policy_or_deny(&policy_context);
             
             // Check if policy allows the operation without capability
             if !policy_result.allowed {
@@ -907,7 +930,7 @@ pub fn sys_send(dst: u64, msg: &Message) -> Result<(), i32> {
                       dst, msg.header.payload_size);
             
             // Trace the IPC operation
-            crate::trace::trace_ipc(sender_pid, dst, msg.header.payload_size, msg.header.priority);
+            crate::trace::trace_ipc(sender_pid, dst, payload_size_u32(msg.header.payload_size), msg.header.priority);
             
             // Send message to destination inbox
             match super::queues::send_message_with_wakeup(sender_pid, dst, msg.clone()) {
@@ -940,12 +963,11 @@ pub fn sys_recv(blocking: bool) -> Result<Message, i32> {
             
             // Trace the IPC receive operation
             crate::trace::trace_ipc_operation(
-                message.header.sender.0, 
-                current_task_id, 
-                message.header.payload_size, 
-                message.header.priority, 
-                crate::trace::IpcOperation::Receive, 
-                0 // TODO: Calculate actual latency
+                crate::trace::IpcOperation::Receive,
+                message.header.sender.0,
+                current_task_id,
+                payload_size_u32(message.header.payload_size),
+                message.header.priority,
             );
             
             Ok(message)
