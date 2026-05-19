@@ -40,7 +40,8 @@ on the dashboard).
 | After Cluster P (IPC payload/syscall) | 237 | −22 | payload bytes, policy unwrap, trace casts |
 | After Cluster Q (HPET)     | 221    | −16    | usize MMIO offsets, Copy mode, rdtsc asm |
 | After Cluster R (MM/TLB)   | 213    | −8     | flush page start addr, lazy statics, as_micros |
-| **Current**                | **213** | **−406** | **66% of baseline cleared**         |
+| After Cluster S (loader)   | 199    | −14    | cap header drift, MemoryFlags, LoaderResult demo |
+| **Current**                | **199** | **−420** | **68% of baseline cleared**         |
 
 ## Landed commits (in order)
 
@@ -63,7 +64,8 @@ on the dashboard).
 17. `f0f93e9 kernel: canonicalize IPC V2 capability validation` — Cluster O
 18. `ef64bc2 kernel: align IPC message payload and syscall helpers` — Cluster P
 19. `f1b4805 kernel: normalize HPET register arithmetic and TSC read` — Cluster Q
-20. `TBD kernel: align TLB flush and timing boundaries` — Cluster R
+20. `84ad992 kernel: align TLB flush and timing boundaries` — Cluster R
+21. `TBD kernel: align user task loader with current cap and memory APIs` — Cluster S
 
 ## Remaining error clusters
 
