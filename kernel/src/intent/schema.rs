@@ -228,14 +228,22 @@ impl IntentV1 {
 }
 
 impl ConstraintV1 {
+    /// Build a constraint from a `kind` and a `ConstraintValue`. Keeps
+    /// `value_scalar` in sync with the enum: if `value` is `Scalar(n)` we
+    /// cache it, otherwise the cache is `None`.
     pub fn new(kind: u16, value: ConstraintValue) -> Self {
-        Self { kind, value }
+        let value_scalar = match &value {
+            ConstraintValue::Scalar(n) => Some(*n),
+            _ => None,
+        };
+        Self { kind, value, value_scalar }
     }
 
     pub fn bytes(kind: u16, data: Vec<u8>) -> Self {
         Self {
             kind,
             value: ConstraintValue::Bytes(data),
+            value_scalar: None,
         }
     }
 
@@ -243,6 +251,7 @@ impl ConstraintV1 {
         Self {
             kind,
             value: ConstraintValue::Scalar(value),
+            value_scalar: Some(value),
         }
     }
 
@@ -250,23 +259,15 @@ impl ConstraintV1 {
         Self {
             kind,
             value: ConstraintValue::String(value),
+            value_scalar: None,
         }
     }
 }
 
+// (impl ActionV1 with `new`/`with_cost_estimate`/`with_time_estimate`/`with_param`
+// lives at the top of this file alongside the struct definition.)
+
 impl ActionV1 {
-    pub fn new(kind: u16) -> Self {
-        Self {
-            kind,
-            params: BTreeMap::new(),
-        }
-    }
-
-    pub fn with_param(mut self, key: String, value: String) -> Self {
-        self.params.insert(key, value);
-        self
-    }
-
     pub fn with_params(mut self, params: BTreeMap<String, String>) -> Self {
         self.params = params;
         self
@@ -279,6 +280,9 @@ impl PlanV1 {
             intent_id,
             actions: Vec::new(),
             cost: 0,
+            total_cost: 0,
+            total_time: 0,
+            constraints_applied: Vec::new(),
         }
     }
 

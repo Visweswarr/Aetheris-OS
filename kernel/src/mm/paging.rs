@@ -7,7 +7,7 @@ use crate::{kprintln, klog};
 use super::{MemoryResult, MemoryError, constants::*};
 use x86_64::structures::paging::{
     PageTable, PageTableFlags, PhysFrame, Page, Size4KiB, Mapper, 
-    FrameAllocator, UnusedPhysFrame, PageTableIndex, OffsetPageTable
+    FrameAllocator, PageTableIndex, OffsetPageTable
 };
 use x86_64::registers::control::Cr3;
 use x86_64::{PhysAddr, VirtAddr};
@@ -298,12 +298,12 @@ impl SimpleFrameAllocator {
 }
 
 unsafe impl FrameAllocator<Size4KiB> for SimpleFrameAllocator {
-    fn allocate_frame(&mut self) -> Option<UnusedPhysFrame> {
+    fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
         if self.next_frame.start_address() < self.end_frame.start_address() {
             let frame = self.next_frame;
             self.next_frame += 1;
             self.allocated_frames.fetch_add(1, Ordering::Relaxed);
-            Some(unsafe { UnusedPhysFrame::new(frame) })
+            Some(frame)
         } else {
             None
         }
@@ -382,29 +382,29 @@ static mut PAGING_STATS: PagingStats = PagingStats::new();
 static KERNEL_SECTIONS: &[KernelSection] = &[
     // These addresses should be updated based on your linker script
     KernelSection::new(
-        VirtAddr::new(KERNEL_VIRT_START),
-        VirtAddr::new(KERNEL_VIRT_START + 0x200000), // 2MB for .text
+        VirtAddr::new_truncate(KERNEL_VIRT_START),
+        VirtAddr::new_truncate(KERNEL_VIRT_START + 0x200000), // 2MB for .text
         PhysAddr::new(0x100000), // 1MB physical start
         ".text",
         PageFlags::kernel_code(),
     ),
     KernelSection::new(
-        VirtAddr::new(KERNEL_VIRT_START + 0x200000),
-        VirtAddr::new(KERNEL_VIRT_START + 0x300000), // 1MB for .rodata
+        VirtAddr::new_truncate(KERNEL_VIRT_START + 0x200000),
+        VirtAddr::new_truncate(KERNEL_VIRT_START + 0x300000), // 1MB for .rodata
         PhysAddr::new(0x300000),
         ".rodata",
         PageFlags::kernel_rodata(),
     ),
     KernelSection::new(
-        VirtAddr::new(KERNEL_VIRT_START + 0x300000),
-        VirtAddr::new(KERNEL_VIRT_START + 0x400000), // 1MB for .data
+        VirtAddr::new_truncate(KERNEL_VIRT_START + 0x300000),
+        VirtAddr::new_truncate(KERNEL_VIRT_START + 0x400000), // 1MB for .data
         PhysAddr::new(0x400000),
         ".data",
         PageFlags::kernel_data(),
     ),
     KernelSection::new(
-        VirtAddr::new(KERNEL_VIRT_START + 0x400000),
-        VirtAddr::new(KERNEL_VIRT_START + 0x500000), // 1MB for .bss
+        VirtAddr::new_truncate(KERNEL_VIRT_START + 0x400000),
+        VirtAddr::new_truncate(KERNEL_VIRT_START + 0x500000), // 1MB for .bss
         PhysAddr::new(0x500000),
         ".bss",
         PageFlags::kernel_data(),
@@ -539,18 +539,18 @@ fn create_kernel_stacks_with_guards() -> MemoryResult<()> {
     // Define kernel stacks (these should match your actual stack layout)
     let kernel_stacks = [
         StackInfo::new(
-            VirtAddr::new(KERNEL_VIRT_START + 0x1000000), // Stack bottom
-            VirtAddr::new(KERNEL_VIRT_START + 0x1001000), // Stack top (4KB stack)
+            VirtAddr::new_truncate(KERNEL_VIRT_START + 0x1000000), // Stack bottom
+            VirtAddr::new_truncate(KERNEL_VIRT_START + 0x1001000), // Stack top (4KB stack)
             "main_kernel_stack",
         ),
         StackInfo::new(
-            VirtAddr::new(KERNEL_VIRT_START + 0x1010000), // Stack bottom
-            VirtAddr::new(KERNEL_VIRT_START + 0x1011000), // Stack top (4KB stack)
+            VirtAddr::new_truncate(KERNEL_VIRT_START + 0x1010000), // Stack bottom
+            VirtAddr::new_truncate(KERNEL_VIRT_START + 0x1011000), // Stack top (4KB stack)
             "interrupt_stack",
         ),
         StackInfo::new(
-            VirtAddr::new(KERNEL_VIRT_START + 0x1020000), // Stack bottom
-            VirtAddr::new(KERNEL_VIRT_START + 0x1021000), // Stack top (4KB stack)
+            VirtAddr::new_truncate(KERNEL_VIRT_START + 0x1020000), // Stack bottom
+            VirtAddr::new_truncate(KERNEL_VIRT_START + 0x1021000), // Stack top (4KB stack)
             "exception_stack",
         ),
     ];
@@ -593,7 +593,7 @@ fn map_guard_page(guard_addr: VirtAddr, position: &str) -> MemoryResult<()> {
     
     // Map guard page with no permissions (not present)
     // This will cause a page fault if accessed, which is what we want
-    let page = Page::containing_address(guard_addr);
+    let page = Page::<Size4KiB>::containing_address(guard_addr);
     
     {
         let mut paging_state = PAGING_STATE.lock();
@@ -628,9 +628,9 @@ pub fn map_page(virtual_addr: VirtAddr, physical_addr: PhysAddr, flags: PageFlag
     if !virtual_addr.is_aligned(PAGE_SIZE as u64) || !physical_addr.is_aligned(PAGE_SIZE as u64) {
         return Err(MemoryError::AlignmentError);
     }
-    
-    let page = Page::containing_address(virtual_addr);
-    let frame = PhysFrame::containing_address(physical_addr);
+
+    let page = Page::<Size4KiB>::containing_address(virtual_addr);
+    let frame = PhysFrame::<Size4KiB>::containing_address(physical_addr);
     let page_table_flags = flags.to_x86_64_flags();
     
     klog!(TRACE, "[PAGING] Mapping page 0x{:016x} -> 0x{:016x} with flags {:?}", 
@@ -683,9 +683,9 @@ pub fn unmap_page(virtual_addr: VirtAddr) -> MemoryResult<()> {
     if !virtual_addr.is_aligned(PAGE_SIZE as u64) {
         return Err(MemoryError::AlignmentError);
     }
-    
-    let page = Page::containing_address(virtual_addr);
-    
+
+    let page = Page::<Size4KiB>::containing_address(virtual_addr);
+
     klog!(TRACE, "[PAGING] Unmapping page 0x{:016x}", virtual_addr.as_u64());
     
     {
@@ -1005,4 +1005,3 @@ pub fn test_paging() {
     kprintln!("=== PAGING TEST COMPLETE ===");
     kprintln!("");
 }
-
