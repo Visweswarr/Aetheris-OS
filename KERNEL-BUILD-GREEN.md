@@ -35,7 +35,8 @@ on the dashboard).
 | After Cluster K (PQC serde) | 352   | −4     | serde derives on insecure-toy stubs    |
 | After Cluster L (spin locks) | 325  | −27    | normalize `spin::Mutex::lock()` usage  |
 | After Cluster M (IDT ABI)  | 307    | −18    | x86_64 IDT field names + handler ABI   |
-| **Current**                | **307** | **−312** | **50% of baseline cleared**         |
+| After Cluster N (LLM)      | 276    | −31    | schema/session/backend consistency     |
+| **Current**                | **276** | **−343** | **55% of baseline cleared**         |
 
 ## Landed commits (in order)
 
@@ -54,6 +55,7 @@ on the dashboard).
 13. `1481bf5 kernel: serde derives on insecure-toy PQC stub types` — Cluster K
 14. `TBD kernel: normalize spin::Mutex lock usage` — Cluster L
 15. `TBD kernel: repair x86_64 IDT handler ABI` — Cluster M
+16. `TBD kernel: make LLM schema/session/backend consistent` — Cluster N
 
 ## Remaining error clusters
 
@@ -193,6 +195,18 @@ pointers. The table now uses the actual 0.14.13 field names and named
 handlers with the exact no-error, with-error, page-fault, and diverging
 machine-check signatures. IDT loading uses `load_unsafe()` instead of
 trying to synthesize a descriptor pointer from a `MutexGuard`.
+
+### ✅ Cluster N — LLM schema/session/backend consistency (CLEARED)
+
+The LLM facade was split between several incompatible designs:
+`SessionHandle` was a `u64` alias while call sites used `.0`,
+`LlmSession` had no active state or completion ring, backend registry
+had no availability API, and the global service tried to return a
+reference out of a `Mutex<Option<_>>` guard. The LLM surface now has a
+tuple `SessionHandle`, a session object with `send_prompt` /
+`receive_chunks` / `close` / `get_info`, completion chunks with
+token/tool/finish fields, backend availability checks, and a `spin::Once`
+global service.
 
 ## Recommended attack order
 

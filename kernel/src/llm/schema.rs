@@ -4,12 +4,13 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 /// Session handle
-pub type SessionHandle = u64;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SessionHandle(pub u64);
 
 // Backend identifiers
-pub const BACKEND_NULL: u32 = 0;
-pub const BACKEND_LOCAL: u32 = 1;
-pub const BACKEND_REMOTE: u32 = 2;
+pub const BACKEND_NULL: u8 = 0;
+pub const BACKEND_LOCAL: u8 = 1;
+pub const BACKEND_REMOTE: u8 = 2;
 
 // Message roles
 pub const ROLE_USER: u32 = 0;
@@ -26,17 +27,24 @@ pub struct MessageV1 {
 /// Quota limits applied to an LLM adapter.
 #[derive(Debug, Clone, Default)]
 pub struct QuotaLimitsV1 {
-    pub max_prompt_tokens: u32,
-    pub max_completion_tokens: u32,
-    pub max_concurrent_sessions: u32,
+    pub tpm: u32,
+    pub bpm: u32,
+    pub ts_ms: u32,
 }
 
 /// Prompt V1
 #[derive(Debug, Clone)]
 pub struct PromptV1 {
-    pub text: String,
-    pub max_tokens: u32,
-    pub temperature: f32,
+    pub messages: Vec<MessageV1>,
+    pub tools: Option<Vec<ToolCallV1>>,
+    pub max_tokens: Option<u32>,
+    pub temperature: Option<f32>,
+}
+
+/// Tool call structure used by streaming chunks and prompt tool specs.
+#[derive(Debug, Clone)]
+pub struct ToolCallV1 {
+    pub name: String,
 }
 
 /// Completion chunk V1
@@ -47,14 +55,17 @@ pub struct CompletionChunkV1 {
     /// Monotonically increasing sequence number within a single LLM session.
     /// Used by whylog and the streaming consumer to detect dropped chunks.
     pub seq: u64,
+    pub token: Option<String>,
+    pub tool: Option<ToolCallV1>,
+    pub finish: Option<bool>,
 }
 
 /// Adapter config V1
 #[derive(Debug, Clone)]
 pub struct AdapterConfigV1 {
-    pub backend: String,
-    pub model: String,
-    pub max_tokens: u32,
+    pub backend: u8,
+    pub quotas: QuotaLimitsV1,
+    pub redactions: Vec<String>,
 }
 
 /// Serialize prompt
