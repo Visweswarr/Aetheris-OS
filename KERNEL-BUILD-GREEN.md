@@ -27,7 +27,13 @@ on the dashboard).
 | After Cluster A (audit_log)| 427    | −20    | trait drop, three positional args      |
 | After Cluster G (schema)   | 408    | −19    | time_estimate, total_*, value_scalar, seq |
 | After Cluster I (ToString) | 404    | −4     | UFCS in audit_codes macros             |
-| **Current**                | **404** | **−215** | **35% of baseline cleared**         |
+| After Cluster F (Page<S>)  | 399    | −5     | Page::<Size4KiB>::containing_address   |
+| After Cluster C (VirtAddr) | 391    | −8     | VirtAddr::new_truncate in statics      |
+| After schema-init follow-up | 373   | −18    | ConstraintV1 init + duplicate impl drop |
+| After Cluster B (MSR)      | 364    | −9     | hal/x86_64/msr.rs inline asm wrappers  |
+| After Cluster D (RING)     | 356    | −8     | derive Copy on AuditEntry              |
+| After Cluster K (PQC serde) | 352   | −4     | serde derives on insecure-toy stubs    |
+| **Current**                | **352** | **−267** | **43% of baseline cleared**         |
 
 ## Landed commits (in order)
 
@@ -39,6 +45,11 @@ on the dashboard).
 6. `16adfc3 kernel: replace AuditLogInput trait with three positional audit_log args` — Cluster A
 7. `99acee7 kernel: re-add planner schema fields (time/cost totals, value_scalar, seq)` — Cluster G
 8. `12e4b21 kernel: fully-qualify ToString in audit_codes macros` — Cluster I
+9. `8723978 docs: KERNEL-BUILD-GREEN tracker — clusters A, G, I done; 215 errors burned` — tracker update
+10. `36f6c14 kernel: paging Page<Size4KiB> annotations + ConstraintV1 init sync` — Clusters F + C
+11. `e8e44ee kernel: hal/x86_64/msr inline-asm wrappers for rdmsr/wrmsr` — Cluster B
+12. `549b58b kernel: derive Copy on AuditEntry so drain paths can snapshot by value` — Cluster D
+13. `1481bf5 kernel: serde derives on insecure-toy PQC stub types` — Cluster K
 
 ## Remaining error clusters
 
@@ -64,7 +75,7 @@ arguments** instead of a tuple:
 trait. ~10-20 callers, one function, no behavioural change. The trait
 impls become dead code and can be removed in the same commit.
 
-### Cluster B — `__rdmsr` / `__wrmsr` not in scope (8 × E0425)
+### ✅ Cluster B — `__rdmsr` / `__wrmsr` not in scope (CLEARED in e8e44ee)
 
 `core::arch::x86_64` does not export MSR intrinsics on the toolchain in
 use. Affected sites all in [kernel/src/hal/x86_64/apic.rs:283-417](kernel/src/hal/x86_64/apic.rs#L283).
@@ -74,7 +85,7 @@ use. Affected sites all in [kernel/src/hal/x86_64/apic.rs:283-417](kernel/src/ha
 implemented via inline asm (`rdmsr` / `wrmsr` instructions). Import
 those into `apic.rs` in place of the missing intrinsics.
 
-### Cluster C — `VirtAddr::new` in `static` initializers (8 × E0015)
+### ✅ Cluster C — `VirtAddr::new` in `static` initializers (CLEARED in 36f6c14)
 
 The `x86_64` crate's `VirtAddr::new` is not `const fn`. Affected sites all
 in [kernel/src/mm/paging.rs:385-407](kernel/src/mm/paging.rs#L385).
@@ -85,7 +96,7 @@ behind `lazy_static!` / `spin::Lazy`. Inspect each one first — some may
 genuinely need full `VirtAddr::new` validation at first access rather
 than build time, which favours `Lazy`.
 
-### Cluster D — Move out of `static RING[_]` (7 × E0507)
+### ✅ Cluster D — Move out of `static RING[_]` (CLEARED in 549b58b)
 
 The audit ring buffer is a `static RING: [_; N]` and the consumer code
 moves elements out instead of borrowing. Affected in
@@ -104,7 +115,7 @@ closures.
 **Approach**: inspect each call site individually. Often a `for_each`
 vs `fold` vs `map` mix-up.
 
-### Cluster F — `Page<_>` type annotations (5 × E0283)
+### ✅ Cluster F — `Page<_>` type annotations (CLEARED in 36f6c14)
 
 The `x86_64` `Page<S>` is generic over page size and the compiler can't
 infer S. Annotate with `Page<Size4KiB>` or `Page<Size2MiB>` as
@@ -124,7 +135,7 @@ The intent schema lost fields that callers still reference:
 if mirrored), with `#[serde(default)]` so existing serialized data
 still loads.
 
-### Cluster H — `multiple applicable items in scope` (10 × E0034)
+### ✅ Cluster H — `multiple applicable items in scope` (CLEARED in 36f6c14, was a downstream of the duplicate ActionV1 impl)
 
 Two traits both provide a method with the same name on the same type
 (common pattern: `format::Format` and `core::fmt::Display`).
@@ -153,22 +164,30 @@ mechanical sweep that resolves them.
 big clusters have settled. Many will turn out to be downstream of A–I
 fixes and disappear without per-site work.
 
+### Cluster K — serde on PQC stub types (CLEARED in 1481bf5)
+
+(Added late and cleared in the same session: InsecureDilithium* /
+InsecureKyber* needed serde::Serialize/Deserialize because CapTokenV2
+carries a DilithiumSignature field and itself derives serde. Closed
+4 errors.)
+
 ## Recommended attack order
 
-1. **A** (audit_log) — biggest cluster, smallest design surface; one
-   function rewrite kills ~23 errors and a trait that adds no value.
-2. **G** (schema field re-additions) — pure additions, no risk; kills
-   ~17 errors and unblocks visibility on the planner/executor paths.
-3. **I** (remaining ToString) — mechanical, copy the pattern from
-   commit `b29d7cc`.
-4. **F** (`Page<S>` annotations) — local, easy.
-5. **C** (VirtAddr statics) — moderate; requires per-static decision
-   between `new_truncate` and `Lazy`.
-6. **B** (MSR intrinsics) — adds one new file with inline asm.
-7. **D** (RING statics) — moderate; the cleanest fix may touch the
-   ring's data representation.
-8. **E**, **H**, **J** — long tail; revisit error breakdown after the
-   above and pick up whatever's left.
+Clusters A, B, C, D, F, G, H, I, K are all CLEARED (see Trajectory).
+Remaining order:
+
+1. **E** (closure arity, 5 errors) — per-call-site fixes for `for_each`
+   vs `fold` confusions.
+2. The **7+7 E0061** clusters ("function takes 2/3 args but 1/4 supplied")
+   — each subgroup is likely a single API rename that needs trace-back to
+   find the canonical signature, then a sweep across callers.
+3. The **3 E0499** mutable-borrow conflicts — these usually want either
+   a `let` to drop the first borrow or a `RefCell`/`Mutex` split. Look
+   at site individually; risk of subtle regressions if rewritten quickly.
+4. The **3 E0277 `?` couldn't convert error to &str** — add `From<X>`
+   impls for the wrapping error type or rewrite call sites to use
+   `.map_err(|e| ...)`.
+5. **J** (98 × E0308 + long tail) — final mile, individual fixes.
 
 After each cluster, re-run `cargo check 2>&1 | tail -3` to recount.
 Update the "Trajectory" table in this file as part of every commit
