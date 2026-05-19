@@ -153,50 +153,42 @@ impl ApicTimer {
         // Map jitter to histogram bin (0-63, each bin represents ~4us)
         let bin = (jitter_us / 4).min(63) as usize;
         
-        if let Ok(mut histogram) = self.jitter_histogram.lock() {
-            histogram[bin] = histogram[bin].saturating_add(1);
-        }
+        let mut histogram = self.jitter_histogram.lock();
+        histogram[bin] = histogram[bin].saturating_add(1);
     }
 
     /// Get jitter statistics
     pub fn get_jitter_stats(&self) -> JitterStats {
-        if let Ok(histogram) = self.jitter_histogram.lock() {
-            let mut total_samples = 0;
-            let mut cumulative_jitter = 0u64;
+        let histogram = self.jitter_histogram.lock();
+        let mut total_samples = 0;
+        let mut cumulative_jitter = 0u64;
+        
+        for (bin, &count) in histogram.iter().enumerate() {
+            total_samples += count;
+            let jitter_us = (bin as u32 * 4) + 2; // Center of bin
+            cumulative_jitter += (jitter_us as u64) * (count as u64);
+        }
+
+        if total_samples > 0 {
+            let mean_jitter = cumulative_jitter / total_samples;
+            
+            // Calculate p95 (simplified - find 95th percentile)
+            let p95_index = (total_samples * 95) / 100;
+            let mut current_count = 0;
+            let mut p95_jitter = 0u32;
             
             for (bin, &count) in histogram.iter().enumerate() {
-                total_samples += count;
-                let jitter_us = (bin as u32 * 4) + 2; // Center of bin
-                cumulative_jitter += (jitter_us as u64) * (count as u64);
+                current_count += count;
+                if current_count >= p95_index {
+                    p95_jitter = (bin as u32 * 4) + 2;
+                    break;
+                }
             }
 
-            if total_samples > 0 {
-                let mean_jitter = cumulative_jitter / total_samples;
-                
-                // Calculate p95 (simplified - find 95th percentile)
-                let p95_index = (total_samples * 95) / 100;
-                let mut current_count = 0;
-                let mut p95_jitter = 0u32;
-                
-                for (bin, &count) in histogram.iter().enumerate() {
-                    current_count += count;
-                    if current_count >= p95_index {
-                        p95_jitter = (bin as u32 * 4) + 2;
-                        break;
-                    }
-                }
-
-                JitterStats {
-                    mean_us: mean_jitter as u32,
-                    p95_us: p95_jitter,
-                    total_samples,
-                }
-            } else {
-                JitterStats {
-                    mean_us: 0,
-                    p95_us: 0,
-                    total_samples: 0,
-                }
+            JitterStats {
+                mean_us: mean_jitter as u32,
+                p95_us: p95_jitter,
+                total_samples,
             }
         } else {
             JitterStats {

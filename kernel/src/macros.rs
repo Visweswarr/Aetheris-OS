@@ -88,8 +88,10 @@ macro_rules! handle_assertion_failure {
 /// - Logs the failure message
 /// - Halts the system
 pub fn assertion_failure_internal(msg: &str, args: &[&dyn core::fmt::Display]) {
-    use crate::log::{klog, Level, tags};
+    use crate::{klog, format};
+    use crate::log::{Level, tags};
     use crate::secman::audit;
+    use alloc::string::ToString;
     
     // Format the message with arguments if provided
     let formatted_msg = if args.is_empty() {
@@ -129,10 +131,9 @@ pub fn assertion_failure_internal(msg: &str, args: &[&dyn core::fmt::Display]) {
     }
     
     // Log memory and system statistics if available
-    if let Ok(sched_stats) = crate::sched::get_scheduler_stats() {
-        klog!(Level::ERROR, [tags::ASSERT], "  Scheduler State: {} ready, {} running, {} blocked",
-              sched_stats.ready_tasks, sched_stats.running_tasks, sched_stats.blocked_tasks);
-    }
+    let sched_stats = crate::sched::get_scheduler_stats();
+    klog!(Level::ERROR, [tags::ASSERT], "  Scheduler State: {} ready, {} running, {} blocked",
+          sched_stats.ready_tasks, sched_stats.running_tasks, sched_stats.blocked_tasks);
     
     // Halt the system
     klog!(Level::ERROR, [tags::ASSERT], "System halted due to assertion failure");
@@ -147,7 +148,8 @@ pub fn assertion_failure_internal(msg: &str, args: &[&dyn core::fmt::Display]) {
 /// 2. Save system state
 /// 3. Enter a halt loop or trigger a watchdog reset
 pub fn halt_system() -> ! {
-    use crate::log::{klog, Level, tags};
+    use crate::klog;
+    use crate::log::{Level, tags};
     
     klog!(Level::ERROR, [tags::ASSERT], "Entering system halt state");
     
@@ -224,8 +226,10 @@ macro_rules! handle_assertion_failure_audit {
 
 /// Internal assertion failure handler with custom audit operation
 pub fn assertion_failure_audit_internal(audit_op: u32, msg: &str, args: &[&dyn core::fmt::Display]) {
-    use crate::log::{klog, Level, tags};
+    use crate::{klog, format};
+    use crate::log::{Level, tags};
     use crate::secman::audit;
+    use alloc::string::ToString;
     
     // Format the message with arguments if provided
     let formatted_msg = if args.is_empty() {
@@ -369,6 +373,5 @@ mod tests {
         assert!(!name.is_empty(), "Function name should not be empty");
     }
 }
-
 
 

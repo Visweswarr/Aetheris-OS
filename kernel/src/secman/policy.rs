@@ -5,7 +5,7 @@
 /// policy blob on boot and caches the decision.
 
 use alloc::vec::Vec;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use core::sync::atomic::{AtomicU8, Ordering};
 use spin::Mutex;
 use crate::{kprintln, klog};
@@ -134,9 +134,8 @@ impl PolicyManager {
                          mode);
                 
                 // Store the policy blob
-                if let Ok(mut blob_guard) = self.policy_blob.lock() {
-                    *blob_guard = Some(blob);
-                }
+                let mut blob_guard = self.policy_blob.lock();
+                *blob_guard = Some(blob);
                 
                 self.initialized.store(1, Ordering::SeqCst);
                 kprintln!("[POLICY] Policy Manager initialized successfully");
@@ -196,10 +195,10 @@ impl PolicyManager {
     /// Evaluate IPC policy for a given context
     pub fn evaluate_ipc_policy(&self, context: &IpcPolicyContext) -> PolicyResult {
         // Update statistics
-        if let Ok(mut stats) = self.stats.lock() {
-            stats.total_evaluations += 1;
-            stats.last_evaluation = context.timestamp;
-        }
+        let mut stats = self.stats.lock();
+        stats.total_evaluations += 1;
+        stats.last_evaluation = context.timestamp;
+        drop(stats);
 
         // Check if policy system is initialized
         if self.initialized.load(Ordering::SeqCst) == 0 {
@@ -359,9 +358,8 @@ impl PolicyManager {
 
     /// Record a policy denial for statistics
     fn record_denial(&self, context: &IpcPolicyContext, reason: &str) {
-        if let Ok(mut stats) = self.stats.lock() {
-            stats.denied_operations += 1;
-        }
+        let mut stats = self.stats.lock();
+        stats.denied_operations += 1;
         
         klog!(WARN, "[POLICY] IPC DENIED: sender={} -> dst={}, reason={}", 
               context.sender_pid, context.destination_pid, reason);
@@ -369,9 +367,8 @@ impl PolicyManager {
 
     /// Record a policy allowance for statistics
     fn record_allowance(&self, context: &IpcPolicyContext) {
-        if let Ok(mut stats) = self.stats.lock() {
-            stats.allowed_operations += 1;
-        }
+        let mut stats = self.stats.lock();
+        stats.allowed_operations += 1;
         
         klog!(DEBUG, "[POLICY] IPC ALLOWED: sender={} -> dst={}", 
               context.sender_pid, context.destination_pid);
@@ -398,14 +395,13 @@ impl PolicyManager {
 
     /// Get policy statistics
     pub fn get_stats(&self) -> PolicyStats {
-        self.stats.lock().unwrap_or_default().clone()
+        self.stats.lock().clone()
     }
 
     /// Reset policy statistics
     pub fn reset_stats(&self) {
-        if let Ok(mut stats) = self.stats.lock() {
-            *stats = PolicyStats::default();
-        }
+        let mut stats = self.stats.lock();
+        *stats = PolicyStats::default();
     }
 
     /// Check if policy system is initialized
@@ -415,11 +411,8 @@ impl PolicyManager {
 
     /// Get policy blob information
     pub fn get_policy_info(&self) -> Option<(String, usize)> {
-        if let Ok(blob_guard) = self.policy_blob.lock() {
-            blob_guard.as_ref().map(|blob| (blob.version.clone(), blob.data.len()))
-        } else {
-            None
-        }
+        let blob_guard = self.policy_blob.lock();
+        blob_guard.as_ref().map(|blob| (blob.version.clone(), blob.data.len()))
     }
 }
 
@@ -654,4 +647,3 @@ mod tests {
         assert_eq!(reset_stats.total_evaluations, 0);
     }
 }
-

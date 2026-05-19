@@ -6,7 +6,7 @@
 
 use crate::{klog, kprintln};
 use super::{TaskId, get_current_task_id, set_current_task_id, schedule, enqueue_task};
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use core::time::Duration;
 use alloc::vec::Vec;
 
@@ -143,19 +143,17 @@ impl JitterBudget {
     /// Update jitter budget with new measurement
     fn update_jitter_budget(&self, jitter_us: u32) {
         // Update histogram
-        if let Ok(mut histogram) = self.jitter_histogram.lock() {
-            let bin = (jitter_us / 4).min(63) as usize;
-            histogram[bin] = histogram[bin].saturating_add(1);
-        }
+        let mut histogram = self.jitter_histogram.lock();
+        let bin = (jitter_us / 4).min(63) as usize;
+        histogram[bin] = histogram[bin].saturating_add(1);
         
         // Update recent samples
-        if let Ok(mut samples) = self.recent_jitter_samples.lock() {
-            samples.push(jitter_us);
-            
-            // Keep only the most recent samples
-            if samples.len() > self.max_recent_samples {
-                samples.remove(0);
-            }
+        let mut samples = self.recent_jitter_samples.lock();
+        samples.push(jitter_us);
+        
+        // Keep only the most recent samples
+        if samples.len() > self.max_recent_samples {
+            samples.remove(0);
         }
     }
 
@@ -246,27 +244,24 @@ impl JitterBudget {
 
     /// Calculate jitter statistics from recent samples
     fn calculate_jitter_stats(&self) -> (u32, u32, u32) {
-        if let Ok(samples) = self.recent_jitter_samples.lock() {
-            if samples.is_empty() {
-                return (0, 0, 0);
-            }
-            
-            let total_samples = samples.len();
-            
-            // Calculate mean
-            let sum: u64 = samples.iter().map(|&x| x as u64).sum();
-            let mean = (sum / total_samples as u64) as u32;
-            
-            // Calculate p95
-            let mut sorted_samples = samples.clone();
-            sorted_samples.sort_unstable();
-            let p95_index = (total_samples * 95) / 100;
-            let p95 = sorted_samples[p95_index.min(total_samples - 1)];
-            
-            (mean, p95, total_samples as u32)
-        } else {
-            (0, 0, 0)
+        let samples = self.recent_jitter_samples.lock();
+        if samples.is_empty() {
+            return (0, 0, 0);
         }
+        
+        let total_samples = samples.len();
+        
+        // Calculate mean
+        let sum: u64 = samples.iter().map(|&x| x as u64).sum();
+        let mean = (sum / total_samples as u64) as u32;
+        
+        // Calculate p95
+        let mut sorted_samples = samples.clone();
+        sorted_samples.sort_unstable();
+        let p95_index = (total_samples * 95) / 100;
+        let p95 = sorted_samples[p95_index.min(total_samples - 1)];
+        
+        (mean, p95, total_samples as u32)
     }
 
     /// Reset jitter budget statistics
@@ -275,22 +270,16 @@ impl JitterBudget {
         self.total_overruns.store(0, Ordering::Relaxed);
         self.boost_active_until.store(0, Ordering::Relaxed);
         
-        if let Ok(mut histogram) = self.jitter_histogram.lock() {
-            *histogram = [0; 64];
-        }
+        let mut histogram = self.jitter_histogram.lock();
+        *histogram = [0; 64];
         
-        if let Ok(mut samples) = self.recent_jitter_samples.lock() {
-            samples.clear();
-        }
+        let mut samples = self.recent_jitter_samples.lock();
+        samples.clear();
     }
 
     /// Get jitter histogram for debugging
     pub fn get_jitter_histogram(&self) -> [u32; 64] {
-        if let Ok(histogram) = self.jitter_histogram.lock() {
-            *histogram
-        } else {
-            [0; 64]
-        }
+        *self.jitter_histogram.lock()
     }
 
     /// Check if jitter is within acceptable limits
@@ -471,7 +460,7 @@ pub fn print_jitter_stats() {
 /// * `tick_count` - Current system tick count from timer
 pub fn scheduler_tick(tick_count: u64) {
     // Measure tick timing for jitter analysis
-    let tick_start = x86_64::instructions::read_tsc();
+    let tick_start = unsafe { core::arch::x86_64::_rdtsc() };
     
     // Increment scheduler tick counter
     SCHEDULER_TICKS.store(tick_count, Ordering::Relaxed);
@@ -495,7 +484,7 @@ pub fn scheduler_tick(tick_count: u64) {
     }
     
     // Measure tick completion time and record jitter
-    let tick_end = x86_64::instructions::read_tsc();
+    let tick_end = unsafe { core::arch::x86_64::_rdtsc() };
     let tick_duration_cycles = tick_end - tick_start;
     
     // Convert to microseconds (approximate)
@@ -598,8 +587,8 @@ fn simulate_rt_wake_request() {
     kprintln!("[SCHED] Simulating RT wake request...");
     
     // Simulate some processing time
-    let start = x86_64::instructions::read_tsc();
-    while x86_64::instructions::read_tsc() - start < 1000 { // ~1µs delay
+    let start = unsafe { core::arch::x86_64::_rdtsc() };
+    while unsafe { core::arch::x86_64::_rdtsc() } - start < 1000 { // ~1µs delay
         core::hint::spin_loop();
     }
 }
@@ -609,17 +598,17 @@ fn simulate_rt_wake_request() {
 /// # Returns
 /// Latency in microseconds
 fn measure_wake_to_run_latency() -> u32 {
-    let start = x86_64::instructions::read_tsc();
+    let start = unsafe { core::arch::x86_64::_rdtsc() };
     
     // Simulate wake-to-run processing
     // In a real implementation, this would measure actual task wake latency
     
     // Simulate some processing time
-    while x86_64::instructions::read_tsc() - start < 1000 { // ~1µs delay
+    while unsafe { core::arch::x86_64::_rdtsc() } - start < 1000 { // ~1µs delay
         core::hint::spin_loop();
     }
     
-    let end = x86_64::instructions::read_tsc();
+    let end = unsafe { core::arch::x86_64::_rdtsc() };
     let latency_cycles = end - start;
     
     // Convert to microseconds (approximate)
@@ -704,6 +693,11 @@ pub fn handle_voluntary_yield() {
 /// 
 /// Performs periodic housekeeping tasks like load balancing,
 /// garbage collection, and performance monitoring.
+/// Get the current scheduler tick count (monotonically increasing).
+pub fn get_scheduler_tick_count() -> u64 {
+    SCHEDULER_TICKS.load(Ordering::Relaxed)
+}
+
 fn scheduler_maintenance() {
     let tick_count = SCHEDULER_TICKS.load(Ordering::Relaxed);
     

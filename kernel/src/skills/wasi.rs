@@ -62,6 +62,19 @@ impl HostcallContext {
     }
 }
 
+impl Clone for HostcallContext {
+    fn clone(&self) -> Self {
+        Self {
+            skill_id: self.skill_id,
+            plan_actions: self.plan_actions.clone(),
+            evidence: self.evidence.clone(),
+            world_model_queries: self.world_model_queries.clone(),
+            log_count: AtomicU64::new(self.log_count.load(Ordering::Relaxed)),
+            last_log_reset: AtomicU64::new(self.last_log_reset.load(Ordering::Relaxed)),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct WorldModelQuery {
     pub pattern: Pattern,
@@ -185,7 +198,7 @@ impl WasiHost {
         let log_message = String::from_utf8(log_data)
             .map_err(|_| HostcallError::InvalidInput)?;
         
-        klog!("[SKILL-{}] {}", context.skill_id, log_message);
+        klog!(DEBUG, "[SKILL-{}] {}", context.skill_id, log_message);
         context.increment_log_count();
         
         Ok(0)

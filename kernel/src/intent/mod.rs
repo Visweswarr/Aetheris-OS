@@ -1,15 +1,18 @@
 use crate::intent::planner::{Planner, EchoPlanner};
-use crate::intent::schema::{IntentV1, PlanPreviewV1, PreviewHandle, IntentStatusV1, WhyRecordV1};
+use crate::intent::schema::{IntentV1, IntentStatusV1, PlanPreviewV1, PreviewHandle};
 use crate::intent::whylog::WhyLog;
-use serde_cbor;
-use std::collections::HashMap;
-use std::sync::Mutex;
+// Note: serde_cbor not available in no_std, using stub
+use alloc::boxed::Box;
+use alloc::collections::BTreeMap as HashMap;
+use alloc::vec;
+use alloc::vec::Vec;
+use spin::Mutex;
 
 pub mod schema;
 pub mod whylog;
 pub mod planner;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct IntentCounters {
     pub intent_submit_ok: u64,
     pub preview_ok: u64,
@@ -84,13 +87,13 @@ impl IntentKernel {
         
         // Store intent
         {
-            let mut intents = self.intents.lock().unwrap();
+            let mut intents = self.intents.lock();
             intents.insert(intent.id, intent.clone());
         }
         
         // Set initial state
         {
-            let mut states = self.intent_states.lock().unwrap();
+            let mut states = self.intent_states.lock();
             states.insert(intent.id, crate::intent::schema::INTENT_STATE_SUBMITTED);
         }
         
@@ -99,7 +102,7 @@ impl IntentKernel {
         
         // Log to why-log
         {
-            let mut why_log = self.why_log.lock().unwrap();
+            let mut why_log = self.why_log.lock();
             let vclock = self.get_virtual_clock();
             why_log.log_intent_submitted(&intent, vclock);
         }
@@ -145,7 +148,7 @@ impl IntentKernel {
     pub fn get_intent_status(&self, intent_id: u128) -> Result<IntentStatusV1, Errno> {
         // Get intent
         let intent = {
-            let intents = self.intents.lock().unwrap();
+            let intents = self.intents.lock();
             intents.get(&intent_id).cloned()
         };
         
@@ -157,13 +160,13 @@ impl IntentKernel {
         
         // Get state
         let state = {
-            let states = self.intent_states.lock().unwrap();
+            let states = self.intent_states.lock();
             *states.get(&intent_id).unwrap_or(&crate::intent::schema::INTENT_STATE_SUBMITTED)
         };
         
         // Get why-log tail hash
         let why_log_tail = {
-            let why_log = self.why_log.lock().unwrap();
+            let why_log = self.why_log.lock();
             why_log.get_tail()
         };
         
@@ -183,7 +186,7 @@ impl IntentKernel {
     pub fn cancel_intent(&self, intent_id: u128) -> Result<u8, Errno> {
         // Check if intent exists
         let intent = {
-            let intents = self.intents.lock().unwrap();
+            let intents = self.intents.lock();
             intents.get(&intent_id).cloned()
         };
         
@@ -193,7 +196,7 @@ impl IntentKernel {
         
         // Check current state
         let current_state = {
-            let states = self.intent_states.lock().unwrap();
+            let states = self.intent_states.lock();
             *states.get(&intent_id).unwrap_or(&crate::intent::schema::INTENT_STATE_SUBMITTED)
         };
         
@@ -205,13 +208,13 @@ impl IntentKernel {
         
         // Update state to cancelled
         {
-            let mut states = self.intent_states.lock().unwrap();
+            let mut states = self.intent_states.lock();
             states.insert(intent_id, crate::intent::schema::INTENT_STATE_CANCELLED);
         }
         
         // Log to why-log
         {
-            let mut why_log = self.why_log.lock().unwrap();
+            let mut why_log = self.why_log.lock();
             let vclock = self.get_virtual_clock();
             why_log.log_policy_decision("cancelled", "User requested cancellation", vclock);
         }
@@ -223,7 +226,7 @@ impl IntentKernel {
     }
     
     pub fn get_whylog_stream(&self, cursor: u64, max_records: u32) -> Result<Vec<u8>, Errno> {
-        let why_log = self.why_log.lock().unwrap();
+        let why_log = self.why_log.lock();
         
         // Get entries since cursor
         let entries = if cursor == 0 {
@@ -260,33 +263,33 @@ impl IntentKernel {
     }
     
     pub fn get_whylog_tail(&self) -> crate::intent::whylog::WhyLogTail {
-        let why_log = self.why_log.lock().unwrap();
+        let why_log = self.why_log.lock();
         why_log.get_tail()
     }
     
     pub fn get_counters(&self) -> IntentCounters {
-        let counters = self.counters.lock().unwrap();
+        let counters = self.counters.lock();
         counters.clone()
     }
     
     pub fn reset_counters(&self) {
-        let mut counters = self.counters.lock().unwrap();
+        let mut counters = self.counters.lock();
         *counters = IntentCounters::default();
     }
     
     pub fn get_intent(&self, id: u128) -> Option<IntentV1> {
-        let intents = self.intents.lock().unwrap();
+        let intents = self.intents.lock();
         intents.get(&id).cloned()
     }
     
     pub fn list_intents(&self) -> Vec<u128> {
-        let intents = self.intents.lock().unwrap();
+        let intents = self.intents.lock();
         intents.keys().cloned().collect()
     }
     
     pub fn clear_intents(&self) {
-        let mut intents = self.intents.lock().unwrap();
-        let mut states = self.intent_states.lock().unwrap();
+        let mut intents = self.intents.lock();
+        let mut states = self.intent_states.lock();
         intents.clear();
         states.clear();
     }
@@ -298,7 +301,7 @@ impl IntentKernel {
         let available_caps = vec![1u64, 2u64, 3u64]; // Example caps
         
         // Generate preview using planner
-        let mut why_log = self.why_log.lock().unwrap();
+        let mut why_log = self.why_log.lock();
         let preview = self.planner.preview(intent, &available_caps, &mut why_log, vclock);
         
         Ok(preview)
@@ -374,13 +377,13 @@ impl IntentKernel {
     }
     
     fn get_virtual_clock(&self) -> u64 {
-        let mut clock = self.virtual_clock.lock().unwrap();
+        let mut clock = self.virtual_clock.lock();
         *clock += 1;
         *clock
     }
     
     pub fn set_virtual_clock(&self, value: u64) {
-        let mut clock = self.virtual_clock.lock().unwrap();
+        let mut clock = self.virtual_clock.lock();
         *clock = value;
     }
     
@@ -388,7 +391,7 @@ impl IntentKernel {
     where
         F: FnOnce(&mut IntentCounters),
     {
-        let mut counters = self.counters.lock().unwrap();
+        let mut counters = self.counters.lock();
         f(&mut counters);
     }
 }
@@ -410,8 +413,8 @@ pub enum Errno {
     EBUSY = 16,    // Device or resource busy
 }
 
-impl std::fmt::Display for Errno {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Errno {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Errno::EINVAL => write!(f, "Invalid argument"),
             Errno::E2BIG => write!(f, "Argument list too long"),
@@ -423,5 +426,3 @@ impl std::fmt::Display for Errno {
         }
     }
 }
-
-impl std::error::Error for Errno {}

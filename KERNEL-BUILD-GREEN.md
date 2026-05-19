@@ -33,7 +33,8 @@ on the dashboard).
 | After Cluster B (MSR)      | 364    | −9     | hal/x86_64/msr.rs inline asm wrappers  |
 | After Cluster D (RING)     | 356    | −8     | derive Copy on AuditEntry              |
 | After Cluster K (PQC serde) | 352   | −4     | serde derives on insecure-toy stubs    |
-| **Current**                | **352** | **−267** | **43% of baseline cleared**         |
+| After Cluster L (spin locks) | 325  | −27    | normalize `spin::Mutex::lock()` usage  |
+| **Current**                | **325** | **−294** | **47% of baseline cleared**         |
 
 ## Landed commits (in order)
 
@@ -50,6 +51,7 @@ on the dashboard).
 11. `e8e44ee kernel: hal/x86_64/msr inline-asm wrappers for rdmsr/wrmsr` — Cluster B
 12. `549b58b kernel: derive Copy on AuditEntry so drain paths can snapshot by value` — Cluster D
 13. `1481bf5 kernel: serde derives on insecure-toy PQC stub types` — Cluster K
+14. `TBD kernel: normalize spin::Mutex lock usage` — Cluster L
 
 ## Remaining error clusters
 
@@ -170,6 +172,14 @@ fixes and disappear without per-site work.
 InsecureKyber* needed serde::Serialize/Deserialize because CapTokenV2
 carries a DilithiumSignature field and itself derives serde. Closed
 4 errors.)
+
+### ✅ Cluster L — `spin::Mutex::lock()` treated as `Result` (CLEARED)
+
+Several kernel subsystems used `spin::Mutex` as though `lock()` returned
+`Result<MutexGuard, _>`, copying the shape of `std::sync::Mutex`. In
+`spin`, locks are non-poisoning and return the guard directly. Cleared
+across HAL timer/APIC/HPET jitter, scheduler jitter, secman policy,
+assertion macros, intent counters, and WASI hostcall context snapshotting.
 
 ## Recommended attack order
 
