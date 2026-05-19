@@ -41,7 +41,8 @@ on the dashboard).
 | After Cluster Q (HPET)     | 221    | −16    | usize MMIO offsets, Copy mode, rdtsc asm |
 | After Cluster R (MM/TLB)   | 213    | −8     | flush page start addr, lazy statics, as_micros |
 | After Cluster S (loader)   | 199    | −14    | cap header drift, MemoryFlags, LoaderResult demo |
-| **Current**                | **199** | **−420** | **68% of baseline cleared**         |
+| After Cluster T (sched tick) | 125   | −74    | jitter budget state, lazy statics, ABI feature call sites |
+| **Current**                | **125** | **−494** | **80% of baseline cleared**         |
 
 ## Landed commits (in order)
 
@@ -65,7 +66,8 @@ on the dashboard).
 18. `ef64bc2 kernel: align IPC message payload and syscall helpers` — Cluster P
 19. `f1b4805 kernel: normalize HPET register arithmetic and TSC read` — Cluster Q
 20. `84ad992 kernel: align TLB flush and timing boundaries` — Cluster R
-21. `TBD kernel: align user task loader with current cap and memory APIs` — Cluster S
+21. `afb37ef kernel: align user task loader with current cap and memory APIs` — Cluster S
+22. `TBD kernel: normalize scheduler jitter budget state` — Cluster T
 
 ## Remaining error clusters
 

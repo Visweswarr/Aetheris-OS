@@ -75,6 +75,11 @@ impl Instant {
         Self { nanos: crate::log::get_current_time_ms() * 1_000_000 }
     }
 
+    /// Construct an instant from a monotonic millisecond value.
+    pub const fn from_millis_since_boot(millis: u64) -> Self {
+        Self { nanos: millis * 1_000_000 }
+    }
+
     pub fn elapsed(&self) -> Duration {
         let now = Self::now();
         Duration::from_nanos(now.nanos.saturating_sub(self.nanos))

@@ -8,10 +8,11 @@
 use core::fmt;
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::vec;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use crate::hal::x86_64::timer::{get_timer_kind, TimerKind};
-use crate::sched::tick::{get_jitter_budget, is_jitter_boost_active};
+use crate::sched::tick::{get_jitter_budget, is_jitter_budget_active};
 
 /// Kernel feature flags
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,12 +100,10 @@ pub fn get_kernel_features() -> u64 {
     }
     
     // Check jitter budget support
-    if get_jitter_budget().is_some() {
-        features |= KernelFeature::JITTER_BUDGET.bit_mask();
-    }
+    features |= KernelFeature::JITTER_BUDGET.bit_mask();
     
     // Check RT scheduling support
-    if is_jitter_boost_active() {
+    if is_jitter_budget_active() {
         features |= KernelFeature::RT_SCHEDULING.bit_mask();
     }
     
@@ -142,6 +141,11 @@ pub fn get_kernel_features() -> u64 {
     features |= KernelFeature::NGFS_DID_ENCRYPTION.bit_mask();
     
     features
+}
+
+/// Backward-compatible helper that returns the current feature bitset.
+pub fn get_features() -> u64 {
+    get_kernel_features()
 }
 
 /// Get feature information as a string
@@ -186,11 +190,9 @@ pub fn get_timer_features() -> u64 {
 pub fn get_scheduling_features() -> u64 {
     let mut sched_features = 0u64;
     
-    if get_jitter_budget().is_some() {
-        sched_features |= KernelFeature::JITTER_BUDGET.bit_mask();
-    }
+    sched_features |= KernelFeature::JITTER_BUDGET.bit_mask();
     
-    if is_jitter_boost_active() {
+    if is_jitter_budget_active() {
         sched_features |= KernelFeature::RT_SCHEDULING.bit_mask();
     }
     
@@ -286,18 +288,15 @@ pub fn print_feature_status() {
 
 /// Get jitter statistics for performance monitoring
 fn get_jitter_stats() -> Option<JitterStats> {
-    if let Some(budget) = get_jitter_budget() {
-        let stats = budget.get_stats();
-        Some(JitterStats {
-            mean_us: stats.jitter_mean_us,
-            p95_us: stats.jitter_p95_us,
-            total_samples: stats.jitter_samples,
-            consecutive_overruns: stats.consecutive_overruns,
-            boost_active: stats.boost_active,
-        })
-    } else {
-        None
-    }
+    let budget = get_jitter_budget();
+    let stats = budget.get_stats();
+    Some(JitterStats {
+        mean_us: stats.jitter_mean_us,
+        p95_us: stats.jitter_p95_us,
+        total_samples: stats.jitter_samples,
+        consecutive_overruns: stats.consecutive_overruns,
+        boost_active: stats.boost_active,
+    })
 }
 
 /// Jitter statistics for performance monitoring
@@ -408,4 +407,3 @@ mod tests {
         assert!(feature_string.len() < 100); // Reasonable length
     }
 }
-
