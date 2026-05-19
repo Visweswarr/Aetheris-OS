@@ -38,7 +38,8 @@ on the dashboard).
 | After Cluster N (LLM)      | 276    | −31    | schema/session/backend consistency     |
 | After Cluster O (IPC caps) | 259    | −17    | canonical `security::cap_v2` for IPC   |
 | After Cluster P (IPC payload/syscall) | 237 | −22 | payload bytes, policy unwrap, trace casts |
-| **Current**                | **237** | **−382** | **62% of baseline cleared**         |
+| After Cluster Q (HPET)     | 221    | −16    | usize MMIO offsets, Copy mode, rdtsc asm |
+| **Current**                | **221** | **−398** | **64% of baseline cleared**         |
 
 ## Landed commits (in order)
 
@@ -59,7 +60,8 @@ on the dashboard).
 15. `c79b44d kernel: repair x86_64 IDT handler ABI` — Cluster M
 16. `e51316b kernel: make LLM schema session and backend consistent` — Cluster N
 17. `f0f93e9 kernel: canonicalize IPC V2 capability validation` — Cluster O
-18. `TBD kernel: align IPC message payload and syscall helpers` — Cluster P
+18. `ef64bc2 kernel: align IPC message payload and syscall helpers` — Cluster P
+19. `TBD kernel: normalize HPET register arithmetic and TSC read` — Cluster Q
 
 ## Remaining error clusters
 

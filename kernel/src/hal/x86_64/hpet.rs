@@ -3,7 +3,7 @@
 /// This module provides HPET support as a fallback when Local APIC timer is not available.
 /// HPET offers high precision timing with low jitter for robust timer functionality.
 
-use core::arch::x86_64::*;
+use core::arch::{asm, x86_64::*};
 use core::sync::atomic::{AtomicU64, AtomicU32, Ordering};
 use core::ptr;
 use alloc::vec::Vec;
@@ -21,7 +21,7 @@ pub struct HpetTimerConfig {
 }
 
 /// HPET timer modes
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HpetTimerMode {
     OneShot,
     Periodic,
@@ -162,7 +162,7 @@ impl HpetTimer {
         }
 
         if total_samples > 0 {
-            let mean_jitter = cumulative_jitter / total_samples;
+            let mean_jitter = cumulative_jitter / total_samples as u64;
             
             // Calculate p95 (simplified - find 95th percentile)
             let p95_index = (total_samples * 95) / 100;
@@ -251,13 +251,13 @@ pub struct JitterStats {
 }
 
 // HPET register offsets
-const HPET_CAPABILITIES: u64 = 0x000;
-const HPET_CONFIG: u64 = 0x010;
-const HPET_ISR: u64 = 0x020;
-const HPET_MAIN_COUNTER: u64 = 0x0F0;
-const HPET_TIMER0_CONFIG: u64 = 0x100;
-const HPET_TIMER0_COMPARATOR: u64 = 0x108;
-const HPET_TIMER0_FSB: u64 = 0x110;
+const HPET_CAPABILITIES: usize = 0x000;
+const HPET_CONFIG: usize = 0x010;
+const HPET_ISR: usize = 0x020;
+const HPET_MAIN_COUNTER: usize = 0x0F0;
+const HPET_TIMER0_CONFIG: usize = 0x100;
+const HPET_TIMER0_COMPARATOR: usize = 0x108;
+const HPET_TIMER0_FSB: usize = 0x110;
 
 // Low-level HPET operations
 impl HpetTimer {
@@ -405,9 +405,16 @@ impl HpetTimer {
         unsafe {
             // Serialize instruction execution
             _mm_lfence();
-            let tsc = __rdtsc();
+            let low: u32;
+            let high: u32;
+            asm!(
+                "rdtsc",
+                out("eax") low,
+                out("edx") high,
+                options(nomem, nostack, preserves_flags),
+            );
             _mm_lfence();
-            tsc
+            ((high as u64) << 32) | low as u64
         }
     }
 
