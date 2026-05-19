@@ -3,6 +3,7 @@ pub mod idt;
 pub mod timer;
 pub mod apic;
 pub mod hpet;
+pub mod msr;
 pub mod tss;
 
 #[cfg(debug_assertions)]
@@ -14,10 +15,10 @@ pub mod timer_test;
 pub struct X64Hal;
 
 impl crate::hal::Hal for X64Hal {
-    fn init_cpu() -> Result<(), &'static str> { 
-        let _selectors = gdt::init(); 
+    fn init_cpu() -> Result<(), &'static str> {
+        let _selectors = gdt::init();
         tss::init();
-        idt::init(); 
+        idt::init_idt();
         Ok(())
     }
     fn init_timer() -> Result<(), &'static str> { 
@@ -160,9 +161,6 @@ impl X64Hal {
         crate::kprintln!("[HAL] PIT timer: ALWAYS AVAILABLE");
         timer::init();
         crate::kprintln!("[HAL] PIT timer: INITIALIZED");
-    }
-            crate::kprintln!("[HAL] APIC timer not available");
-        }
     }
     
     /// Print APIC timer statistics
