@@ -67,7 +67,7 @@ on the dashboard).
 19. `f1b4805 kernel: normalize HPET register arithmetic and TSC read` — Cluster Q
 20. `84ad992 kernel: align TLB flush and timing boundaries` — Cluster R
 21. `afb37ef kernel: align user task loader with current cap and memory APIs` — Cluster S
-22. `TBD kernel: normalize scheduler jitter budget state` — Cluster T
+22. `7b8e035 kernel: normalize scheduler jitter budget state` — Cluster T
 
 ## Remaining error clusters
 
