@@ -62,6 +62,21 @@ pub struct IntentV1 {
 pub struct ConstraintV1 {
     pub kind: u16,
     pub value: ConstraintValue,
+    /// Denormalised cache of `value` when it is a `Scalar(_)`. Callers in the
+    /// planner read this directly instead of pattern-matching the enum.
+    /// Kept in sync by `ConstraintV1::new_scalar`.
+    #[serde(default)]
+    pub value_scalar: Option<u64>,
+}
+
+impl ConstraintV1 {
+    pub fn new_scalar(kind: u16, scalar: u64) -> Self {
+        Self {
+            kind,
+            value: ConstraintValue::Scalar(scalar),
+            value_scalar: Some(scalar),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -79,15 +94,25 @@ pub struct ActionV1 {
     pub params: BTreeMap<String, String>,
     #[serde(default)]
     pub cost_estimate: u64,
+    /// Planner-estimated wall-clock cost in milliseconds. Used by the
+    /// constraint-satisfaction loop to drop actions that violate a
+    /// CONSTRAINT_TYPE_MAX_TIME budget.
+    #[serde(default)]
+    pub time_estimate: u64,
 }
 
 impl ActionV1 {
     pub fn new(kind: u16) -> Self {
-        Self { kind, params: BTreeMap::new(), cost_estimate: 0 }
+        Self { kind, params: BTreeMap::new(), cost_estimate: 0, time_estimate: 0 }
     }
 
     pub fn with_cost_estimate(mut self, cost: u64) -> Self {
         self.cost_estimate = cost;
+        self
+    }
+
+    pub fn with_time_estimate(mut self, time_ms: u64) -> Self {
+        self.time_estimate = time_ms;
         self
     }
 
@@ -103,6 +128,18 @@ pub struct PlanV1 {
     pub intent_id: u128,
     pub actions: Vec<ActionV1>,
     pub cost: u64,
+    /// Sum of `actions[*].cost_estimate`, computed at plan-build time and
+    /// updated whenever the planner mutates `actions`.
+    #[serde(default)]
+    pub total_cost: u64,
+    /// Sum of `actions[*].time_estimate` in milliseconds, kept in sync with
+    /// `total_cost`. The constraint loop reads this to enforce time budgets.
+    #[serde(default)]
+    pub total_time: u64,
+    /// Constraints that were satisfied (and so applied) while building this
+    /// plan. Surfaced to whylog and the user-facing preview notes.
+    #[serde(default)]
+    pub constraints_applied: Vec<ConstraintV1>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
