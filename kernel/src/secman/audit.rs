@@ -6,12 +6,18 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 use crate::{kprintln, klog};
 
-/// Audit entry structure - exactly as specified
-pub struct AuditEntry { 
+/// Audit entry structure - exactly as specified.
+///
+/// `Copy` is derived because all fields are `Copy` and the drain paths
+/// snapshot entries out of the global `RING` buffer by value — copying
+/// is cheaper than locking a mutex on every read and lets the readers
+/// iterate without taking ownership of the slot.
+#[derive(Copy, Clone)]
+pub struct AuditEntry {
     pub ts: u64,   // Timestamp
     pub pid: u64,  // Process ID
     pub op: u16,   // Operation code
-    pub arg: u64   // Operation argument
+    pub arg: u64,  // Operation argument
 }
 
 impl AuditEntry {
