@@ -42,7 +42,8 @@ on the dashboard).
 | After Cluster R (MM/TLB)   | 213    | −8     | flush page start addr, lazy statics, as_micros |
 | After Cluster S (loader)   | 199    | −14    | cap header drift, MemoryFlags, LoaderResult demo |
 | After Cluster T (sched tick) | 125   | −74    | jitter budget state, lazy statics, ABI feature call sites |
-| **Current**                | **125** | **−494** | **80% of baseline cleared**         |
+| After Cluster U (MM audit) | 80     | −45    | page-table translate API, audit stat consts, borrow restore |
+| **Current**                | **80** | **−539** | **87% of baseline cleared**         |
 
 ## Landed commits (in order)
 
@@ -68,6 +69,7 @@ on the dashboard).
 20. `84ad992 kernel: align TLB flush and timing boundaries` — Cluster R
 21. `afb37ef kernel: align user task loader with current cap and memory APIs` — Cluster S
 22. `7b8e035 kernel: normalize scheduler jitter budget state` — Cluster T
+23. `TBD kernel: align page-table audit translation and stat initialization` — Cluster U
 
 ## Remaining error clusters
 
