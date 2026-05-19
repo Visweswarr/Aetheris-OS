@@ -45,7 +45,7 @@ compile_error!(
 ///
 /// These are used for message typing only. No actual lattice arithmetic
 /// is performed in this module.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum DilithiumParameterSet {
     Dilithium2,
     Dilithium3,
@@ -61,7 +61,7 @@ pub enum DilithiumParameterSet {
 /// This struct holds serialized key bytes for routing via IPC.
 /// It does NOT perform any cryptographic operations.
 /// Call the `keyvault` service over IPC for real verification.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct InsecureDilithiumPublicKey {
     /// Raw public key bytes (opaque — interpreted by `keyvault` service).
     pub data: Vec<u8>,
@@ -96,7 +96,7 @@ impl InsecureDilithiumPublicKey {
 pub type DilithiumPublicKey = InsecureDilithiumPublicKey;
 
 /// ⚠️  INSECURE — Opaque container for a Dilithium signature blob.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct InsecureDilithiumSignature {
     /// Raw signature bytes (opaque).
     pub data: Vec<u8>,

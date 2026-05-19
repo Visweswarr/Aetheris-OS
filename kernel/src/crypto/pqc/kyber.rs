@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use super::super::{CryptoResult, CryptoError};
 
 /// Kyber parameter set identifiers (type-level only).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum KyberParameterSet {
     Kyber512,
     Kyber768,
@@ -15,7 +15,7 @@ pub enum KyberParameterSet {
 }
 
 /// ⚠️  INSECURE — Opaque container for Kyber public key bytes.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct InsecureKyberPublicKey {
     pub data: Vec<u8>,
     pub parameter_set: KyberParameterSet,
@@ -32,7 +32,7 @@ impl InsecureKyberPublicKey {
 pub type KyberPublicKey = InsecureKyberPublicKey;
 
 /// ⚠️  INSECURE — Opaque container for Kyber secret key bytes.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct InsecureKyberSecretKey {
     pub data: Vec<u8>,
     pub parameter_set: KyberParameterSet,
