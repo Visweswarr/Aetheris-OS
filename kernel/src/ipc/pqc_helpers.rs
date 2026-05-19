@@ -6,6 +6,8 @@
 use crate::security::cap_v2::{CapTokenV2, CapTokenHeader, CapTokenSignature, CapTokenMetadata, SignatureAlgorithm, scope_v2};
 use crate::ipc::header::{IpcHeaderV2, AuthMode};
 use crate::ipc::types::Message;
+use alloc::string::ToString;
+use alloc::vec;
 
 /// Convert legacy capability token to CapTokenV2 format
 pub fn convert_to_cap_token_v2(token: &crate::security::cap::CapToken) -> CapTokenV2 {
@@ -82,15 +84,15 @@ pub fn create_ipc_header_v2(
     }
 }
 
-/// Generate ephemeral session key for Kyber KEM
+/// Generate ephemeral session key material for Kyber-authenticated IPC.
+///
+/// This helper intentionally consumes the kernel RNG proxy instead of returning
+/// a fixed byte pattern. Full Kyber encapsulation lives in the streaming IPC
+/// path (`ipc::stream`); this fixed-size value is the compatibility material
+/// carried by `IpcHeaderV2` until that header grows a ciphertext field.
 pub fn generate_ephemeral_session_key() -> [u8; 32] {
-    // This is a placeholder implementation
-    // In a real system, this would use proper cryptographic key generation
-    
     let mut key = [0u8; 32];
-    for i in 0..32 {
-        key[i] = (i as u8) ^ 0xAA; // Simple pattern for demonstration
-    }
+    crate::rng::random_bytes(&mut key);
     key
 }
 
@@ -103,8 +105,8 @@ mod tests {
         let key1 = generate_ephemeral_session_key();
         let key2 = generate_ephemeral_session_key();
         
-        // Keys should be deterministic for testing
-        assert_eq!(key1, key2);
+        // Normal-mode compatibility keys should not reuse the old fixed pattern.
+        assert_ne!(key1, key2);
         assert_eq!(key1.len(), 32);
     }
     
