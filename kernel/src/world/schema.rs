@@ -10,7 +10,7 @@ pub const SCHEMA_HASH: &[u8; 32] = &[/* TODO: computed at build time */];
 #[repr(C)]
 pub struct EntityId(pub u128);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[repr(C)]
 pub struct PredId(pub u64);
 

@@ -1,4 +1,8 @@
-use alloc::collections::{BTreeMap, HashMap};
+use alloc::string::ToString;
+use alloc::collections::BTreeMap;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU64, Ordering};
 use spin::Mutex;
 
@@ -63,7 +67,7 @@ pub struct FabricStats {
 /// Main event fabric that manages subscriptions and routing
 pub struct EventFabric {
     subscriptions: Mutex<Vec<Subscription>>,
-    task_inboxes: Mutex<HashMap<u32, Inbox>>,
+    task_inboxes: Mutex<BTreeMap<u32, Inbox>>,
     next_subscription_id: AtomicU64,
     stats: Mutex<FabricStats>,
 }
@@ -72,7 +76,7 @@ impl EventFabric {
     pub fn new() -> Self {
         Self {
             subscriptions: Mutex::new(Vec::new()),
-            task_inboxes: Mutex::new(HashMap::new()),
+            task_inboxes: Mutex::new(BTreeMap::new()),
             next_subscription_id: AtomicU64::new(1),
             stats: Mutex::new(FabricStats::default()),
         }

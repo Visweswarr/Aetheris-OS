@@ -3,10 +3,11 @@
 /// This module provides system call implementations for IPC operations,
 /// including channel management, message sending/receiving, and inbox operations.
 
-use super::types::{Message, MessageHeader};
+use super::types::{Message, MessageHeader, ProcessId, ChannelId, MessagePayload};
 use super::queues::*;
 use super::{IpcError, IpcResult};
-use crate::{kprintln, klog};
+use crate::{kprintln, klog, format};
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 /// IPC system call numbers
@@ -737,7 +738,7 @@ pub fn sys_send(dst: u64, msg: &Message) -> Result<(), i32> {
             
             // Check if policy allows the operation
             if !policy_result.allowed {
-                kprintln!("[ipc] send -> {dst} POLICY DENIED: {}", policy_result.reason);
+                kprintln!("[ipc] send -> {} POLICY DENIED: {}", dst, policy_result.reason);
                 
                 // Log policy denial audit entry
                 let audit_entry = crate::secman::audit::AuditEntry::new(
@@ -763,8 +764,8 @@ pub fn sys_send(dst: u64, msg: &Message) -> Result<(), i32> {
             
             match auth_result {
                 Some(auth_result) if auth_result.authenticated => {
-                    kprintln!("[ipc] send -> {dst}, len={} (PQC authenticated, mode={:?})", 
-                              msg.header.payload_size, auth_result.auth_mode);
+                    kprintln!("[ipc] send -> {}, len={} (PQC authenticated, mode={:?})", 
+                              dst, msg.header.payload_size, auth_result.auth_mode);
                     
                     // Trace the IPC operation
                     crate::trace::trace_ipc(sender_pid, dst, msg.header.payload_size, msg.header.priority);
@@ -783,7 +784,7 @@ pub fn sys_send(dst: u64, msg: &Message) -> Result<(), i32> {
                 }
                 Some(auth_result) => {
                     // Authentication failed
-                    kprintln!("[ipc] send -> {dst} AUTH FAILED: {:?}", auth_result.failure_reason);
+                    kprintln!("[ipc] send -> {} AUTH FAILED: {:?}", dst, auth_result.failure_reason);
                     
                     // Log appropriate audit entry based on failure reason
                     let audit_entry = match auth_result.failure_reason {
@@ -817,13 +818,13 @@ pub fn sys_send(dst: u64, msg: &Message) -> Result<(), i32> {
                 }
                 None => {
                     // Authentication manager not available
-                    kprintln!("[ipc] send -> {dst} AUTH MANAGER UNAVAILABLE");
+                    kprintln!("[ipc] send -> {} AUTH MANAGER UNAVAILABLE", dst);
                     
                     // Fall back to legacy validation
                     match crate::security::validator::validate_for_ipc_send(&token, dst) {
                         Ok(()) => {
-                            kprintln!("[ipc] send -> {dst}, len={} (legacy validated with token 0x{:x})", 
-                                      msg.header.payload_size, token.id);
+                            kprintln!("[ipc] send -> {}, len={} (legacy validated with token 0x{:x})", 
+                                      dst, msg.header.payload_size, token.id);
                             
                             // Trace the IPC operation
                             crate::trace::trace_ipc(sender_pid, dst, msg.header.payload_size, msg.header.priority);
@@ -841,7 +842,7 @@ pub fn sys_send(dst: u64, msg: &Message) -> Result<(), i32> {
                             }
                         }
                         Err(validation_error) => {
-                            kprintln!("[ipc] send -> {dst} LEGACY VALIDATION FAILED: {:?}", validation_error);
+                            kprintln!("[ipc] send -> {} LEGACY VALIDATION FAILED: {:?}", dst, validation_error);
                             
                             // Log legacy validation failure audit entry
                             let audit_entry = crate::secman::audit::AuditEntry::new(
@@ -859,7 +860,7 @@ pub fn sys_send(dst: u64, msg: &Message) -> Result<(), i32> {
         }
         Err(cap_error) => {
             // No capability token available
-            kprintln!("[ipc] send -> {dst} NO CAPABILITY: {:?}", cap_error);
+            kprintln!("[ipc] send -> {} NO CAPABILITY: {:?}", dst, cap_error);
             
             // Evaluate policy for operation without capability
             let policy_context = crate::secman::policy::IpcPolicyContext {
@@ -877,7 +878,7 @@ pub fn sys_send(dst: u64, msg: &Message) -> Result<(), i32> {
             
             // Check if policy allows the operation without capability
             if !policy_result.allowed {
-                kprintln!("[ipc] send -> {dst} POLICY DENIED (NO CAP): {}", policy_result.reason);
+                kprintln!("[ipc] send -> {} POLICY DENIED (NO CAP): {}", dst, policy_result.reason);
                 
                 // Log policy denial audit entry
                 let audit_entry = crate::secman::audit::AuditEntry::new(
@@ -902,8 +903,8 @@ pub fn sys_send(dst: u64, msg: &Message) -> Result<(), i32> {
             }
             
             // Policy allows operation without capability (dev mode)
-            kprintln!("[ipc] send -> {dst}, len={} (policy allowed, no capability)", 
-                      msg.header.payload_size);
+            kprintln!("[ipc] send -> {}, len={} (policy allowed, no capability)", 
+                      dst, msg.header.payload_size);
             
             // Trace the IPC operation
             crate::trace::trace_ipc(sender_pid, dst, msg.header.payload_size, msg.header.priority);

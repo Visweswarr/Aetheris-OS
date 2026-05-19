@@ -4,8 +4,11 @@
 /// including sys_debug operations for key management, statistics, and
 /// administrative functions.
 
-use crate::{kprintln, klog, kprintln};
+use crate::{kprintln, klog, format};
 use crate::log::Level;
+use alloc::string::ToString;
+use alloc::string::String;
+use core::time::Duration;
 use super::keys::*;
 use super::audit::*;
 use super::cap_store::*;
@@ -264,8 +267,8 @@ fn handle_print_audit_entries(count: u64) -> Result<u64, String> {
     
     let count = count.min(100) as usize; // Limit to 100 entries
     
-    print_recent_audit_entries(count);
-    
+    crate::secman::audit::print_recent_audit_entries(count);
+
     Ok(count as u64)
 }
 
@@ -459,6 +462,12 @@ fn perform_audit_maintenance() {
     klog!(INFO, "[SECMAN-API] Performed audit maintenance");
 }
 
+/// Reset audit statistics
+fn reset_audit_stats() {
+    // TODO: Implement audit stats reset
+    klog!(INFO, "[SECMAN-API] Reset audit statistics");
+}
+
 /// Perform capability maintenance
 fn perform_capability_maintenance() {
     // TODO: Implement capability maintenance
@@ -640,6 +649,11 @@ pub fn test_secman_api() {
     let _ = handle_perform_maintenance();
     
     kprintln!("[SECMAN-API] API test completed");
+}
+
+/// Helper to log audit entry
+fn log_audit_entry(entry: AuditEntry) {
+    crate::kprintln!("[AUDIT] {:?}", entry);
 }
 
 #[cfg(test)]

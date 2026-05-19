@@ -3,8 +3,9 @@
 //! This module provides serial input/output functionality for the shell,
 //! including line buffering, command history, and input validation.
 
-use crate::{kprintln, klog, klog};
+use crate::{kprintln, klog, kprint};
 use crate::log::Level;
+use alloc::string::ToString;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::RefCell;

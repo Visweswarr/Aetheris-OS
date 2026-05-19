@@ -4,11 +4,13 @@
 /// for pointer ranges, alignment, length caps, and bounds checking.
 
 use super::table::*;
-use crate::{kprintln, klog, kprintln};
+use crate::{kprintln, klog};
 use crate::log::Level;
 use crate::secman::audit::{audit_log, AuditEvent, AuditLevel};
 use core::mem;
-use alloc::collections::HashMap;
+use alloc::string::ToString;
+use alloc::collections::BTreeMap;
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

@@ -1,8 +1,8 @@
-#![no_std]
-
 use core::fmt;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
+use alloc::format;
 
 pub mod registers;
 pub mod stack;
@@ -248,7 +248,7 @@ impl CrashDump {
         
         // TODO: Implement persistent storage
         // For now, just log the report
-        crate::klog!(crate::log::tags::CRASH, "Saving crash dump to {}", filename);
+        crate::klog!(ERROR, "Saving crash dump to {}", filename);
         
         Ok(())
     }
@@ -278,7 +278,7 @@ impl CrashDumpManager {
         let mut crash_dump = CrashDump::with_config(error_type, self.config.clone());
         
         if let Err(e) = crash_dump.collect() {
-            crate::klog!(crate::log::tags::CRASH, "Failed to collect crash dump: {}", e);
+            crate::klog!(ERROR, "Failed to collect crash dump: {}", e);
         }
 
         crash_dump.print();
@@ -313,7 +313,7 @@ pub fn init() {
     let manager = CrashDumpManager::new(config);
     
     // TODO: Store manager in global state
-    crate::klog!(crate::log::tags::INIT, "Crash dump system initialized");
+    crate::klog!(INFO, "Crash dump system initialized");
 }
 
 /// Handle crash with enhanced dumping

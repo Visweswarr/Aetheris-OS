@@ -11,12 +11,14 @@ use crate::crypto::pqc::kyber::{KyberKem, KyberParameterSet, KyberPublicKey, Kyb
 use crate::crypto::pqc::kyber::KyberParameterSet::Kyber768;
 use crate::secman::keys::{KeyId, SessionKey, IssuerKey};
 use crate::secman::audit::{audit_log, AuditEvent, AuditLevel};
-use crate::{kprintln, klog, kprintln};
+use crate::{kprintln, klog};
 use crate::log::Level;
 use core::time::Duration;
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use alloc::collections::{HashMap, VecDeque};
+use alloc::collections::{BTreeMap, VecDeque};
+use alloc::format;
 use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
 use spin::Mutex;
 use lazy_static::lazy_static;
@@ -51,7 +53,7 @@ pub const MAC_TAG_SIZE: usize = 16;
 //=============================================================================
 
 /// Unique identifier for an IPC stream
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StreamId {
     /// Sender process ID
     pub sender: ProcessId,
@@ -422,9 +424,9 @@ impl IpcStream {
 /// Stream manager for handling multiple IPC streams
 pub struct StreamManager {
     /// Active streams indexed by stream ID
-    streams: HashMap<StreamId, IpcStream>,
+    streams: BTreeMap<StreamId, IpcStream>,
     /// Streams indexed by process pair for quick lookup
-    process_pair_streams: HashMap<(ProcessId, ProcessId), Vec<StreamId>>,
+    process_pair_streams: BTreeMap<(ProcessId, ProcessId), Vec<StreamId>>,
     /// Global stream counter
     stream_counter: AtomicU64,
     /// Statistics
@@ -435,8 +437,8 @@ impl StreamManager {
     /// Create a new stream manager
     pub fn new() -> Self {
         Self {
-            streams: HashMap::new(),
-            process_pair_streams: HashMap::new(),
+            streams: BTreeMap::new(),
+            process_pair_streams: BTreeMap::new(),
             stream_counter: AtomicU64::new(1),
             stats: StreamManagerStats::new(),
         }

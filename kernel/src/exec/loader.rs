@@ -3,7 +3,7 @@
 /// This module provides functionality for loading and validating user task images,
 /// creating user task contexts with syscall gates, and managing the user/kernel boundary.
 
-use crate::{kprintln, klog, kprintln};
+use crate::{kprintln, klog, format, lazy_static};
 use crate::log::Level;
 use crate::secman::cap_v2::{CapTokenV2, CapValidationResult, CapValidationFailure};
 use crate::secman::audit::{AuditEntry, ops};
@@ -11,6 +11,7 @@ use crate::mm::{MemoryResult, MemoryError, VirtualAddress, PhysicalAddress, Page
 use crate::mm::vm::VirtualMemoryManager;
 use super::header::{UserTaskHeader, ImageFormat, HeaderParseResult, create_test_header, create_invalid_header};
 use core::sync::atomic::{AtomicU64, Ordering};
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
 use spin::Mutex;

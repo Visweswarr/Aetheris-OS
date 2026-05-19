@@ -8,6 +8,8 @@ use crate::policy::simulate::create_simulation_engine;
 use crate::event::EventKernel;
 use crate::secman::audit::emit_audit;
 use crate::secman::audit_codes::{AuditReason, POLICY_SIM_ALLOW, POLICY_SIM_DENY};
+use alloc::string::ToString;
+use alloc::format;
 
 /// Policy Guardrail kernel interface
 pub struct PolicyKernel;

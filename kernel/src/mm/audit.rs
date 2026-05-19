@@ -4,11 +4,12 @@
 /// mappings and reports suspicious combinations (e.g., writable+executable pages).
 /// It helps ensure MMU hygiene and security policy compliance.
 
-use crate::{kprintln, klog, kprintln};
+use crate::{kprintln, klog};
 use crate::log::Level;
 use crate::secman::audit::{audit_log, AuditEvent, AuditLevel};
 use super::paging::{PageFlags, get_paging_stats, flush_tlb};
 use super::constants::*;
+use super::utils::is_kernel_address;
 use x86_64::{
     structures::paging::{PageTable, PageTableFlags, Page, Size4KiB, Mapper, OffsetPageTable},
     registers::control::Cr3,
@@ -16,7 +17,9 @@ use x86_64::{
 };
 use core::sync::atomic::{AtomicU64, Ordering};
 use spin::Mutex;
-use alloc::collections::HashMap;
+use alloc::string::ToString;
+use alloc::collections::BTreeMap;
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

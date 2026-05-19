@@ -1,6 +1,9 @@
+use alloc::string::ToString;
 use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::collections::BTreeMap;
+use alloc::format;
+use alloc::vec;
 use core::fmt::Write;
 
 use super::{FlakyTestResult, TestRunResult};
@@ -392,7 +395,7 @@ pub fn init() {
 }
 
 /// Get the global issue opener
-pub fn get_opener() -> Option<spin::MutexGuard<Option<IssueOpener>>> {
+pub fn get_opener() -> Option<spin::MutexGuard<'static, Option<IssueOpener>>> {
     GLOBAL_ISSUE_OPENER.try_lock()
 }
 

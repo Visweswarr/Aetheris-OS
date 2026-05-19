@@ -1,10 +1,47 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-use std::collections::HashMap;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 pub const SCHEMA_VERSION: u16 = 1;
 pub const INTENT_MAX_SIZE: usize = 8192;
 pub const PLAN_PREVIEW_MAX_SIZE: usize = 16384;
+
+// Intent state lifecycle constants
+pub const INTENT_STATE_SUBMITTED: u8 = 0;
+pub const INTENT_STATE_RUNNING: u8 = 1;
+pub const INTENT_STATE_COMPLETED: u8 = 2;
+pub const INTENT_STATE_FAILED: u8 = 3;
+pub const INTENT_STATE_CANCELLED: u8 = 4;
+
+// Intent type tags
+pub const INTENT_TYPE_BACKUP: u16 = 1;
+pub const INTENT_TYPE_UPDATE: u16 = 2;
+pub const INTENT_TYPE_MONITOR: u16 = 3;
+pub const INTENT_TYPE_DEPLOY: u16 = 4;
+
+// Action kinds
+pub const ACTION_KIND_VALIDATE: u16 = 1;
+pub const ACTION_KIND_EXECUTE: u16 = 2;
+pub const ACTION_KIND_VERIFY: u16 = 3;
+pub const ACTION_KIND_SNAPSHOT: u16 = 4;
+pub const ACTION_KIND_MONITOR: u16 = 5;
+pub const ACTION_KIND_LOG: u16 = 6;
+
+// Constraint kinds
+pub const CONSTRAINT_TYPE_MAX_TIME: u16 = 1;
+pub const CONSTRAINT_TYPE_MAX_COST: u16 = 2;
+pub const CONSTRAINT_TYPE_SECURITY_LEVEL: u16 = 3;
+
+// Priority levels
+pub const PRIORITY_LOW: u8 = 0;
+pub const PRIORITY_NORMAL: u8 = 1;
+pub const PRIORITY_HIGH: u8 = 2;
+pub const PRIORITY_CRITICAL: u8 = 3;
+
+// Capacity limits for sub-collections
+pub const METADATA_MAX_ENTRIES: usize = 64;
+pub const CONSTRAINTS_MAX_COUNT: usize = 32;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[repr(C)]
@@ -40,6 +77,24 @@ pub enum ConstraintValue {
 pub struct ActionV1 {
     pub kind: u16,
     pub params: BTreeMap<String, String>,
+    #[serde(default)]
+    pub cost_estimate: u64,
+}
+
+impl ActionV1 {
+    pub fn new(kind: u16) -> Self {
+        Self { kind, params: BTreeMap::new(), cost_estimate: 0 }
+    }
+
+    pub fn with_cost_estimate(mut self, cost: u64) -> Self {
+        self.cost_estimate = cost;
+        self
+    }
+
+    pub fn with_param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.params.insert(key.into(), value.into());
+        self
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -394,5 +449,69 @@ mod tests {
 
         assert!(intent.serialized_size().unwrap() <= INTENT_MAX_SIZE);
         assert!(preview.serialized_size().unwrap() <= PLAN_PREVIEW_MAX_SIZE);
+    }
+}
+
+// ============================================================================
+// Additional types for compatibility
+// ============================================================================
+
+/// Intent status snapshot returned to userspace.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[repr(C)]
+pub struct IntentStatusV1 {
+    pub intent_id: u128,
+    pub state: u8,
+    pub last_why_log_hash: [u8; 32],
+    pub progress: u32,
+    pub last_update: u64,
+    pub error_code: i32,
+}
+
+impl Default for IntentStatusV1 {
+    fn default() -> Self {
+        Self {
+            intent_id: 0,
+            state: INTENT_STATE_SUBMITTED,
+            last_why_log_hash: [0u8; 32],
+            progress: 0,
+            last_update: 0,
+            error_code: 0,
+        }
+    }
+}
+
+/// Why record for audit trail
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WhyRecordV1 {
+    /// Timestamp of the record
+    pub timestamp: u64,
+    /// Intent ID this record relates to
+    pub intent_id: u128,
+    /// Vector clock for ordering
+    pub vclock: u64,
+    /// Justification text
+    pub justification: String,
+    /// Evidence supporting the decision
+    pub evidence: Vec<EvidenceV1>,
+    /// Hash of the record for integrity
+    pub hash: [u8; 32],
+}
+
+impl WhyRecordV1 {
+    pub fn new(intent_id: u128, vclock: u64, justification: String) -> Self {
+        Self {
+            timestamp: crate::log::get_current_time_ms(),
+            intent_id,
+            vclock,
+            justification,
+            evidence: Vec::new(),
+            hash: [0u8; 32],
+        }
+    }
+    
+    pub fn with_evidence(mut self, evidence: Vec<EvidenceV1>) -> Self {
+        self.evidence = evidence;
+        self
     }
 }

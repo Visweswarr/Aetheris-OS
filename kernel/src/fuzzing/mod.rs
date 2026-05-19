@@ -1,9 +1,10 @@
-#![no_std]
-
 use core::fmt;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
 use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::vec;
+use crate::kprintln;
 
 pub mod corpus;
 pub mod mutation;

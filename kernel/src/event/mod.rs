@@ -11,6 +11,9 @@ pub mod fabric;
 use crate::secman::cap_flags::*;
 use crate::event::fabric::EVENT_FABRIC;
 use crate::event::queue::{Event, Lane};
+use alloc::string::ToString;
+use alloc::format;
+use alloc::vec::Vec;
 
 /// Event Fabric kernel interface
 pub struct EventKernel;

@@ -1,3 +1,4 @@
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
 use alloc::collections::BTreeMap;

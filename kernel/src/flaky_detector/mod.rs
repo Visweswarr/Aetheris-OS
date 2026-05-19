@@ -1,7 +1,9 @@
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
 use alloc::boxed::Box;
+use alloc::vec;
 
 pub mod issue_opener;
 
@@ -430,7 +432,7 @@ pub fn init() {
 }
 
 /// Get the global flaky detector
-pub fn get_detector() -> Option<spin::MutexGuard<Option<FlakyDetector>>> {
+pub fn get_detector() -> Option<spin::MutexGuard<'static, Option<FlakyDetector>>> {
     GLOBAL_DETECTOR.try_lock()
 }
 

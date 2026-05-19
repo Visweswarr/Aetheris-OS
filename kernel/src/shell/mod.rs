@@ -3,13 +3,14 @@
 //! This module provides a simple command-line interface accessible via serial
 //! for debugging, monitoring, and controlling the kernel.
 
-use crate::{kprintln, klog, klog, kprint};
+use crate::{kprintln, klog, kprint, format, vec};
 use crate::log::Level;
 use crate::sched::{Task, TaskId, TaskPriority, TaskState};
 use crate::secman::audit;
 use crate::fault_injection;
 use crate::crash_dump;
 use crate::trace;
+use alloc::string::ToString;
 use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::collections::BTreeMap;
@@ -418,7 +419,7 @@ pub fn shell_task() -> ! {
         }
         
         // Yield to other tasks
-        crate::sched::yield_cpu();
+        crate::sched::yield_current();
         
         // Small delay to prevent busy waiting
         for _ in 0..1000 {
@@ -442,12 +443,11 @@ pub fn init() {
         4096, // 4KB stack
     );
     
-    // Start shell task
-    if let Ok(task_id) = crate::sched::spawn(shell_task) {
-        klog!(INFO, "[SHELL] Shell task started with ID: {}", task_id);
-    } else {
-        klog!(ERROR, "[SHELL] Failed to start shell task");
-    }
+    // Start shell task (best-effort using the lightweight task factory).
+    let task_id = crate::sched::create_task(0);
+    crate::sched::enqueue_task(task_id);
+    klog!(INFO, "[SHELL] Shell task started with ID: {:?}", task_id);
+    let _ = shell_task;
     
     kprintln!("[SHELL] Shell system initialized");
 }

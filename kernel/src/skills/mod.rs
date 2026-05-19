@@ -1,4 +1,5 @@
-use crate::{kprintln, klog};
+use crate::{kprintln, klog, format};
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
 use spin::Mutex;
@@ -43,7 +44,7 @@ impl SkillsKernel {
         let registry = self.registry.lock();
         let handle = registry.load_skill(manifest, wasm_bytes.to_vec())?;
         
-        klog!("[SKILLS] Loaded skill {} with handle 0x{:X}", handle.name, handle.id);
+        klog!(INFO, "[SKILLS] Loaded skill {} with handle 0x{:X}", handle.name, handle.id);
         
         Ok(handle)
     }
@@ -56,7 +57,7 @@ impl SkillsKernel {
         let registry = self.registry.lock();
         let bundle = registry.invoke_skill(handle, input)?;
         
-        klog!("[SKILLS] Invoked skill preview: {} actions, {} evidence, {}μs",
+        klog!(DEBUG, "[SKILLS] Invoked skill preview: {} actions, {} evidence, {}μs",
               bundle.preview.plan.actions.len(),
               bundle.evidence.len(),
               bundle.metrics.execution_time_us);
@@ -68,7 +69,7 @@ impl SkillsKernel {
         let registry = self.registry.lock();
         registry.unload_skill(handle)?;
         
-        klog!("[SKILLS] Unloaded skill with handle 0x{:X}", handle);
+        klog!(INFO, "[SKILLS] Unloaded skill with handle 0x{:X}", handle);
         
         Ok(())
     }

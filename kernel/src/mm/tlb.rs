@@ -3,10 +3,11 @@
 /// This module provides comprehensive TLB management including page-specific flushes,
 /// global flushes, and SMP shootdown support for future multi-core systems.
 
-use crate::{kprintln, klog, kprintln};
+use crate::{kprintln, klog};
 use crate::log::Level;
 use crate::secman::audit::{audit_log, AuditEvent, AuditLevel};
 use super::constants::*;
+use super::utils::is_kernel_address;
 use x86_64::{
     structures::paging::{Page, Size4KiB, Size2MiB, Size1GiB},
     VirtAddr, PhysAddr,
@@ -14,9 +15,11 @@ use x86_64::{
 };
 use core::sync::atomic::{AtomicU64, Ordering};
 use spin::Mutex;
-use alloc::collections::HashMap;
+use alloc::string::ToString;
+use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::format;
 
 //=============================================================================
 // TLB CONFIGURATION AND CONSTANTS
@@ -38,7 +41,7 @@ pub enum TlbFlushType {
 }
 
 /// TLB flush reason for auditing
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TlbFlushReason {
     /// Page mapping changed
     PageMappingChanged,
@@ -407,7 +410,7 @@ pub struct TlbStats {
     /// Multiple page flushes
     pub multiple_page_flushes: u64,
     /// Flushes by reason
-    pub flushes_by_reason: HashMap<TlbFlushReason, u64>,
+    pub flushes_by_reason: BTreeMap<TlbFlushReason, u64>,
     /// Last flush timestamp
     pub last_flush_timestamp: u64,
     /// Average flush time (microseconds)
@@ -511,15 +514,8 @@ fn page_size_to_string(size: usize) -> &'static str {
 
 /// Get current timestamp in microseconds
 fn get_current_timestamp() -> u64 {
-    // This is a simplified implementation
-    // In a real system, you'd use a high-resolution timer
-    use core::time::Duration;
-    use std::time::SystemTime;
-    
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or(Duration::from_secs(0))
-        .as_micros() as u64
+    // Use kernel time instead of std::time
+    crate::time::Instant::now().as_micros()
 }
 
 //=============================================================================

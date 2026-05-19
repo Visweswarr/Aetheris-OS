@@ -1,4 +1,5 @@
 use crate::{kprintln, klog};
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
 use core::sync::atomic::{AtomicU64, Ordering};
@@ -197,7 +198,7 @@ impl SkillRegistry {
         
         self.counters.increment_loaded();
         
-        klog!("[REGISTRY] Loaded skill {} (v{}) with handle 0x{:X}", 
+        klog!(INFO, "[REGISTRY] Loaded skill {} (v{}) with handle 0x{:X}", 
               handle.name, handle.version, handle.id);
         
         Ok(handle)
@@ -231,7 +232,7 @@ impl SkillRegistry {
                 self.counters.add_memory(bundle.metrics.memory_used_bytes);
                 self.counters.add_execution_time(bundle.metrics.execution_time_us);
                 
-                klog!("[REGISTRY] Skill {} invoked successfully: {} instructions, {} bytes, {}μs",
+                klog!(DEBUG, "[REGISTRY] Skill {} invoked successfully: {} instructions, {} bytes, {}μs",
                       loaded_skill.handle.name,
                       bundle.metrics.instructions_executed,
                       bundle.metrics.memory_used_bytes,
@@ -242,7 +243,7 @@ impl SkillRegistry {
             Err(e) => {
                 self.counters.increment_failed();
                 
-                klog!("[REGISTRY] Skill {} invocation failed: {:?}",
+                klog!(ERROR, "[REGISTRY] Skill {} invocation failed: {:?}",
                       loaded_skill.handle.name, e);
                 
                 Err(RegistryError::ExecutionFailed(e.to_string()))
@@ -259,7 +260,7 @@ impl SkillRegistry {
             if loaded_skill.decrement_load_count() {
                 self.counters.increment_unloaded();
                 
-                klog!("[REGISTRY] Unloaded skill {} (v{})", 
+                klog!(INFO, "[REGISTRY] Unloaded skill {} (v{})", 
                       loaded_skill.handle.name, loaded_skill.handle.version);
                 
                 Ok(())

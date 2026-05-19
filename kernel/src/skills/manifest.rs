@@ -1,4 +1,5 @@
 use serde::{Serialize, Deserialize};
+use alloc::string::ToString;
 use alloc::string::String;
 use alloc::vec::Vec;
 

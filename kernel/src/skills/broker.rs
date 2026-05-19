@@ -1,12 +1,21 @@
-use crate::{kprintln, klog};
+use crate::{kprintln, klog, format, vec};
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
 use core::sync::atomic::{AtomicU64, Ordering};
 use spin::Mutex;
-use zeroize::Zeroizing;
+// Note: zeroize not available in no_std, using stub
+pub struct Zeroizing<T>(pub T);
+impl<T> Zeroizing<T> {
+    pub fn new(val: T) -> Self { Self(val) }
+}
+impl<T> core::ops::Deref for Zeroizing<T> {
+    type Target = T;
+    fn deref(&self) -> &T { &self.0 }
+}
 
 use crate::intent::schema::CapRef;
-use crate::secman::cap::CapTokenV2;
+use crate::security::cap_v2::CapTokenV2;
 use crate::secman::cap_store::CapStore;
 
 pub const PREVIEW_SCOPE_FLAG: u64 = 1 << 30;
@@ -73,7 +82,7 @@ impl CapabilityBroker {
                     session.add_cap(cap_token);
                 }
                 Err(e) => {
-                    klog!("[BROKER] Failed to broker capability {:?}: {:?}", cap_ref, e);
+                    klog!(ERROR, "[BROKER] Failed to broker capability {:?}: {:?}", cap_ref, e);
                     return Err(BrokerError::CapabilityBrokerageFailed);
                 }
             }

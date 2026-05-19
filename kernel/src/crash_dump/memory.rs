@@ -1,8 +1,8 @@
-#![no_std]
-
 use core::fmt;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
+use alloc::format;
 
 /// Memory region information
 #[derive(Debug, Clone)]
