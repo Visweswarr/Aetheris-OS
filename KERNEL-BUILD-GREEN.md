@@ -77,7 +77,7 @@ on the dashboard).
 24. `4317bf5 kernel: align secman capability and audit API drift` — Cluster V
 25. `07b5a15 kernel: align intent world and skills schema drift` — Cluster W
 26. `d3ad295 kernel: align event fabric and policy guardrail API drift` — Cluster X
-27. `TBD kernel: clear final library and binary compile drift` — Cluster Y
+27. `df6bf27 kernel: clear final library and binary compile drift` — Cluster Y
 
 ## Remaining error clusters
 
