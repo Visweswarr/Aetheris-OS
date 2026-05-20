@@ -1,11 +1,12 @@
 //! Tool Registry for AI Core Service
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use wasm_driver_host::summarizer::{LogSummaryRequest, SummarizerHost};
 
 use crate::error::{AiCoreError, Result};
 use crate::ipc::ToolCallRequest;
@@ -27,7 +28,12 @@ pub struct Tool {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum ToolImplementationType { Builtin, External, Webhook, Script }
+pub enum ToolImplementationType {
+    Builtin,
+    External,
+    Webhook,
+    Script,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
@@ -68,9 +74,18 @@ impl ToolRegistry {
     }
 
     pub fn new_mock() -> Self {
+        let mut tools = HashMap::new();
+        let echo_tool = Self::builtin_echo_tool();
+        tools.insert(echo_tool.id.clone(), echo_tool);
+        let log_summarizer = Self::builtin_log_summarizer_tool();
+        tools.insert(log_summarizer.id.clone(), log_summarizer);
         Self {
-            tools: Arc::new(RwLock::new(HashMap::new())),
-            stats: Arc::new(RwLock::new(ToolRegistryStats::default())),
+            tools: Arc::new(RwLock::new(tools)),
+            stats: Arc::new(RwLock::new(ToolRegistryStats {
+                total_tools: 2,
+                builtin_tools: 2,
+                ..ToolRegistryStats::default()
+            })),
         }
     }
 
@@ -81,12 +96,27 @@ impl ToolRegistry {
     }
 
     async fn register_builtin_tools(&self) -> Result<()> {
-        let echo_tool = Tool {
+        self.register_tool(Self::builtin_echo_tool()).await?;
+        self.register_tool(Self::builtin_log_summarizer_tool())
+            .await?;
+        Ok(())
+    }
+
+    fn builtin_echo_tool() -> Tool {
+        Tool {
             id: "echo".to_string(),
             name: "echo".to_string(),
             description: "Echo back the input".to_string(),
             version: "1.0.0".to_string(),
-            parameters_schema: serde_json::json!({"type": "object", "properties": {"message": {"type": "string"}}}),
+            parameters_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string"},
+                    "intent_fragment": {"type": "string"},
+                    "step_index": {"type": "integer"}
+                },
+                "required": ["message"]
+            }),
             required_capabilities: vec![],
             category: "utility".to_string(),
             tags: vec!["utility".to_string()],
@@ -94,9 +124,47 @@ impl ToolRegistry {
             timeout_seconds: 30,
             requires_confirmation: false,
             metadata: HashMap::new(),
-        };
-        self.register_tool(echo_tool).await?;
-        Ok(())
+        }
+    }
+
+    fn builtin_log_summarizer_tool() -> Tool {
+        Tool {
+            id: "log_summarizer".to_string(),
+            name: "log_summarizer".to_string(),
+            description: "Capability-gated deterministic log summarizer via wasm_driver host \
+                          fallback"
+                .to_string(),
+            version: "1.0.0".to_string(),
+            parameters_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "max_bytes": {"type": "integer"},
+                    "component_path": {"type": "string"}
+                },
+                "required": ["path"]
+            }),
+            required_capabilities: vec!["fs.read".to_string(), "ai.summarize".to_string()],
+            category: "ai".to_string(),
+            tags: vec![
+                "logs".to_string(),
+                "summary".to_string(),
+                "wasm_driver".to_string(),
+            ],
+            implementation_type: ToolImplementationType::Builtin,
+            timeout_seconds: 30,
+            requires_confirmation: true,
+            metadata: HashMap::from([
+                (
+                    "metric".to_string(),
+                    serde_json::json!("ai_log_summaries_total"),
+                ),
+                (
+                    "wasm_driver_mode".to_string(),
+                    serde_json::json!("deterministic-fallback"),
+                ),
+            ]),
+        }
     }
 
     pub async fn register_tool(&self, tool: Tool) -> Result<()> {
@@ -113,27 +181,126 @@ impl ToolRegistry {
     pub async fn execute_tool(&self, request: &ToolCallRequest) -> Result<ToolResult> {
         let start = std::time::Instant::now();
         let tool_id = &request.tool_name;
-        
-        let tools = self.tools.read().await;
-        let _tool = tools.get(tool_id)
-            .ok_or_else(|| AiCoreError::ToolNotFound(tool_id.clone()))?;
-        
-        // Mock execution
-        let result = ToolResult {
-            tool_id: tool_id.clone(),
-            success: true,
-            result: Some(serde_cbor::to_vec(&request.parameters).unwrap_or_default()),
-            error_message: None,
-            execution_time_ms: start.elapsed().as_millis() as u64,
-            metadata: HashMap::new(),
+
+        let _tool = {
+            let tools = self.tools.read().await;
+            tools
+                .get(tool_id)
+                .cloned()
+                .ok_or_else(|| AiCoreError::ToolNotFound(tool_id.clone()))?
         };
-        
-        self.update_execution_stats(result.execution_time_ms, result.success).await;
+
+        let result = if tool_id == "log_summarizer" {
+            self.execute_log_summarizer(request, start).await?
+        } else {
+            ToolResult {
+                tool_id: tool_id.clone(),
+                success: true,
+                result: Some(serde_cbor::to_vec(&request.parameters).unwrap_or_default()),
+                error_message: None,
+                execution_time_ms: start.elapsed().as_millis() as u64,
+                metadata: HashMap::new(),
+            }
+        };
+
+        self.update_execution_stats(result.execution_time_ms, result.success)
+            .await;
         Ok(result)
     }
 
-    pub async fn execute_tool_with_params(&self, tool_name: &str, parameters: &[u8]) -> Result<Vec<u8>> {
-        let call_id = format!("call-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
+    async fn execute_log_summarizer(
+        &self,
+        request: &ToolCallRequest,
+        start: std::time::Instant,
+    ) -> Result<ToolResult> {
+        let path = request
+            .parameters
+            .get("path")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                AiCoreError::InvalidInput(
+                    "log_summarizer requires string parameter 'path'".to_string(),
+                )
+            })?;
+        let max_bytes = request
+            .parameters
+            .get("max_bytes")
+            .and_then(Value::as_u64)
+            .unwrap_or(2 * 1024 * 1024);
+        let path = PathBuf::from(path);
+        let metadata = tokio::fs::metadata(&path).await.map_err(|error| {
+            AiCoreError::IoError(format!(
+                "cannot stat log file '{}': {}",
+                path.display(),
+                error
+            ))
+        })?;
+        if metadata.len() > max_bytes {
+            return Err(AiCoreError::ResourceError(format!(
+                "log file '{}' is {} bytes, above max_bytes {}",
+                path.display(),
+                metadata.len(),
+                max_bytes
+            )));
+        }
+        let text = tokio::fs::read_to_string(&path).await.map_err(|error| {
+            AiCoreError::IoError(format!(
+                "cannot read log file '{}': {}",
+                path.display(),
+                error
+            ))
+        })?;
+        let component_path = request
+            .parameters
+            .get("component_path")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(PathBuf::from);
+        let summary = SummarizerHost::new().summarize(LogSummaryRequest {
+            source_path: path.clone(),
+            text,
+            component_path,
+        });
+        crate::metrics::record_log_summary();
+        let payload = serde_json::json!({
+            "source_path": summary.source_path,
+            "mode": summary.mode,
+            "line_count": summary.line_count,
+            "error_count": summary.error_count,
+            "warning_count": summary.warning_count,
+            "info_count": summary.info_count,
+            "top_terms": summary.top_terms,
+            "summary": summary.summary,
+            "metric": "ai_log_summaries_total"
+        });
+        Ok(ToolResult {
+            tool_id: request.tool_name.clone(),
+            success: true,
+            result: Some(serde_json::to_vec_pretty(&payload)?),
+            error_message: None,
+            execution_time_ms: start.elapsed().as_millis() as u64,
+            metadata: HashMap::from([
+                (
+                    "metric".to_string(),
+                    serde_json::json!("ai_log_summaries_total"),
+                ),
+                ("mode".to_string(), payload["mode"].clone()),
+            ]),
+        })
+    }
+
+    pub async fn execute_tool_with_params(
+        &self,
+        tool_name: &str,
+        parameters: &[u8],
+    ) -> Result<Vec<u8>> {
+        let call_id = format!(
+            "call-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
         let request = ToolCallRequest {
             tool_name: tool_name.to_string(),
             call_id,
@@ -151,18 +318,35 @@ impl ToolRegistry {
         let tools = self.tools.read().await;
         let mut stats = self.stats.write().await;
         stats.total_tools = tools.len();
-        stats.builtin_tools = tools.values().filter(|t| t.implementation_type == ToolImplementationType::Builtin).count();
-        stats.external_tools = tools.values().filter(|t| t.implementation_type == ToolImplementationType::External).count();
-        stats.webhook_tools = tools.values().filter(|t| t.implementation_type == ToolImplementationType::Webhook).count();
-        stats.script_tools = tools.values().filter(|t| t.implementation_type == ToolImplementationType::Script).count();
+        stats.builtin_tools = tools
+            .values()
+            .filter(|t| t.implementation_type == ToolImplementationType::Builtin)
+            .count();
+        stats.external_tools = tools
+            .values()
+            .filter(|t| t.implementation_type == ToolImplementationType::External)
+            .count();
+        stats.webhook_tools = tools
+            .values()
+            .filter(|t| t.implementation_type == ToolImplementationType::Webhook)
+            .count();
+        stats.script_tools = tools
+            .values()
+            .filter(|t| t.implementation_type == ToolImplementationType::Script)
+            .count();
     }
 
     async fn update_execution_stats(&self, execution_time_ms: u64, success: bool) {
         let mut stats = self.stats.write().await;
         stats.total_executions += 1;
-        if success { stats.successful_executions += 1; } else { stats.failed_executions += 1; }
+        if success {
+            stats.successful_executions += 1;
+        } else {
+            stats.failed_executions += 1;
+        }
         let total_time = stats.average_execution_time_ms * (stats.total_executions - 1) as f64;
-        stats.average_execution_time_ms = (total_time + execution_time_ms as f64) / stats.total_executions as f64;
+        stats.average_execution_time_ms =
+            (total_time + execution_time_ms as f64) / stats.total_executions as f64;
     }
 
     pub async fn list_tools(&self) -> Vec<Tool> {
@@ -171,6 +355,41 @@ impl ToolRegistry {
 
     pub async fn get_tool(&self, tool_id: &str) -> Option<Tool> {
         self.tools.read().await.get(tool_id).cloned()
+    }
+
+    pub async fn has_tool(&self, tool_id: &str) -> bool {
+        self.tools.read().await.contains_key(tool_id)
+    }
+
+    pub async fn validate_parameters(&self, tool_id: &str, parameters: &Value) -> Result<()> {
+        let tools = self.tools.read().await;
+        let tool = tools
+            .get(tool_id)
+            .ok_or_else(|| AiCoreError::ToolNotFound(tool_id.to_string()))?;
+
+        if !parameters.is_object() {
+            return Err(AiCoreError::InvalidInput(format!(
+                "parameters for tool '{}' must be a JSON object",
+                tool_id
+            )));
+        }
+
+        if let Some(required) = tool
+            .parameters_schema
+            .get("required")
+            .and_then(Value::as_array)
+        {
+            for field in required.iter().filter_map(Value::as_str) {
+                if parameters.get(field).is_none() {
+                    return Err(AiCoreError::InvalidInput(format!(
+                        "parameters for tool '{}' are missing required field '{}'",
+                        tool_id, field
+                    )));
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn get_stats(&self) -> ToolRegistryStats {

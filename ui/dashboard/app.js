@@ -13,6 +13,14 @@ const kernel = {
   log: []
 };
 
+function aiMetrics() {
+  return window.POLYMERA_AI_METRICS || {
+    ai_log_summaries_total: 0,
+    updated_at_unix: 0,
+    last_summary: null,
+  };
+}
+
 const SERVICES = [
   { name: 'kernel', priority: 'KERNEL', state: 'RUNNING', cpu: 2.1, mem: 32768 },
   { name: 'init', priority: 'HIGH', state: 'RUNNING', cpu: 0.3, mem: 8192 },
@@ -282,7 +290,8 @@ function update() {
   pushH(kernel.history.ipc, newIpc);
   pushH(kernel.history.memory, Math.round(kernel.memory.user));
   pushH(kernel.history.crypto, newCrypto);
-  pushH(kernel.history.ticks, kernel.ticks);
+  const aiLogSummaries = aiMetrics().ai_log_summaries_total || 0;
+  pushH(kernel.history.ticks, aiLogSummaries);
 
   // Periodic log entries
   if (kernel.ticks % 20 === 0) klog('INFO', `Tick ${kernel.ticks}: ${kernel.processes.length} processes, ${newSyscalls} syscalls/tick`);
@@ -295,7 +304,7 @@ function update() {
   document.getElementById('metric-ipc').textContent = kernel.ipcRouted.toLocaleString();
   document.getElementById('metric-memory').textContent = Math.round(kernel.memory.user) + ' MB';
   document.getElementById('metric-crypto').textContent = kernel.cryptoOps.toLocaleString();
-  document.getElementById('metric-ticks').textContent = kernel.ticks.toLocaleString();
+  document.getElementById('metric-ticks').textContent = aiLogSummaries.toLocaleString();
 
   drawSparkline('spark-processes', kernel.history.processes, '#22c55e');
   drawSparkline('spark-syscalls', kernel.history.syscalls, '#06b6d4');

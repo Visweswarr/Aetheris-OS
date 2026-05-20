@@ -1,54 +1,261 @@
-use std::io::{self, Read};
-use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot};
+use aetheris_ai_core::agent::{PolicyEnforcer, StepExecutor, TaskPlanner};
+use aetheris_ai_core::cap::CapTokenManager;
+use aetheris_ai_core::intents::{create_system_intent_manager, SystemActionContext};
 use aetheris_ai_core::ipc::ChatRequest;
 use aetheris_ai_core::orchestrator::{MultiModalOrchestrator, OrchestratorInput};
 use aetheris_ai_core::router::PromptRouter;
-use aetheris_ai_core::intents::create_system_intent_manager;
 use aetheris_ai_core::runtime::RuntimeManager;
-use aetheris_ai_core::tools::stt::{SpeechToTextTool, SttConfig};
 use aetheris_ai_core::tools::registry::ToolRegistry;
-use aetheris_ai_core::agent::{TaskPlanner, StepExecutor, PolicyEnforcer};
-use aetheris_ai_core::cap::CapTokenManager;
+use aetheris_ai_core::tools::stt::{SpeechToTextTool, SttConfig};
+use std::collections::HashMap;
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::{mpsc, oneshot};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("plan-smoke") {
+        return run_plan_smoke(&args[2..]).await;
+    }
+    if args.get(1).map(String::as_str) == Some("summarize-log") {
+        return run_summarize_log(&args[2..]).await;
+    }
+
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer)?;
-    
+
     let message = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&buffer) {
         json["message"].as_str().unwrap_or(&buffer).to_string()
     } else {
         buffer.trim().to_string()
     };
-    
+
     println!("Processing message: {}", message);
-    
+
     let runtime_manager = Arc::new(RuntimeManager::new_mock());
     let tool_registry = Arc::new(ToolRegistry::new_mock());
     let cap_manager = Arc::new(CapTokenManager::new_mock());
-    let prompt_router = Arc::new(PromptRouter::new(std::path::PathBuf::from("templates"), true));
+    let prompt_router = Arc::new(PromptRouter::new(
+        std::path::PathBuf::from("templates"),
+        true,
+    ));
     let system_intent_manager = Arc::new(create_system_intent_manager(cap_manager.clone())?);
-    let task_planner = Arc::new(TaskPlanner::new(runtime_manager.clone(), tool_registry.clone()));
+    let task_planner = Arc::new(TaskPlanner::new(
+        runtime_manager.clone(),
+        tool_registry.clone(),
+    ));
     let policy_enforcer = Arc::new(PolicyEnforcer::new(cap_manager.clone()));
-    let step_executor = Arc::new(StepExecutor::new(tool_registry.clone(), policy_enforcer.clone()));
+    let step_executor = Arc::new(StepExecutor::new(
+        tool_registry.clone(),
+        policy_enforcer.clone(),
+    ));
     let mut stt = SpeechToTextTool::new(SttConfig::default())?;
     stt.initialize(None).await?;
     let stt_tool = Arc::new(stt);
-    
+
     let (tx, rx) = mpsc::channel(32);
-    let orchestrator = MultiModalOrchestrator::new(rx, prompt_router, system_intent_manager, runtime_manager, stt_tool, task_planner, step_executor);
-    
-    tokio::spawn(async move { orchestrator.run().await; });
-    
+    let orchestrator = MultiModalOrchestrator::new(
+        rx,
+        prompt_router,
+        system_intent_manager,
+        runtime_manager,
+        stt_tool,
+        task_planner,
+        step_executor,
+    );
+
+    tokio::spawn(async move {
+        orchestrator.run().await;
+    });
+
     let (resp_tx, resp_rx) = oneshot::channel();
-    let request = ChatRequest { message, ..Default::default() };
-    
-    tx.send(OrchestratorInput::Text { request, session_id: "cli-session".to_string(), response_tx: resp_tx }).await?;
-    
+    let request = ChatRequest {
+        message,
+        ..Default::default()
+    };
+
+    tx.send(OrchestratorInput::Text {
+        request,
+        session_id: "cli-session".to_string(),
+        response_tx: resp_tx,
+    })
+    .await?;
+
     println!("Waiting for response...");
     let response = resp_rx.await??;
     println!("Response: {:?}", response);
-    
+
     Ok(())
+}
+
+async fn run_summarize_log(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let mut log_path = None;
+    let mut component_path = None;
+    let mut metrics_js = None;
+    let mut max_bytes = 2 * 1024 * 1024u64;
+    let mut approved = false;
+
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--path" => log_path = iter.next().map(PathBuf::from),
+            "--component" => component_path = iter.next().map(PathBuf::from),
+            "--metrics-js" => metrics_js = iter.next().map(PathBuf::from),
+            "--max-bytes" => {
+                let value = iter.next().ok_or("--max-bytes requires a numeric value")?;
+                max_bytes = value.parse()?;
+            }
+            "--approve" => approved = true,
+            other => {
+                if log_path.is_none() {
+                    log_path = Some(PathBuf::from(other));
+                }
+            }
+        }
+    }
+
+    let log_path = log_path.ok_or("summarize-log requires --path <log-file>")?;
+    let runtime_manager = Arc::new(RuntimeManager::new_mock());
+    let tool_registry = Arc::new(ToolRegistry::new_mock());
+    let cap_manager = Arc::new(CapTokenManager::new_mock());
+    let planner = TaskPlanner::new(runtime_manager, tool_registry.clone());
+    let policy_enforcer = Arc::new(PolicyEnforcer::new(cap_manager));
+    let executor = StepExecutor::new(tool_registry, policy_enforcer);
+
+    let mut metadata = HashMap::new();
+    if approved {
+        metadata.insert("approved_plan".to_string(), serde_json::json!(true));
+        metadata.insert(
+            "capabilities".to_string(),
+            serde_json::json!(["fs.read", "ai.summarize"]),
+        );
+    }
+    let context = SystemActionContext {
+        user_id: "cli-user".to_string(),
+        session_id: "cli-log-summary".to_string(),
+        cap_token: None,
+        metadata,
+    };
+
+    let plan = planner
+        .generate_log_summary_plan(&log_path, max_bytes, component_path.as_deref(), &context)
+        .await?;
+    eprintln!("{}", serde_json::to_string_pretty(&plan)?);
+
+    let results = executor.execute_plan(plan, context).await?;
+    let payload = results
+        .iter()
+        .find_map(|step| step.result.as_ref())
+        .and_then(|result| result.result.as_ref())
+        .ok_or("log summarizer completed without a result payload")?;
+    let summary: serde_json::Value = serde_json::from_slice(payload)?;
+    let metrics_path = metrics_js.unwrap_or_else(default_dashboard_metrics_path);
+    let total = write_dashboard_metric(&metrics_path, &summary).await?;
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&serde_json::json!({
+            "ai_log_summaries_total": total,
+            "summary": summary,
+            "dashboard_metric": metrics_path,
+        }))?
+    );
+
+    Ok(())
+}
+
+fn default_dashboard_metrics_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ui/dashboard/ai_metrics.js")
+}
+
+async fn write_dashboard_metric(
+    path: &Path,
+    summary: &serde_json::Value,
+) -> Result<u64, Box<dyn std::error::Error>> {
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let previous = read_dashboard_metric_count(path).await.unwrap_or(0);
+    let total = previous.saturating_add(1);
+    let updated_at_unix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    let payload = serde_json::json!({
+        "ai_log_summaries_total": total,
+        "updated_at_unix": updated_at_unix,
+        "last_summary": summary,
+    });
+    let js = format!(
+        "window.POLYMERA_AI_METRICS = {};\n",
+        serde_json::to_string_pretty(&payload)?
+    );
+    tokio::fs::write(path, js).await?;
+    Ok(total)
+}
+
+async fn read_dashboard_metric_count(path: &Path) -> Option<u64> {
+    let text = tokio::fs::read_to_string(path).await.ok()?;
+    let start = text.find('{')?;
+    let end = text.rfind('}')?;
+    let json: serde_json::Value = serde_json::from_str(&text[start..=end]).ok()?;
+    json.get("ai_log_summaries_total")
+        .and_then(|value| value.as_u64())
+}
+
+async fn run_plan_smoke(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let mut goal = None;
+    let mut approved = false;
+    let mut execute = false;
+
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--goal" => goal = iter.next().cloned(),
+            "--approve" => approved = true,
+            "--execute" => execute = true,
+            other => {
+                if goal.is_none() {
+                    goal = Some(other.to_string());
+                }
+            }
+        }
+    }
+
+    let goal = goal.unwrap_or_else(|| "scan files then summarize results".to_string());
+    let runtime_manager = Arc::new(RuntimeManager::new_mock());
+    let tool_registry = Arc::new(ToolRegistry::new_mock());
+    let cap_manager = Arc::new(CapTokenManager::new_mock());
+    let planner = TaskPlanner::new(runtime_manager, tool_registry.clone());
+    let policy_enforcer = Arc::new(PolicyEnforcer::new(cap_manager));
+    let executor = StepExecutor::new(tool_registry, policy_enforcer);
+
+    let mut metadata = HashMap::new();
+    if approved {
+        metadata.insert("approved_plan".to_string(), serde_json::json!(true));
+    }
+    let context = SystemActionContext {
+        user_id: "cli-user".to_string(),
+        session_id: "cli-session".to_string(),
+        cap_token: None,
+        metadata,
+    };
+
+    let plan = planner.generate_plan(&goal, &context).await?;
+    println!("{}", serde_json::to_string_pretty(&plan)?);
+
+    if execute {
+        let results = executor.execute_plan(plan, context).await?;
+        println!("{}", serde_json::to_string_pretty(&results)?);
+    } else if plan_requires_approval(&plan) && !approved {
+        println!("plan requires approval; re-run with --approve --execute to run it");
+    }
+
+    Ok(())
+}
+
+fn plan_requires_approval(plan: &aetheris_ai_core::agent::TaskPlan) -> bool {
+    plan.steps
+        .iter()
+        .any(|step| step.requires_approval || step.is_destructive)
 }

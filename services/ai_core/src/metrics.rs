@@ -1,11 +1,11 @@
 //! AI Core Service Telemetry and Metrics Collection
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
-use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
 
@@ -23,7 +23,12 @@ pub struct MetricsConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum PrivacyMode { Disabled, LocalOnly, Anonymized, Full }
+pub enum PrivacyMode {
+    Disabled,
+    LocalOnly,
+    Anonymized,
+    Full,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AiCoreMetrics {
@@ -51,6 +56,7 @@ pub struct AiCoreMetrics {
     pub active_sessions: u64,
     pub sessions_total: u64,
     pub session_duration_avg_secs: f64,
+    pub ai_log_summaries_total: u64,
     pub timestamp: u64,
 }
 
@@ -68,6 +74,7 @@ pub struct AiCoreMetricsCollector {
     model_loads_total: AtomicU64,
     model_inferences_total: AtomicU64,
     sessions_total: AtomicU64,
+    ai_log_summaries_total: AtomicU64,
     latency_samples: Arc<RwLock<Vec<f64>>>,
     tool_errors: Arc<RwLock<HashMap<String, AtomicU64>>>,
 }
@@ -102,58 +109,93 @@ impl AiCoreMetricsCollector {
             model_loads_total: AtomicU64::new(0),
             model_inferences_total: AtomicU64::new(0),
             sessions_total: AtomicU64::new(0),
+            ai_log_summaries_total: AtomicU64::new(0),
             latency_samples: Arc::new(RwLock::new(Vec::new())),
             tool_errors: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     pub async fn start(&mut self) -> Result<()> {
-        if !self.config.enabled { return Ok(()); }
+        if !self.config.enabled {
+            return Ok(());
+        }
         // Starting metrics collection
         Ok(())
     }
 
-    pub async fn stop(&mut self) { /* Stopping metrics collection */ }
+    pub async fn stop(&mut self) { /* Stopping metrics collection */
+    }
 
     pub fn record_request(&self, success: bool, latency_ms: f64) {
         self.requests_total.fetch_add(1, Ordering::Relaxed);
-        if success { self.requests_success.fetch_add(1, Ordering::Relaxed); }
-        else { self.requests_error.fetch_add(1, Ordering::Relaxed); }
+        if success {
+            self.requests_success.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.requests_error.fetch_add(1, Ordering::Relaxed);
+        }
         let samples = self.latency_samples.clone();
-        tokio::spawn(async move { samples.write().await.push(latency_ms); });
+        tokio::spawn(async move {
+            samples.write().await.push(latency_ms);
+        });
     }
 
     pub fn record_tokens(&self, input_tokens: u64, output_tokens: u64) {
-        self.tokens_total.fetch_add(input_tokens + output_tokens, Ordering::Relaxed);
+        self.tokens_total
+            .fetch_add(input_tokens + output_tokens, Ordering::Relaxed);
         self.tokens_input.fetch_add(input_tokens, Ordering::Relaxed);
-        self.tokens_output.fetch_add(output_tokens, Ordering::Relaxed);
+        self.tokens_output
+            .fetch_add(output_tokens, Ordering::Relaxed);
     }
 
     pub fn record_tool_call(&self, success: bool, _tool_name: Option<&str>) {
         self.tool_calls_total.fetch_add(1, Ordering::Relaxed);
-        if success { self.tool_calls_success.fetch_add(1, Ordering::Relaxed); }
-        else { self.tool_calls_error.fetch_add(1, Ordering::Relaxed); }
+        if success {
+            self.tool_calls_success.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.tool_calls_error.fetch_add(1, Ordering::Relaxed);
+        }
     }
 
-    pub fn record_model_load(&self) { self.model_loads_total.fetch_add(1, Ordering::Relaxed); }
-    pub fn record_model_inference(&self) { self.model_inferences_total.fetch_add(1, Ordering::Relaxed); }
-    pub fn record_session(&self) { self.sessions_total.fetch_add(1, Ordering::Relaxed); }
+    pub fn record_model_load(&self) {
+        self.model_loads_total.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn record_model_inference(&self) {
+        self.model_inferences_total.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn record_session(&self) {
+        self.sessions_total.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn record_log_summary(&self) {
+        self.ai_log_summaries_total.fetch_add(1, Ordering::Relaxed);
+    }
 
     pub async fn get_metrics_snapshot(&self) -> Result<AiCoreMetrics> {
         let latency_samples = self.latency_samples.read().await;
         let mut sorted = latency_samples.clone();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        
-        let p50 = sorted.get((sorted.len() as f64 * 0.5) as usize).copied().unwrap_or(0.0);
-        let p95 = sorted.get((sorted.len() as f64 * 0.95) as usize).copied().unwrap_or(0.0);
-        let p99 = sorted.get((sorted.len() as f64 * 0.99) as usize).copied().unwrap_or(0.0);
+
+        let p50 = sorted
+            .get((sorted.len() as f64 * 0.5) as usize)
+            .copied()
+            .unwrap_or(0.0);
+        let p95 = sorted
+            .get((sorted.len() as f64 * 0.95) as usize)
+            .copied()
+            .unwrap_or(0.0);
+        let p99 = sorted
+            .get((sorted.len() as f64 * 0.99) as usize)
+            .copied()
+            .unwrap_or(0.0);
         let max = sorted.last().copied().unwrap_or(0.0);
 
         Ok(AiCoreMetrics {
             requests_total: self.requests_total.load(Ordering::Relaxed),
             requests_success: self.requests_success.load(Ordering::Relaxed),
             requests_error: self.requests_error.load(Ordering::Relaxed),
-            latency_p50_ms: p50, latency_p95_ms: p95, latency_p99_ms: p99, latency_max_ms: max,
+            latency_p50_ms: p50,
+            latency_p95_ms: p95,
+            latency_p99_ms: p99,
+            latency_max_ms: max,
             tokens_per_second: 0.0,
             tokens_total: self.tokens_total.load(Ordering::Relaxed),
             tokens_input: self.tokens_input.load(Ordering::Relaxed),
@@ -164,11 +206,18 @@ impl AiCoreMetricsCollector {
             tool_errors_by_type: HashMap::new(),
             model_loads_total: self.model_loads_total.load(Ordering::Relaxed),
             model_inferences_total: self.model_inferences_total.load(Ordering::Relaxed),
-            model_memory_usage_mb: 0.0, cpu_usage_percent: 0.0, memory_usage_mb: 0.0, disk_usage_mb: 0.0,
+            model_memory_usage_mb: 0.0,
+            cpu_usage_percent: 0.0,
+            memory_usage_mb: 0.0,
+            disk_usage_mb: 0.0,
             active_sessions: 0,
             sessions_total: self.sessions_total.load(Ordering::Relaxed),
             session_duration_avg_secs: 0.0,
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            ai_log_summaries_total: self.ai_log_summaries_total.load(Ordering::Relaxed),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
         })
     }
 }
@@ -186,25 +235,43 @@ pub fn get_global_metrics_collector() -> Option<Arc<AiCoreMetricsCollector>> {
 }
 
 pub fn record_request(success: bool, latency_ms: f64) {
-    if let Some(c) = get_global_metrics_collector() { c.record_request(success, latency_ms); }
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_request(success, latency_ms);
+    }
 }
 
 pub fn record_tokens(input_tokens: u64, output_tokens: u64) {
-    if let Some(c) = get_global_metrics_collector() { c.record_tokens(input_tokens, output_tokens); }
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_tokens(input_tokens, output_tokens);
+    }
 }
 
 pub fn record_tool_call(success: bool, tool_name: Option<&str>) {
-    if let Some(c) = get_global_metrics_collector() { c.record_tool_call(success, tool_name); }
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_tool_call(success, tool_name);
+    }
 }
 
 pub fn record_model_load() {
-    if let Some(c) = get_global_metrics_collector() { c.record_model_load(); }
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_model_load();
+    }
 }
 
 pub fn record_model_inference() {
-    if let Some(c) = get_global_metrics_collector() { c.record_model_inference(); }
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_model_inference();
+    }
 }
 
 pub fn record_session() {
-    if let Some(c) = get_global_metrics_collector() { c.record_session(); }
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_session();
+    }
+}
+
+pub fn record_log_summary() {
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_log_summary();
+    }
 }
