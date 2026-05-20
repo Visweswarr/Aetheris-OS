@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use wasm_driver_host::summarizer::{LogSummaryRequest, SummarizerHost};
 
+use crate::browser_assist::{classify_page, summarize_text};
 use crate::error::{AiCoreError, Result};
 use crate::ipc::ToolCallRequest;
 
@@ -79,11 +80,15 @@ impl ToolRegistry {
         tools.insert(echo_tool.id.clone(), echo_tool);
         let log_summarizer = Self::builtin_log_summarizer_tool();
         tools.insert(log_summarizer.id.clone(), log_summarizer);
+        let browser_summarize = Self::builtin_browser_summarize_tool();
+        tools.insert(browser_summarize.id.clone(), browser_summarize);
+        let browser_classify = Self::builtin_browser_classify_tool();
+        tools.insert(browser_classify.id.clone(), browser_classify);
         Self {
             tools: Arc::new(RwLock::new(tools)),
             stats: Arc::new(RwLock::new(ToolRegistryStats {
-                total_tools: 2,
-                builtin_tools: 2,
+                total_tools: 4,
+                builtin_tools: 4,
                 ..ToolRegistryStats::default()
             })),
         }
@@ -98,6 +103,10 @@ impl ToolRegistry {
     async fn register_builtin_tools(&self) -> Result<()> {
         self.register_tool(Self::builtin_echo_tool()).await?;
         self.register_tool(Self::builtin_log_summarizer_tool())
+            .await?;
+        self.register_tool(Self::builtin_browser_summarize_tool())
+            .await?;
+        self.register_tool(Self::builtin_browser_classify_tool())
             .await?;
         Ok(())
     }
@@ -167,6 +176,60 @@ impl ToolRegistry {
         }
     }
 
+    fn builtin_browser_summarize_tool() -> Tool {
+        Tool {
+            id: "browser_summarize".to_string(),
+            name: "browser_summarize".to_string(),
+            description: "Capability-gated deterministic local page/text summarizer".to_string(),
+            version: "1.0.0".to_string(),
+            parameters_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "path": {"type": "string"},
+                    "max_chars": {"type": "integer"},
+                    "max_bytes": {"type": "integer"}
+                }
+            }),
+            required_capabilities: vec!["ai.browser.summarize".to_string()],
+            category: "ai".to_string(),
+            tags: vec!["browser".to_string(), "summary".to_string(), "local".to_string()],
+            implementation_type: ToolImplementationType::Builtin,
+            timeout_seconds: 30,
+            requires_confirmation: true,
+            metadata: HashMap::from([(
+                "metric".to_string(),
+                serde_json::json!("ai_browser_summaries_total"),
+            )]),
+        }
+    }
+
+    fn builtin_browser_classify_tool() -> Tool {
+        Tool {
+            id: "browser_classify_page".to_string(),
+            name: "browser_classify_page".to_string(),
+            description: "Capability-gated deterministic local URL/page risk classifier".to_string(),
+            version: "1.0.0".to_string(),
+            parameters_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string"},
+                    "text": {"type": "string"},
+                    "path": {"type": "string"},
+                    "max_bytes": {"type": "integer"}
+                },
+                "required": ["url"]
+            }),
+            required_capabilities: vec!["ai.browser.classify".to_string()],
+            category: "ai".to_string(),
+            tags: vec!["browser".to_string(), "security".to_string(), "local".to_string()],
+            implementation_type: ToolImplementationType::Builtin,
+            timeout_seconds: 30,
+            requires_confirmation: true,
+            metadata: HashMap::new(),
+        }
+    }
+
     pub async fn register_tool(&self, tool: Tool) -> Result<()> {
         let tool_id = tool.id.clone();
         {
@@ -190,17 +253,18 @@ impl ToolRegistry {
                 .ok_or_else(|| AiCoreError::ToolNotFound(tool_id.clone()))?
         };
 
-        let result = if tool_id == "log_summarizer" {
-            self.execute_log_summarizer(request, start).await?
-        } else {
-            ToolResult {
-                tool_id: tool_id.clone(),
-                success: true,
-                result: Some(serde_cbor::to_vec(&request.parameters).unwrap_or_default()),
-                error_message: None,
-                execution_time_ms: start.elapsed().as_millis() as u64,
-                metadata: HashMap::new(),
-            }
+        let result = match tool_id.as_str() {
+            "log_summarizer" => self.execute_log_summarizer(request, start).await?,
+            "browser_summarize" => self.execute_browser_summarize(request, start).await?,
+            "browser_classify_page" => self.execute_browser_classify(request, start).await?,
+            _ => ToolResult {
+                    tool_id: tool_id.clone(),
+                    success: true,
+                    result: Some(serde_cbor::to_vec(&request.parameters).unwrap_or_default()),
+                    error_message: None,
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    metadata: HashMap::new(),
+                },
         };
 
         self.update_execution_stats(result.execution_time_ms, result.success)
@@ -286,6 +350,73 @@ impl ToolRegistry {
                 ),
                 ("mode".to_string(), payload["mode"].clone()),
             ]),
+        })
+    }
+
+    async fn execute_browser_summarize(
+        &self,
+        request: &ToolCallRequest,
+        start: std::time::Instant,
+    ) -> Result<ToolResult> {
+        let text = read_text_or_parameter(&request.parameters, "browser_summarize").await?;
+        let max_chars = request
+            .parameters
+            .get("max_chars")
+            .and_then(Value::as_u64)
+            .unwrap_or(800)
+            .min(16_000) as usize;
+        let summary = summarize_text(&text, max_chars);
+        crate::metrics::record_browser_summary();
+        let payload = serde_json::json!({
+            "summary": summary.summary,
+            "metric": "ai_browser_summaries_total",
+            "input_chars": text.chars().count(),
+            "max_chars": max_chars
+        });
+        Ok(ToolResult {
+            tool_id: request.tool_name.clone(),
+            success: true,
+            result: Some(serde_json::to_vec_pretty(&payload)?),
+            error_message: None,
+            execution_time_ms: start.elapsed().as_millis() as u64,
+            metadata: HashMap::from([(
+                "metric".to_string(),
+                serde_json::json!("ai_browser_summaries_total"),
+            )]),
+        })
+    }
+
+    async fn execute_browser_classify(
+        &self,
+        request: &ToolCallRequest,
+        start: std::time::Instant,
+    ) -> Result<ToolResult> {
+        let url = request
+            .parameters
+            .get("url")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                AiCoreError::InvalidInput(
+                    "browser_classify_page requires string parameter 'url'".to_string(),
+                )
+            })?;
+        let text = read_optional_text_or_parameter(&request.parameters, "browser_classify_page")
+            .await?
+            .unwrap_or_default();
+        let classification = classify_page(url, &text);
+        let payload = serde_json::json!({
+            "url": url,
+            "suspicious": classification.suspicious,
+            "reasons": classification.reasons,
+            "input_chars": text.chars().count()
+        });
+        Ok(ToolResult {
+            tool_id: request.tool_name.clone(),
+            success: true,
+            result: Some(serde_json::to_vec_pretty(&payload)?),
+            error_message: None,
+            execution_time_ms: start.elapsed().as_millis() as u64,
+            metadata: HashMap::new(),
         })
     }
 
@@ -395,4 +526,53 @@ impl ToolRegistry {
     pub async fn get_stats(&self) -> ToolRegistryStats {
         self.stats.read().await.clone()
     }
+}
+
+async fn read_text_or_parameter(params: &Value, tool_name: &str) -> Result<String> {
+    if let Some(text) = params.get("text").and_then(Value::as_str) {
+        return Ok(text.to_string());
+    }
+    read_optional_text_or_parameter(params, tool_name)
+        .await?
+        .ok_or_else(|| {
+            AiCoreError::InvalidInput(format!(
+                "{tool_name} requires either string parameter 'text' or 'path'"
+            ))
+        })
+}
+
+async fn read_optional_text_or_parameter(params: &Value, tool_name: &str) -> Result<Option<String>> {
+    let Some(path) = params.get("path").and_then(Value::as_str) else {
+        return Ok(params.get("text").and_then(Value::as_str).map(str::to_string));
+    };
+    let max_bytes = params
+        .get("max_bytes")
+        .and_then(Value::as_u64)
+        .unwrap_or(2 * 1024 * 1024);
+    let path = PathBuf::from(path);
+    let metadata = tokio::fs::metadata(&path).await.map_err(|error| {
+        AiCoreError::IoError(format!(
+            "{tool_name} cannot stat file '{}': {}",
+            path.display(),
+            error
+        ))
+    })?;
+    if metadata.len() > max_bytes {
+        return Err(AiCoreError::ResourceError(format!(
+            "{tool_name} input file '{}' is {} bytes, above max_bytes {}",
+            path.display(),
+            metadata.len(),
+            max_bytes
+        )));
+    }
+    tokio::fs::read_to_string(&path)
+        .await
+        .map(Some)
+        .map_err(|error| {
+            AiCoreError::IoError(format!(
+                "{tool_name} cannot read file '{}': {}",
+                path.display(),
+                error
+            ))
+        })
 }

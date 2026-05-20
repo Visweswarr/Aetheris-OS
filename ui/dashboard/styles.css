@@ -83,6 +83,7 @@ body {
 .metric-body { flex: 1; min-width: 0; }
 .metric-value { font-size: 1.5rem; font-weight: 700; font-family: var(--font-mono); background: var(--gradient-brand); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .metric-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+.real-metric { display: inline-block; margin-left: 4px; color: #22c55e; letter-spacing: 0; text-transform: none; font-size: 0.62rem; }
 .metric-sparkline { width: 60px; height: 30px; flex-shrink: 0; }
 
 /* ── Panels ── */

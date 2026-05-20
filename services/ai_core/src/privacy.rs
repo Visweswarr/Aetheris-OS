@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use regex::Regex;
 use serde_json::Value;
 
@@ -46,8 +47,10 @@ impl PrivacyEngine {
             },
             Detector {
                 kind: "secret".to_string(),
-                regex: Regex::new(r"(?i)\b(api[_-]?key|token|password|passwd|secret)\s*[:=]\s*[^\s,;]+")
-                    .map_err(|e| AiCoreError::ConfigError(e.to_string()))?,
+                regex: Regex::new(
+                    r"(?i)\b(api[_-]?key|token|password|passwd|secret)\s*[:=]\s*[^\s,;]+",
+                )
+                .map_err(|e| AiCoreError::ConfigError(e.to_string()))?,
                 confidence: 90,
             },
             Detector {
@@ -86,7 +89,9 @@ impl PrivacyEngine {
             redacted_fields.insert(field, redacted_value);
         }
 
-        let local_only = findings.iter().any(|finding| finding.kind == "phi" || finding.confidence >= 90);
+        let local_only = findings
+            .iter()
+            .any(|finding| finding.kind == "phi" || finding.confidence >= 90);
 
         PrivacyDecision {
             request_id: request.request_id,
@@ -129,7 +134,9 @@ impl PrivacyEngine {
         for detector in &self.detectors {
             redacted = detector
                 .regex
-                .replace_all(&redacted, |caps: &regex::Captures| self.redacted_string(&caps[0], mode))
+                .replace_all(&redacted, |caps: &regex::Captures| {
+                    self.redacted_string(&caps[0], mode)
+                })
                 .to_string();
         }
         redacted
@@ -145,7 +152,9 @@ impl PrivacyEngine {
             Value::Array(values) => values
                 .iter()
                 .enumerate()
-                .flat_map(|(index, value)| self.classify_field(&format!("{}[{}]", field, index), value))
+                .flat_map(|(index, value)| {
+                    self.classify_field(&format!("{}[{}]", field, index), value)
+                })
                 .collect(),
             _ => {
                 if self.is_sensitive_field(field) {
@@ -191,7 +200,10 @@ impl PrivacyEngine {
         match mode {
             RedactionMode::None => value.clone(),
             RedactionMode::Placeholder => Value::String("[REDACTED]".to_string()),
-            RedactionMode::Hash => Value::String(format!("sha256:{}", sha256_hex(value.to_string().as_bytes()))),
+            RedactionMode::Hash => Value::String(format!(
+                "sha256:{}",
+                sha256_hex(value.to_string().as_bytes())
+            )),
             RedactionMode::Drop => Value::Null,
         }
     }
@@ -219,6 +231,38 @@ impl Default for PrivacyEngine {
     }
 }
 
+pub fn sample_laplace_with_rng<R: Rng + ?Sized>(
+    epsilon: f64,
+    sensitivity: f64,
+    rng: &mut R,
+) -> f64 {
+    let epsilon = if epsilon <= 0.0 { f64::EPSILON } else { epsilon };
+    let scale = sensitivity / epsilon;
+    let u = rng.gen::<f64>() - 0.5;
+    let sign = if u < 0.0 { 1.0 } else { -1.0 };
+    scale * sign * (1.0 - 2.0 * u.abs()).ln()
+}
+
+pub fn apply_noise_seeded(value: f64, epsilon: f64, sensitivity: f64, seed: u64) -> f64 {
+    let mut rng = StdRng::seed_from_u64(seed);
+    value + sample_laplace_with_rng(epsilon, sensitivity, &mut rng)
+}
+
+pub fn export_metric_with_privacy(
+    value: f64,
+    epsilon: f64,
+    sensitivity: f64,
+    seed: u64,
+    telemetry_allowed: bool,
+) -> Result<f64> {
+    if !telemetry_allowed {
+        return Err(AiCoreError::CapDenied(
+            "telemetry.send capability required for off-device metric export".to_string(),
+        ));
+    }
+    Ok(apply_noise_seeded(value, epsilon, sensitivity, seed))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,7 +271,10 @@ mod tests {
     fn detects_and_redacts_pii() {
         let engine = PrivacyEngine::new().unwrap();
         let mut fields = HashMap::new();
-        fields.insert("body".to_string(), Value::String("Contact ada@example.com".to_string()));
+        fields.insert(
+            "body".to_string(),
+            Value::String("Contact ada@example.com".to_string()),
+        );
 
         let decision = engine.classify_and_redact(PrivacyRequest {
             request_id: "privacy-1".to_string(),
@@ -236,7 +283,30 @@ mod tests {
             mode: RedactionMode::Placeholder,
         });
 
-        assert!(decision.findings.iter().any(|finding| finding.kind == "email"));
-        assert_eq!(decision.redacted_fields["body"], Value::String("Contact [REDACTED]".to_string()));
+        assert!(decision
+            .findings
+            .iter()
+            .any(|finding| finding.kind == "email"));
+        assert_eq!(
+            decision.redacted_fields["body"],
+            Value::String("Contact [REDACTED]".to_string())
+        );
+    }
+
+    #[test]
+    fn seeded_dp_noise_is_deterministic() {
+        let a = apply_noise_seeded(10.0, 1.0, 1.0, 42);
+        let b = apply_noise_seeded(10.0, 1.0, 1.0, 42);
+        assert_eq!(a, b);
+        assert_ne!(a, 10.0);
+    }
+
+    #[test]
+    fn off_device_metric_export_requires_telemetry_capability() {
+        let denied = export_metric_with_privacy(5.0, 1.0, 1.0, 7, false).unwrap_err();
+        assert!(denied.to_string().contains("telemetry.send"));
+
+        let allowed = export_metric_with_privacy(5.0, 1.0, 1.0, 7, true).unwrap();
+        assert_ne!(allowed, 5.0);
     }
 }

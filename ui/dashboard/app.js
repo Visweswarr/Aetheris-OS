@@ -16,6 +16,10 @@ const kernel = {
 function aiMetrics() {
   return window.POLYMERA_AI_METRICS || {
     ai_log_summaries_total: 0,
+    ai_plans_generated_total: 0,
+    ai_ltm_events_total: 0,
+    ai_browser_summaries_total: 0,
+    ai_capability_denials_total: 0,
     updated_at_unix: 0,
     last_summary: null,
   };
@@ -286,11 +290,15 @@ function update() {
   // Push history
   const pushH = (arr, val) => { arr.push(val); if (arr.length > 30) arr.shift(); };
   pushH(kernel.history.processes, kernel.processes.length);
-  pushH(kernel.history.syscalls, newSyscalls);
-  pushH(kernel.history.ipc, newIpc);
+  const metrics = aiMetrics();
+  const aiLogSummaries = metrics.ai_log_summaries_total || 0;
+  const aiPlansGenerated = metrics.ai_plans_generated_total || 0;
+  const aiBrowserSummaries = metrics.ai_browser_summaries_total || 0;
+  const aiCapabilityDenials = metrics.ai_capability_denials_total || 0;
+  pushH(kernel.history.syscalls, aiBrowserSummaries);
+  pushH(kernel.history.ipc, aiCapabilityDenials);
   pushH(kernel.history.memory, Math.round(kernel.memory.user));
-  pushH(kernel.history.crypto, newCrypto);
-  const aiLogSummaries = aiMetrics().ai_log_summaries_total || 0;
+  pushH(kernel.history.crypto, aiPlansGenerated);
   pushH(kernel.history.ticks, aiLogSummaries);
 
   // Periodic log entries
@@ -300,10 +308,10 @@ function update() {
 
   // ── Update DOM ──
   document.getElementById('metric-processes').textContent = kernel.processes.length;
-  document.getElementById('metric-syscalls').textContent = newSyscalls;
-  document.getElementById('metric-ipc').textContent = kernel.ipcRouted.toLocaleString();
+  document.getElementById('metric-syscalls').textContent = aiBrowserSummaries.toLocaleString();
+  document.getElementById('metric-ipc').textContent = aiCapabilityDenials.toLocaleString();
   document.getElementById('metric-memory').textContent = Math.round(kernel.memory.user) + ' MB';
-  document.getElementById('metric-crypto').textContent = kernel.cryptoOps.toLocaleString();
+  document.getElementById('metric-crypto').textContent = aiPlansGenerated.toLocaleString();
   document.getElementById('metric-ticks').textContent = aiLogSummaries.toLocaleString();
 
   drawSparkline('spark-processes', kernel.history.processes, '#22c55e');

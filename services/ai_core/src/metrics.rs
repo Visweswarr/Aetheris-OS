@@ -57,6 +57,10 @@ pub struct AiCoreMetrics {
     pub sessions_total: u64,
     pub session_duration_avg_secs: f64,
     pub ai_log_summaries_total: u64,
+    pub ai_plans_generated_total: u64,
+    pub ai_ltm_events_total: u64,
+    pub ai_browser_summaries_total: u64,
+    pub ai_capability_denials_total: u64,
     pub timestamp: u64,
 }
 
@@ -75,6 +79,10 @@ pub struct AiCoreMetricsCollector {
     model_inferences_total: AtomicU64,
     sessions_total: AtomicU64,
     ai_log_summaries_total: AtomicU64,
+    ai_plans_generated_total: AtomicU64,
+    ai_ltm_events_total: AtomicU64,
+    ai_browser_summaries_total: AtomicU64,
+    ai_capability_denials_total: AtomicU64,
     latency_samples: Arc<RwLock<Vec<f64>>>,
     tool_errors: Arc<RwLock<HashMap<String, AtomicU64>>>,
 }
@@ -110,6 +118,10 @@ impl AiCoreMetricsCollector {
             model_inferences_total: AtomicU64::new(0),
             sessions_total: AtomicU64::new(0),
             ai_log_summaries_total: AtomicU64::new(0),
+            ai_plans_generated_total: AtomicU64::new(0),
+            ai_ltm_events_total: AtomicU64::new(0),
+            ai_browser_summaries_total: AtomicU64::new(0),
+            ai_capability_denials_total: AtomicU64::new(0),
             latency_samples: Arc::new(RwLock::new(Vec::new())),
             tool_errors: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -168,6 +180,21 @@ impl AiCoreMetricsCollector {
     pub fn record_log_summary(&self) {
         self.ai_log_summaries_total.fetch_add(1, Ordering::Relaxed);
     }
+    pub fn record_ai_plan_generated(&self) {
+        self.ai_plans_generated_total
+            .fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn record_ltm_event(&self) {
+        self.ai_ltm_events_total.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn record_browser_summary(&self) {
+        self.ai_browser_summaries_total
+            .fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn record_capability_denial(&self) {
+        self.ai_capability_denials_total
+            .fetch_add(1, Ordering::Relaxed);
+    }
 
     pub async fn get_metrics_snapshot(&self) -> Result<AiCoreMetrics> {
         let latency_samples = self.latency_samples.read().await;
@@ -214,6 +241,12 @@ impl AiCoreMetricsCollector {
             sessions_total: self.sessions_total.load(Ordering::Relaxed),
             session_duration_avg_secs: 0.0,
             ai_log_summaries_total: self.ai_log_summaries_total.load(Ordering::Relaxed),
+            ai_plans_generated_total: self.ai_plans_generated_total.load(Ordering::Relaxed),
+            ai_ltm_events_total: self.ai_ltm_events_total.load(Ordering::Relaxed),
+            ai_browser_summaries_total: self.ai_browser_summaries_total.load(Ordering::Relaxed),
+            ai_capability_denials_total: self
+                .ai_capability_denials_total
+                .load(Ordering::Relaxed),
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -273,5 +306,29 @@ pub fn record_session() {
 pub fn record_log_summary() {
     if let Some(c) = get_global_metrics_collector() {
         c.record_log_summary();
+    }
+}
+
+pub fn record_ai_plan_generated() {
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_ai_plan_generated();
+    }
+}
+
+pub fn record_ltm_event() {
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_ltm_event();
+    }
+}
+
+pub fn record_browser_summary() {
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_browser_summary();
+    }
+}
+
+pub fn record_capability_denial() {
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_capability_denial();
     }
 }

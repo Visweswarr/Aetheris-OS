@@ -174,6 +174,7 @@ impl StepExecutor {
         if !policy_result.allowed {
             context.state = StepState::Failed;
             context.error = Some(policy_result.reason.clone());
+            crate::metrics::record_capability_denial();
             return Err(AiCoreError::CapDenied(policy_result.reason));
         }
 
@@ -183,6 +184,7 @@ impl StepExecutor {
             context.state = StepState::AwaitingApproval;
             let reason = format!("step '{}' requires approval", step.step_id);
             context.error = Some(reason.clone());
+            crate::metrics::record_capability_denial();
             return Err(AiCoreError::CapDenied(reason));
         }
 
