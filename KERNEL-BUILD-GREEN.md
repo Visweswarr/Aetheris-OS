@@ -43,7 +43,8 @@ on the dashboard).
 | After Cluster S (loader)   | 199    | −14    | cap header drift, MemoryFlags, LoaderResult demo |
 | After Cluster T (sched tick) | 125   | −74    | jitter budget state, lazy statics, ABI feature call sites |
 | After Cluster U (MM audit) | 80     | −45    | page-table translate API, audit stat consts, borrow restore |
-| **Current**                | **80** | **−539** | **87% of baseline cleared**         |
+| After Cluster V (secman drift) | 54  | −26    | capability time, audit categories, secman stream args, cap derives |
+| **Current**                | **54** | **−565** | **91% of baseline cleared**         |
 
 ## Landed commits (in order)
 
@@ -69,7 +70,8 @@ on the dashboard).
 20. `84ad992 kernel: align TLB flush and timing boundaries` — Cluster R
 21. `afb37ef kernel: align user task loader with current cap and memory APIs` — Cluster S
 22. `7b8e035 kernel: normalize scheduler jitter budget state` — Cluster T
-23. `TBD kernel: align page-table audit translation and stat initialization` — Cluster U
+23. `f050c5a kernel: align page-table audit translation and stat initialization` — Cluster U
+24. `TBD kernel: align secman capability and audit API drift` — Cluster V
 
 ## Remaining error clusters
 

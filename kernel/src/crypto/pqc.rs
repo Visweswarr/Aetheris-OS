@@ -61,7 +61,7 @@ pub enum DilithiumParameterSet {
 /// This struct holds serialized key bytes for routing via IPC.
 /// It does NOT perform any cryptographic operations.
 /// Call the `keyvault` service over IPC for real verification.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InsecureDilithiumPublicKey {
     /// Raw public key bytes (opaque — interpreted by `keyvault` service).
     pub data: Vec<u8>,
@@ -96,7 +96,7 @@ impl InsecureDilithiumPublicKey {
 pub type DilithiumPublicKey = InsecureDilithiumPublicKey;
 
 /// ⚠️  INSECURE — Opaque container for a Dilithium signature blob.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InsecureDilithiumSignature {
     /// Raw signature bytes (opaque).
     pub data: Vec<u8>,
@@ -109,6 +109,12 @@ impl InsecureDilithiumSignature {
 
     pub fn as_bytes(&self) -> &[u8] {
         &self.data
+    }
+}
+
+impl Default for InsecureDilithiumSignature {
+    fn default() -> Self {
+        Self { data: Vec::new() }
     }
 }
 

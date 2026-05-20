@@ -721,6 +721,7 @@ pub enum AuditCategory {
     EventFabric,
     PolicyGuardrail,
     LlmAdapter,
+    Filesystem,
     Unknown,
 }
 
@@ -739,6 +740,7 @@ impl fmt::Display for AuditCategory {
             AuditCategory::EventFabric => write!(f, "EVENT_FABRIC"),
             AuditCategory::PolicyGuardrail => write!(f, "POLICY_GUARDRAIL"),
             AuditCategory::LlmAdapter => write!(f, "LLM_ADAPTER"),
+            AuditCategory::Filesystem => write!(f, "FILESYSTEM"),
             AuditCategory::Unknown => write!(f, "UNKNOWN"),
         }
     }
@@ -798,7 +800,12 @@ impl AuditEvent {
         self.context = Some(context);
         self
     }
-    
+
+    /// Get the current timestamp in nanoseconds.
+    pub fn get_timestamp_ns() -> u64 {
+        crate::time::get_current_time_ms().saturating_mul(1_000_000)
+    }
+
     /// Set the actor ID
     pub fn with_actor(mut self, actor_id: u64) -> Self {
         self.actor_id = Some(actor_id);
@@ -1413,7 +1420,7 @@ macro_rules! audit_syscall_entry {
             $pid,
             $tid,
             $crate::secman::audit_codes::AuditReasonCode::SYSCALL_ENTRY,
-            $crate::secman::audit_codes::AuditPayload::new(&format!("syscall={}", $syscall_id))
+            $crate::secman::audit_codes::AuditPayload::new(&::alloc::format!("syscall={}", $syscall_id))
                 .with_context("syscall_id", &::alloc::string::ToString::to_string(&$syscall_id))
         );
     };
@@ -1427,7 +1434,7 @@ macro_rules! audit_syscall_exit {
             $pid,
             $tid,
             $crate::secman::audit_codes::AuditReasonCode::SYSCALL_EXIT,
-            $crate::secman::audit_codes::AuditPayload::new(&format!("syscall={},result={}", $syscall_id, $result))
+            $crate::secman::audit_codes::AuditPayload::new(&::alloc::format!("syscall={},result={}", $syscall_id, $result))
                 .with_context("syscall_id", &::alloc::string::ToString::to_string(&$syscall_id))
                 .with_context("result", &::alloc::string::ToString::to_string(&$result))
                 .with_duration($duration_ns)
