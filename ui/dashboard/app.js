@@ -20,8 +20,13 @@ function aiMetrics() {
     ai_ltm_events_total: 0,
     ai_browser_summaries_total: 0,
     ai_capability_denials_total: 0,
+    ai_heg_plans_total: 0,
+    ai_heg_prefill_to_npu_total: 0,
+    ai_heg_decode_to_igpu_total: 0,
+    ai_heg_ddr_pressure_score: 0,
     updated_at_unix: 0,
     last_summary: null,
+    last_heg_plan: null,
   };
 }
 
@@ -295,11 +300,13 @@ function update() {
   const aiPlansGenerated = metrics.ai_plans_generated_total || 0;
   const aiBrowserSummaries = metrics.ai_browser_summaries_total || 0;
   const aiCapabilityDenials = metrics.ai_capability_denials_total || 0;
+  const aiHegPlans = metrics.ai_heg_plans_total || 0;
+  const aiHegDdrPressure = metrics.ai_heg_ddr_pressure_score || 0;
   pushH(kernel.history.syscalls, aiBrowserSummaries);
   pushH(kernel.history.ipc, aiCapabilityDenials);
-  pushH(kernel.history.memory, Math.round(kernel.memory.user));
+  pushH(kernel.history.memory, aiHegDdrPressure || Math.round(kernel.memory.user));
   pushH(kernel.history.crypto, aiPlansGenerated);
-  pushH(kernel.history.ticks, aiLogSummaries);
+  pushH(kernel.history.ticks, aiHegPlans || aiLogSummaries);
 
   // Periodic log entries
   if (kernel.ticks % 20 === 0) klog('INFO', `Tick ${kernel.ticks}: ${kernel.processes.length} processes, ${newSyscalls} syscalls/tick`);
@@ -310,9 +317,9 @@ function update() {
   document.getElementById('metric-processes').textContent = kernel.processes.length;
   document.getElementById('metric-syscalls').textContent = aiBrowserSummaries.toLocaleString();
   document.getElementById('metric-ipc').textContent = aiCapabilityDenials.toLocaleString();
-  document.getElementById('metric-memory').textContent = Math.round(kernel.memory.user) + ' MB';
+  document.getElementById('metric-memory').textContent = aiHegDdrPressure ? `${aiHegDdrPressure}% HEG` : Math.round(kernel.memory.user) + ' MB';
   document.getElementById('metric-crypto').textContent = aiPlansGenerated.toLocaleString();
-  document.getElementById('metric-ticks').textContent = aiLogSummaries.toLocaleString();
+  document.getElementById('metric-ticks').textContent = aiHegPlans.toLocaleString();
 
   drawSparkline('spark-processes', kernel.history.processes, '#22c55e');
   drawSparkline('spark-syscalls', kernel.history.syscalls, '#06b6d4');

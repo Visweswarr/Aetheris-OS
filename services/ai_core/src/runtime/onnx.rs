@@ -1,9 +1,11 @@
 //! ONNX Runtime backend
 
-use crate::error::Result;
 use super::{RuntimeConfig, RuntimeRequest, RuntimeResponse};
+use crate::error::Result;
 
-pub struct OnnxRuntime { initialized: bool }
+pub struct OnnxRuntime {
+    initialized: bool,
+}
 
 impl Default for OnnxRuntime {
     fn default() -> Self {
@@ -12,8 +14,10 @@ impl Default for OnnxRuntime {
 }
 
 impl OnnxRuntime {
-    pub fn new() -> Self { Self { initialized: false } }
-    
+    pub fn new() -> Self {
+        Self { initialized: false }
+    }
+
     pub async fn initialize(&mut self, _config: RuntimeConfig) -> Result<()> {
         self.initialized = true;
         Ok(())
@@ -24,8 +28,13 @@ impl OnnxRuntime {
             generated_text: format!("ONNX response: {}", request.prompt),
             tokens_generated: 10,
             processing_time_ms: 100,
+            heg_plan_id: None,
+            placement_summary: Vec::new(),
+            audit_event: None,
         })
     }
 
-    pub fn is_ready(&self) -> bool { self.initialized }
+    pub fn is_ready(&self) -> bool {
+        self.initialized
+    }
 }

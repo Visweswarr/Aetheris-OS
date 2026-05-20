@@ -4,7 +4,7 @@ use aetheris_ai_core::intents::{create_system_intent_manager, SystemActionContex
 use aetheris_ai_core::ipc::ChatRequest;
 use aetheris_ai_core::orchestrator::{MultiModalOrchestrator, OrchestratorInput};
 use aetheris_ai_core::router::PromptRouter;
-use aetheris_ai_core::runtime::RuntimeManager;
+use aetheris_ai_core::runtime::{AcceleratorKind, HegPolicy, RuntimeManager, RuntimeRequest};
 use aetheris_ai_core::tools::registry::ToolRegistry;
 use aetheris_ai_core::tools::stt::{SpeechToTextTool, SttConfig};
 use std::collections::HashMap;
@@ -37,6 +37,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if args.get(1).map(String::as_str) == Some("browser-classify") {
         return run_browser_classify(&args[2..]).await;
+    }
+    if args.get(1).map(String::as_str) == Some("runtime-plan") {
+        return run_runtime_plan(&args[2..]).await;
     }
 
     let mut buffer = String::new();
@@ -447,6 +450,106 @@ async fn run_browser_classify(args: &[String]) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
+async fn run_runtime_plan(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let mut prompt = None;
+    let mut prefer = None;
+    let mut metrics_js = None;
+    let mut workload = None;
+
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--prompt" => prompt = iter.next().cloned(),
+            "--prefer" => prefer = Some(parse_accelerator(iter.next().ok_or("--prefer requires cpu|igpu|npu")?)?),
+            "--dashboard-metrics" | "--metrics-js" => metrics_js = iter.next().map(PathBuf::from),
+            "--workload" => workload = iter.next().cloned(),
+            other => {
+                if prompt.is_none() {
+                    prompt = Some(other.to_string());
+                }
+            }
+        }
+    }
+
+    let prompt = prompt.ok_or("runtime-plan requires --prompt <text>")?;
+    let mut metadata = HashMap::new();
+    if let Some(workload) = workload {
+        metadata.insert("workload".to_string(), workload);
+    }
+    let request = RuntimeRequest {
+        prompt,
+        max_tokens: Some(128),
+        temperature: Some(0.0),
+        stop_sequences: Vec::new(),
+        metadata,
+    };
+    let policy = HegPolicy {
+        preferred_accelerator: prefer,
+        ..HegPolicy::default()
+    };
+    let runtime = RuntimeManager::new_mock();
+    let plan = runtime.plan_execution_graph_with_policy(&request, &policy)?;
+    aetheris_ai_core::metrics::record_heg_plan(&plan);
+
+    let metrics_path = metrics_js.unwrap_or_else(default_dashboard_metrics_path);
+    let total = write_dashboard_metric(
+        &metrics_path,
+        "ai_heg_plans_total",
+        "last_heg_plan",
+        &serde_json::to_value(&plan)?,
+    )
+    .await?;
+    write_dashboard_metric_value(
+        &metrics_path,
+        "ai_heg_ddr_pressure_score",
+        serde_json::json!(plan.ddr_pressure_score),
+    )
+    .await?;
+    if plan.nodes.iter().any(|node| {
+        node.operator == aetheris_ai_core::runtime::OperatorKind::Prefill
+            && node.assigned == AcceleratorKind::Npu
+    }) {
+        let _ = write_dashboard_metric(
+            &metrics_path,
+            "ai_heg_prefill_to_npu_total",
+            "last_heg_plan",
+            &serde_json::to_value(&plan)?,
+        )
+        .await?;
+    }
+    if plan.nodes.iter().any(|node| {
+        node.operator == aetheris_ai_core::runtime::OperatorKind::Decode
+            && node.assigned == AcceleratorKind::Igpu
+    }) {
+        let _ = write_dashboard_metric(
+            &metrics_path,
+            "ai_heg_decode_to_igpu_total",
+            "last_heg_plan",
+            &serde_json::to_value(&plan)?,
+        )
+        .await?;
+    }
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&serde_json::json!({
+            "ai_heg_plans_total": total,
+            "dashboard_metric": metrics_path,
+            "plan": plan,
+        }))?
+    );
+    Ok(())
+}
+
+fn parse_accelerator(value: &str) -> Result<AcceleratorKind, Box<dyn std::error::Error>> {
+    match value.to_ascii_lowercase().as_str() {
+        "cpu" => Ok(AcceleratorKind::Cpu),
+        "igpu" | "gpu" => Ok(AcceleratorKind::Igpu),
+        "npu" => Ok(AcceleratorKind::Npu),
+        _ => Err(format!("unsupported accelerator '{value}', expected cpu|igpu|npu").into()),
+    }
+}
+
 fn default_dashboard_metrics_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ui/dashboard/ai_metrics.js")
 }
@@ -534,6 +637,26 @@ async fn write_dashboard_metric(
     Ok(total)
 }
 
+async fn write_dashboard_metric_value(
+    path: &Path,
+    metric_name: &str,
+    value: serde_json::Value,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let mut payload = read_dashboard_metrics(path).await.unwrap_or_else(default_dashboard_metrics);
+    let updated_at_unix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    payload[metric_name] = value;
+    payload["updated_at_unix"] = serde_json::json!(updated_at_unix);
+    let js = format!(
+        "window.POLYMERA_AI_METRICS = {};\n",
+        serde_json::to_string_pretty(&payload)?
+    );
+    tokio::fs::write(path, js).await?;
+    Ok(())
+}
+
 fn default_dashboard_metrics() -> serde_json::Value {
     serde_json::json!({
         "ai_log_summaries_total": 0,
@@ -541,11 +664,16 @@ fn default_dashboard_metrics() -> serde_json::Value {
         "ai_ltm_events_total": 0,
         "ai_browser_summaries_total": 0,
         "ai_capability_denials_total": 0,
+        "ai_heg_plans_total": 0,
+        "ai_heg_prefill_to_npu_total": 0,
+        "ai_heg_decode_to_igpu_total": 0,
+        "ai_heg_ddr_pressure_score": 0,
         "updated_at_unix": 0,
         "last_summary": null,
         "last_goal_plan": null,
         "last_ltm_event": null,
         "last_browser_summary": null,
+        "last_heg_plan": null,
     })
 }
 
@@ -561,6 +689,10 @@ async fn read_dashboard_metrics(path: &Path) -> Option<serde_json::Value> {
         "ai_ltm_events_total",
         "ai_browser_summaries_total",
         "ai_capability_denials_total",
+        "ai_heg_plans_total",
+        "ai_heg_prefill_to_npu_total",
+        "ai_heg_decode_to_igpu_total",
+        "ai_heg_ddr_pressure_score",
         "updated_at_unix",
     ] {
         if json.get(key).is_none() {

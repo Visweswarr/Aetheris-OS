@@ -58,7 +58,7 @@ pub use memory::{
 pub use metrics::{
     default_metrics_config, init_global_metrics_collector, record_ai_plan_generated,
     record_browser_summary, record_capability_denial, record_ltm_event, record_model_inference,
-    record_model_load, record_request, record_session, record_tokens, record_tool_call,
+    record_heg_plan, record_model_load, record_request, record_session, record_tokens, record_tool_call,
     AiCoreMetrics, AiCoreMetricsCollector, MetricsConfig, PrivacyMode,
 };
 pub use model::{ModelBackendImpl, ModelManager, ModelRequest, ModelResponse};

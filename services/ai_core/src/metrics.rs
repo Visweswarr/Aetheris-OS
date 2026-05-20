@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 
 use crate::error::Result;
+use crate::runtime::{AcceleratorKind, HegPlan, OperatorKind};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricsConfig {
@@ -61,6 +62,10 @@ pub struct AiCoreMetrics {
     pub ai_ltm_events_total: u64,
     pub ai_browser_summaries_total: u64,
     pub ai_capability_denials_total: u64,
+    pub ai_heg_plans_total: u64,
+    pub ai_heg_prefill_to_npu_total: u64,
+    pub ai_heg_decode_to_igpu_total: u64,
+    pub ai_heg_ddr_pressure_score: u64,
     pub timestamp: u64,
 }
 
@@ -83,6 +88,10 @@ pub struct AiCoreMetricsCollector {
     ai_ltm_events_total: AtomicU64,
     ai_browser_summaries_total: AtomicU64,
     ai_capability_denials_total: AtomicU64,
+    ai_heg_plans_total: AtomicU64,
+    ai_heg_prefill_to_npu_total: AtomicU64,
+    ai_heg_decode_to_igpu_total: AtomicU64,
+    ai_heg_ddr_pressure_score: AtomicU64,
     latency_samples: Arc<RwLock<Vec<f64>>>,
     tool_errors: Arc<RwLock<HashMap<String, AtomicU64>>>,
 }
@@ -122,6 +131,10 @@ impl AiCoreMetricsCollector {
             ai_ltm_events_total: AtomicU64::new(0),
             ai_browser_summaries_total: AtomicU64::new(0),
             ai_capability_denials_total: AtomicU64::new(0),
+            ai_heg_plans_total: AtomicU64::new(0),
+            ai_heg_prefill_to_npu_total: AtomicU64::new(0),
+            ai_heg_decode_to_igpu_total: AtomicU64::new(0),
+            ai_heg_ddr_pressure_score: AtomicU64::new(0),
             latency_samples: Arc::new(RwLock::new(Vec::new())),
             tool_errors: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -195,6 +208,21 @@ impl AiCoreMetricsCollector {
         self.ai_capability_denials_total
             .fetch_add(1, Ordering::Relaxed);
     }
+    pub fn record_heg_plan(&self, plan: &HegPlan) {
+        self.ai_heg_plans_total.fetch_add(1, Ordering::Relaxed);
+        self.ai_heg_ddr_pressure_score
+            .store(plan.ddr_pressure_score as u64, Ordering::Relaxed);
+        for node in &plan.nodes {
+            if node.operator == OperatorKind::Prefill && node.assigned == AcceleratorKind::Npu {
+                self.ai_heg_prefill_to_npu_total
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+            if node.operator == OperatorKind::Decode && node.assigned == AcceleratorKind::Igpu {
+                self.ai_heg_decode_to_igpu_total
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
 
     pub async fn get_metrics_snapshot(&self) -> Result<AiCoreMetrics> {
         let latency_samples = self.latency_samples.read().await;
@@ -247,6 +275,14 @@ impl AiCoreMetricsCollector {
             ai_capability_denials_total: self
                 .ai_capability_denials_total
                 .load(Ordering::Relaxed),
+            ai_heg_plans_total: self.ai_heg_plans_total.load(Ordering::Relaxed),
+            ai_heg_prefill_to_npu_total: self
+                .ai_heg_prefill_to_npu_total
+                .load(Ordering::Relaxed),
+            ai_heg_decode_to_igpu_total: self
+                .ai_heg_decode_to_igpu_total
+                .load(Ordering::Relaxed),
+            ai_heg_ddr_pressure_score: self.ai_heg_ddr_pressure_score.load(Ordering::Relaxed),
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -330,5 +366,11 @@ pub fn record_browser_summary() {
 pub fn record_capability_denial() {
     if let Some(c) = get_global_metrics_collector() {
         c.record_capability_denial();
+    }
+}
+
+pub fn record_heg_plan(plan: &HegPlan) {
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_heg_plan(plan);
     }
 }
