@@ -45,7 +45,8 @@ on the dashboard).
 | After Cluster U (MM audit) | 80     | −45    | page-table translate API, audit stat consts, borrow restore |
 | After Cluster V (secman drift) | 35  | −45    | capability time, audit categories, secman stream args, cap derives |
 | After Cluster W (intent/world/skills schema) | 21 | −14 | CBOR decode, preview confidence, world index, skill statics |
-| **Current**                | **21** | **−598** | **97% of baseline cleared**         |
+| After Cluster X (event/policy) | 12 | −9 | lazy statics, active topics refs, policy audit/event calls |
+| **Current**                | **12** | **−607** | **98% of baseline cleared**         |
 
 ## Landed commits (in order)
 
@@ -73,7 +74,8 @@ on the dashboard).
 22. `7b8e035 kernel: normalize scheduler jitter budget state` — Cluster T
 23. `f050c5a kernel: align page-table audit translation and stat initialization` — Cluster U
 24. `4317bf5 kernel: align secman capability and audit API drift` — Cluster V
-25. `TBD kernel: align intent world and skills schema drift` — Cluster W
+25. `07b5a15 kernel: align intent world and skills schema drift` — Cluster W
+26. `TBD kernel: align event fabric and policy guardrail API drift` — Cluster X
 
 ## Remaining error clusters
 

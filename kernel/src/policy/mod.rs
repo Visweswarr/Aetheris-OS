@@ -7,7 +7,7 @@ use crate::policy::schema::{PolicyInputV1, PolicyDecisionV1, PlanDiffV1};
 use crate::policy::simulate::create_simulation_engine;
 use crate::event::EventKernel;
 use crate::secman::audit::emit_audit;
-use crate::secman::audit_codes::{AuditReason, POLICY_SIM_ALLOW, POLICY_SIM_DENY};
+use crate::secman::audit_codes::{POLICY_SIM_ALLOW, POLICY_SIM_DENY};
 use alloc::string::ToString;
 use alloc::format;
 
@@ -46,20 +46,17 @@ impl PolicyKernel {
         
         if result.success {
             if let Some(decision) = result.decision {
-                emit_audit(POLICY_SIM_ALLOW, &format!("Policy simulation allowed with {} reasons", decision.reasons.len()));
+                emit_audit(POLICY_SIM_ALLOW.id() as u16, &format!("Policy simulation allowed with {} reasons", decision.reasons.len()));
                 
                 let why_digest = self::compute_why_digest(&plan_diff);
                 
-                EventKernel::publish_sys_event(
-                    "policy.simulate",
-                    crate::event::queue::Lane::MED,
-                    serde_json::json!({
+                let event_payload = serde_json::json!({
                         "decision": "allow",
                         "reasons_count": decision.reasons.len(),
                         "plan_diff_size": plan_diff.total_size(),
                         "why_digest": hex::encode(why_digest)
-                    }).to_string().into_bytes(),
-                ).ok();
+                    }).to_string();
+                EventKernel::publish_sys_event("policy.simulate", &event_payload).ok();
 
                 Ok(PolicySimResult {
                     decision,
@@ -67,28 +64,26 @@ impl PolicyKernel {
                     why_digest,
                 })
             } else {
-                emit_audit(POLICY_SIM_DENY, "Policy simulation failed");
+                emit_audit(POLICY_SIM_DENY.id() as u16, "Policy simulation failed");
                 Err("Policy evaluation failed")
             }
         } else {
-            if let Some(error) = result.error {
-                emit_audit(POLICY_SIM_DENY, &format!("Policy simulation denied: {}", error));
+            let error_message = result.error.unwrap_or_else(|| "Unknown error".to_string());
+            if error_message != "Unknown error" {
+                emit_audit(POLICY_SIM_DENY.id() as u16, &format!("Policy simulation denied: {}", error_message));
             } else {
-                emit_audit(POLICY_SIM_DENY, "Policy simulation denied");
+                emit_audit(POLICY_SIM_DENY.id() as u16, "Policy simulation denied");
             }
             
             let why_digest = self::compute_why_digest(&plan_diff);
             
-            EventKernel::publish_sys_event(
-                "policy.simulate",
-                crate::event::queue::Lane::MED,
-                serde_json::json!({
+            let event_payload = serde_json::json!({
                     "decision": "deny",
-                    "error": result.error.unwrap_or_else(|| "Unknown error".to_string()),
+                    "error": error_message,
                     "plan_diff_size": plan_diff.total_size(),
                     "why_digest": hex::encode(why_digest)
-                }).to_string().into_bytes(),
-            ).ok();
+                }).to_string();
+            EventKernel::publish_sys_event("policy.simulate", &event_payload).ok();
 
             Err("Policy simulation denied")
         }

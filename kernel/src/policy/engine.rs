@@ -1,7 +1,8 @@
-use alloc::vec::Vec;
+﻿use alloc::vec::Vec;
 use alloc::string::String;
 use core::sync::atomic::{AtomicU64, Ordering};
 use spin::Mutex;
+use crate::lazy_static;
 use crate::policy::schema::{PolicyInputV1, PolicyDecisionV1, serialize_policy_input, deserialize_policy_decision};
 
 /// WASM policy engine configuration
@@ -183,7 +184,9 @@ impl WasmPolicyEngine {
 }
 
 /// Global policy engine instance
-pub static POLICY_ENGINE: Mutex<WasmPolicyEngine> = Mutex::new(WasmPolicyEngine::new(32 * 1024));
+lazy_static! {
+    pub static ref POLICY_ENGINE: Mutex<WasmPolicyEngine> = Mutex::new(WasmPolicyEngine::new(32 * 1024));
+}
 
 /// Load the default embedded policy bundle
 pub fn load_default_bundle() -> Result<(), &'static str> {
