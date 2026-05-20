@@ -75,7 +75,7 @@ impl Clone for HostcallContext {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WorldModelQuery {
     pub pattern: Pattern,
     pub range: Range,
@@ -83,6 +83,7 @@ pub struct WorldModelQuery {
     pub offset: u32,
 }
 
+#[derive(Debug)]
 pub struct WasiHost {
     pub context: Mutex<HostcallContext>,
     pub deterministic_rng: Mutex<DeterministicRng>,

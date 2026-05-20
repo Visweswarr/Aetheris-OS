@@ -233,14 +233,7 @@ impl IntentKernel {
             // Get all entries
             why_log.get_entries_since([0u8; 32])
         } else {
-            // Find entry with sequence number >= cursor
-            let mut found_entries = Vec::new();
-            for entry in &why_log.ring {
-                if entry.seq >= cursor {
-                    found_entries.push(entry.clone());
-                }
-            }
-            found_entries
+            why_log.get_entries_from_seq(cursor)
         };
         
         // Limit to max_records

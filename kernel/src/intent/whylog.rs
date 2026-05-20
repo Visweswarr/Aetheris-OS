@@ -1,7 +1,42 @@
-use crate::intent::schema::{WhyRecordV1, EvidenceV1, IntentV1};
-use blake3::Hasher;
+use crate::intent::schema::{EvidenceV1, IntentV1};
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
+use alloc::collections::VecDeque;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use alloc::format;
+use alloc::vec;
+
+// Stub blake3 hasher for no_std
+struct Hasher {
+    data: Vec<u8>,
+}
+
+impl Hasher {
+    fn new() -> Self {
+        Self { data: Vec::new() }
+    }
+
+    fn update(&mut self, data: &[u8]) {
+        self.data.extend_from_slice(data);
+    }
+
+    fn finalize(&self) -> HashOutput {
+        // Simple hash stub - XOR-based for determinism
+        let mut result = [0u8; 32];
+        for (i, byte) in self.data.iter().enumerate() {
+            result[i % 32] ^= byte;
+        }
+        HashOutput(result)
+    }
+}
+
+struct HashOutput([u8; 32]);
+
+impl From<HashOutput> for [u8; 32] {
+    fn from(h: HashOutput) -> [u8; 32] {
+        h.0
+    }
+}
 
 pub const WHYLOG_MAX_ENTRIES: usize = 1000;
 pub const WHYLOG_ENTRY_MAX_SIZE: usize = 1024;
@@ -144,6 +179,14 @@ impl WhyLog {
         }
         
         entries
+    }
+
+    pub fn get_entries_from_seq(&self, cursor: u64) -> Vec<WhyLogEntry> {
+        self.ring
+            .iter()
+            .filter(|entry| entry.seq >= cursor)
+            .cloned()
+            .collect()
     }
     
     pub fn verify_chain(&self) -> bool {

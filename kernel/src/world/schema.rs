@@ -4,9 +4,9 @@ use alloc::string::String;
 use alloc::collections::BTreeMap;
 
 pub const SCHEMA_VERSION: u16 = 1;
-pub const SCHEMA_HASH: &[u8; 32] = &[/* TODO: computed at build time */];
+pub const SCHEMA_HASH: &[u8; 32] = &[0u8; 32];
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[repr(C)]
 pub struct EntityId(pub u128);
 
@@ -46,11 +46,11 @@ pub struct FactV1 {
     pub provenance: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[repr(C)]
 pub struct SnapshotId(pub u64);
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[repr(C)]
 pub struct SegmentId(pub u64);
 

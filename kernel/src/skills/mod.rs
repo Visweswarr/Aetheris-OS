@@ -1,4 +1,4 @@
-use crate::{kprintln, klog, format};
+use crate::{kprintln, klog, format, lazy_static};
 use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
@@ -139,7 +139,9 @@ impl From<crate::skills::registry::RegistryError> for SkillsError {
     }
 }
 
-pub static SKILLS_KERNEL: Mutex<SkillsKernel> = Mutex::new(SkillsKernel::new());
+lazy_static! {
+    pub static ref SKILLS_KERNEL: Mutex<SkillsKernel> = Mutex::new(SkillsKernel::new());
+}
 
 pub fn get_skills_kernel() -> &'static Mutex<SkillsKernel> {
     &SKILLS_KERNEL

@@ -148,6 +148,8 @@ pub struct PlanPreviewV1 {
     pub plan: PlanV1,
     pub risks: Vec<String>,
     pub notes: Vec<String>,
+    #[serde(default)]
+    pub confidence: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -224,6 +226,10 @@ impl IntentV1 {
 
     pub fn serialized_size(&self) -> Result<usize, serde_json::Error> {
         serde_json::to_vec(self).map(|v| v.len())
+    }
+
+    pub fn from_cbor(bytes: &[u8]) -> Result<Self, serde_cbor::Error> {
+        serde_cbor::from_slice(bytes)
     }
 }
 
@@ -303,6 +309,7 @@ impl PlanPreviewV1 {
             plan,
             risks: Vec::new(),
             notes: Vec::new(),
+            confidence: 100,
         }
     }
 

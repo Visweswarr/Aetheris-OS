@@ -1,12 +1,12 @@
-use crate::{kprintln, klog};
 use alloc::vec::Vec;
 use alloc::string::String;
+use alloc::format;
 use core::sync::atomic::{AtomicU64, Ordering};
 use spin::Mutex;
 
-use super::schema::{FactV1, SnapshotId, EntityId, ValueAtom};
-use super::store::{WorldModel, ReadView};
-use super::query::{Pattern, Range, Rows, get_entity_caps, list_devices, last_seen};
+use self::schema::{FactV1, SnapshotId, EntityId};
+use self::store::{Index, WorldModel, ReadView};
+use self::query::{Pattern, Range, Rows, get_entity_caps, list_devices, last_seen};
 
 pub mod schema;
 pub mod store;
@@ -90,7 +90,7 @@ impl WorldModelKernel {
             let world = self.world.lock();
             let current_snapshot = world.snapshot_create();
             world.snapshot_open(current_snapshot).unwrap_or_else(|| {
-                let empty_view = ReadView::new(current_snapshot, Vec::new(), query::Index::new());
+                let empty_view = ReadView::new(current_snapshot, Vec::new(), Index::new());
                 empty_view
             })
         };
@@ -103,7 +103,7 @@ impl WorldModelKernel {
             let world = self.world.lock();
             let current_snapshot = world.snapshot_create();
             world.snapshot_open(current_snapshot).unwrap_or_else(|| {
-                let empty_view = ReadView::new(current_snapshot, Vec::new(), query::Index::new());
+                let empty_view = ReadView::new(current_snapshot, Vec::new(), Index::new());
                 empty_view
             })
         };
@@ -116,7 +116,7 @@ impl WorldModelKernel {
             let world = self.world.lock();
             let current_snapshot = world.snapshot_create();
             world.snapshot_open(current_snapshot).unwrap_or_else(|| {
-                let empty_view = ReadView::new(current_snapshot, Vec::new(), query::Index::new());
+                let empty_view = ReadView::new(current_snapshot, Vec::new(), Index::new());
                 empty_view
             })
         };
