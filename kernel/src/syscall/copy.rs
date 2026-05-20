@@ -133,7 +133,7 @@ pub fn copy_from_user(
     }
     
     // Perform the copy operation
-    match unsafe_copy_from_user(user_ptr, kernel_ptr, size) {
+    match unsafe { unsafe_copy_from_user(user_ptr, kernel_ptr, size) } {
         Ok(bytes_copied) => {
             klog!(TRACE, "[COPY] copy_from_user: {} bytes from 0x{:x} to 0x{:x}", 
                   bytes_copied, user_ptr, kernel_addr);
@@ -308,7 +308,7 @@ pub fn copy_to_user(
     }
     
     // Perform the copy operation
-    match unsafe_copy_to_user(kernel_ptr, user_ptr, size) {
+    match unsafe { unsafe_copy_to_user(kernel_ptr, user_ptr, size) } {
         Ok(bytes_copied) => {
             klog!(TRACE, "[COPY] copy_to_user: {} bytes from 0x{:x} to 0x{:x}", 
                   bytes_copied, kernel_addr, user_ptr);

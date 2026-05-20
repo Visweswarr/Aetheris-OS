@@ -467,7 +467,7 @@ impl StreamManager {
         let sequence = self.stream_counter.fetch_add(1, Ordering::Relaxed);
         
         // Generate new session key
-        let session_key = self.generate_session_key()?;
+        let session_key = Self::generate_session_key()?;
         
         // Create stream
         let stream_id = StreamId::new(sender, receiver, sequence);
@@ -529,7 +529,7 @@ impl StreamManager {
         
         for (stream_id, stream) in &mut self.streams {
             if stream.needs_rotation() {
-                match self.generate_session_key() {
+                match Self::generate_session_key() {
                     Ok(new_key) => {
                         if let Err(e) = stream.rotate_key(new_key) {
                             klog!(ERROR, "[STREAM-MANAGER] Failed to rotate key for stream {}: {}", 
@@ -569,7 +569,7 @@ impl StreamManager {
     }
     
     /// Generate a new session key
-    fn generate_session_key(&self) -> Result<StreamSessionKey, String> {
+    fn generate_session_key() -> Result<StreamSessionKey, String> {
         // Generate Kyber keypair
         let (public_key, secret_key) = KyberKem::generate_keypair(Kyber768)
             .map_err(|e| format!("Failed to generate Kyber keypair: {}", e))?;

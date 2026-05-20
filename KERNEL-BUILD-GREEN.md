@@ -46,7 +46,8 @@ on the dashboard).
 | After Cluster V (secman drift) | 35  | −45    | capability time, audit categories, secman stream args, cap derives |
 | After Cluster W (intent/world/skills schema) | 21 | −14 | CBOR decode, preview confidence, world index, skill statics |
 | After Cluster X (event/policy) | 12 | −9 | lazy statics, active topics refs, policy audit/event calls |
-| **Current**                | **12** | **−607** | **98% of baseline cleared**         |
+| After Cluster Y (final kernel/bin) | 0 | −12 | polyglot args, APIC Copy, unsafe copy, borrow scopes, serial bin |
+| **Current**                | **0** | **−619** | **kernel cargo check green**         |
 
 ## Landed commits (in order)
 
@@ -75,7 +76,8 @@ on the dashboard).
 23. `f050c5a kernel: align page-table audit translation and stat initialization` — Cluster U
 24. `4317bf5 kernel: align secman capability and audit API drift` — Cluster V
 25. `07b5a15 kernel: align intent world and skills schema drift` — Cluster W
-26. `TBD kernel: align event fabric and policy guardrail API drift` — Cluster X
+26. `d3ad295 kernel: align event fabric and policy guardrail API drift` — Cluster X
+27. `TBD kernel: clear final library and binary compile drift` — Cluster Y
 
 ## Remaining error clusters
 

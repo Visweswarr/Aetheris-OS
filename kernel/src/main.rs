@@ -232,21 +232,6 @@ pub extern "C" fn exception_handler() -> ! {
     }
 }
 
-/// Required for no_std
-#[lang = "eh_personality"]
-extern "C" fn rust_eh_personality() -> ! {
-    loop {
-        core::hint::spin_loop();
-    }
-}
-
-/// Required for no_std
-#[lang = "start"]
-extern "C" fn rust_start(_argc: isize, _argv: *const *const u8) -> isize {
-    loop {
-        core::hint::spin_loop();
-    }
-}
 
 #[cfg(test)]
 mod tests {

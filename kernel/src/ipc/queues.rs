@@ -507,10 +507,13 @@ impl Inbox {
         self.stats.messages_received += 1;
         
         // Use the queue's overflow policy implementation
+        let mut dropped_for_audit = None;
         let result = self.queue.enqueue_with_overflow_policy(message, |dropped_msg| {
-            // Audit the dropped message
-            self.audit_dropped_message(dropped_msg);
+            dropped_for_audit = Some(dropped_msg.clone());
         });
+        if let Some(dropped_msg) = dropped_for_audit.as_ref() {
+            self.audit_dropped_message(dropped_msg);
+        }
         
         // Update statistics based on result
         match &result {

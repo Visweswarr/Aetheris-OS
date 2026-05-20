@@ -24,7 +24,7 @@ pub struct ApicTimerConfig {
 }
 
 /// APIC timer modes
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ApicTimerMode {
     OneShot,
     Periodic,

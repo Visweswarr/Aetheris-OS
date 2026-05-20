@@ -10,6 +10,17 @@ lazy_static! {
     };
 }
 
+pub fn init() -> Result<(), ()> {
+    drop(SERIAL1.lock());
+    Ok(())
+}
+
+pub fn print(s: &str) {
+    use core::fmt::Write;
+    let mut writer = SerialWriter;
+    let _ = writer.write_str(s);
+}
+
 #[macro_export]
 macro_rules! kprint {
     ($($arg:tt)*) => ({
