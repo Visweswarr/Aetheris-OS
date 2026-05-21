@@ -16,6 +16,7 @@ $BuildOut = Join-Path $Root "build_out"
 $SerialLog = Join-Path $BuildOut "qemu-serial.log"
 $StdoutLog = Join-Path $BuildOut "qemu-stdout.log"
 $StderrLog = Join-Path $BuildOut "qemu-stderr.log"
+$QemuVars = Join-Path $BuildOut "qemu-vars.fd"
 $LedgerPath = Join-Path $Root "BOOT-GREEN.md"
 $TimeoutSec = 10
 
@@ -69,7 +70,8 @@ function New-AttemptResult {
         [string]$MatchedMarker = "",
         [int]$ExitCode = -9999,
         [bool]$TimedOut = $false,
-        [int]$SerialBytes = 0
+        [int]$SerialBytes = 0,
+        [string]$Command = ""
     )
 
     return [pscustomobject]@{
@@ -81,6 +83,7 @@ function New-AttemptResult {
         ExitCode = $ExitCode
         TimedOut = $TimedOut
         SerialBytes = $SerialBytes
+        Command = $Command
     }
 }
 
@@ -97,8 +100,16 @@ function Invoke-QemuAttempt {
     Write-Host "[QEMU-SMOKE] Artifact: $Artifact" -ForegroundColor Gray
     Write-Host "[QEMU-SMOKE] Args: $($Arguments -join ' ')" -ForegroundColor DarkGray
 
+    $quotedArguments = $Arguments | ForEach-Object {
+        if ($_ -match '[\s"]') {
+            '"' + ($_.Replace('"', '\"')) + '"'
+        } else {
+            $_
+        }
+    }
+
     $process = Start-Process -FilePath $script:QemuCmd `
-        -ArgumentList $Arguments `
+        -ArgumentList $quotedArguments `
         -PassThru `
         -WindowStyle Hidden `
         -RedirectStandardOutput $StdoutLog `
@@ -116,10 +127,11 @@ function Invoke-QemuAttempt {
     $marker = Find-BootMarker $serial
     $serialBytes = [Text.Encoding]::UTF8.GetByteCount($serial)
     $exitCode = if ($process.ExitCode -ne $null) { [int]$process.ExitCode } else { -1 }
+    $command = "$script:QemuCmd $($Arguments -join ' ')"
 
     if ($marker) {
         Write-Host "[QEMU-SMOKE] PASS: Found serial boot marker '$marker'" -ForegroundColor Green
-        return New-AttemptResult -Name $Name -Artifact $Artifact -Status "PASS" -Reason "serial boot marker captured" -MatchedMarker $marker -ExitCode $exitCode -TimedOut $timedOut -SerialBytes $serialBytes
+        return New-AttemptResult -Name $Name -Artifact $Artifact -Status "PASS" -Reason "serial boot marker captured" -MatchedMarker $marker -ExitCode $exitCode -TimedOut $timedOut -SerialBytes $serialBytes -Command $command
     }
 
     if ($serialBytes -eq 0) {
@@ -129,11 +141,11 @@ function Invoke-QemuAttempt {
             $firstStderrLine = ($stderr -split "`r?`n" | Select-Object -First 1)
             $reason = "$reason; stderr: $firstStderrLine"
         }
-        return New-AttemptResult -Name $Name -Artifact $Artifact -Status "FAIL" -Reason $reason -ExitCode $exitCode -TimedOut $timedOut -SerialBytes $serialBytes
+        return New-AttemptResult -Name $Name -Artifact $Artifact -Status "FAIL" -Reason $reason -ExitCode $exitCode -TimedOut $timedOut -SerialBytes $serialBytes -Command $command
     }
 
     Write-Host "[QEMU-SMOKE] FAIL: Serial output present but no Polymera marker was found" -ForegroundColor Red
-    return New-AttemptResult -Name $Name -Artifact $Artifact -Status "FAIL" -Reason "serial output did not contain a Polymera boot marker" -ExitCode $exitCode -TimedOut $timedOut -SerialBytes $serialBytes
+    return New-AttemptResult -Name $Name -Artifact $Artifact -Status "FAIL" -Reason "serial output did not contain a Polymera boot marker" -ExitCode $exitCode -TimedOut $timedOut -SerialBytes $serialBytes -Command $command
 }
 
 function Format-AttemptRows {
@@ -145,6 +157,18 @@ function Format-AttemptRows {
         $artifact = if ($attempt.Artifact) { $attempt.Artifact } else { "N/A" }
         $marker = if ($attempt.MatchedMarker) { $attempt.MatchedMarker } else { "N/A" }
         $rows.Add("| $($attempt.Name) | $artifact | $($attempt.Status) | $($attempt.ExitCode) | $($attempt.TimedOut) | $($attempt.SerialBytes) | $marker | $($attempt.Reason) |")
+    }
+    return ($rows -join "`n")
+}
+
+function Format-CommandRows {
+    param([object[]]$Attempts)
+    $rows = New-Object System.Collections.Generic.List[string]
+    $rows.Add("| Attempt | Command |")
+    $rows.Add("|---------|---------|")
+    foreach ($attempt in $Attempts) {
+        $command = if ($attempt.Command) { $attempt.Command.Replace("|", "\|") } else { "N/A" }
+        $rows.Add("| $($attempt.Name) | ``$command`` |")
     }
     return ($rows -join "`n")
 }
@@ -162,6 +186,7 @@ function Write-BootLedger {
     $serialLines = if (Test-Path $SerialLog) { (Get-FileText $SerialLog | Measure-Object -Line).Lines } else { 0 }
     $serialBytes = if (Test-Path $SerialLog) { [Text.Encoding]::UTF8.GetByteCount((Get-FileText $SerialLog)) } else { 0 }
     $attemptRows = Format-AttemptRows $Attempts
+    $commandRows = Format-CommandRows $Attempts
     $markerValue = if ($MatchedMarker) { $MatchedMarker } else { "N/A" }
     $qemuValue = if ($script:QemuCmd) { $script:QemuCmd } else { "NOT FOUND" }
 
@@ -198,6 +223,10 @@ function Write-BootLedger {
 ## Attempts
 
 $attemptRows
+
+## QEMU Commands
+
+$commandRows
 
 ## Next Suspected Fix
 
@@ -253,7 +282,42 @@ Write-Host "[QEMU-SMOKE] Using QEMU: $script:QemuCmd" -ForegroundColor Gray
 
 $attempts = New-Object System.Collections.Generic.List[object]
 
-# ---- Attempt 1: direct kernel load ----
+# ---- Attempt 1: real UEFI FAT boot artifact via Limine ----
+$IsoDir = Resolve-ExistingPath (Join-Path $Root "build_out\iso")
+$EfiPath = Resolve-ExistingPath (Join-Path $Root "build_out\iso\EFI\BOOT\BOOTX64.EFI")
+$LimineConf = Resolve-ExistingPath (Join-Path $Root "build_out\iso\EFI\BOOT\limine.conf")
+$FirmwarePath = Resolve-ExistingPath "C:\Program Files\qemu\share\edk2-x86_64-code.fd"
+$VarsTemplate = Resolve-ExistingPath "C:\Program Files\qemu\share\edk2-i386-vars.fd"
+
+if ($IsoDir -and $EfiPath -and $LimineConf -and $FirmwarePath -and $VarsTemplate) {
+    Copy-Item $VarsTemplate $QemuVars -Force
+    $uefiArgs = @(
+        "-drive", "if=pflash,format=raw,readonly=on,file=$FirmwarePath",
+        "-drive", "if=pflash,format=raw,file=$QemuVars",
+        "-drive", "if=ide,format=raw,file=fat:rw:$IsoDir",
+        "-m", "256M",
+        "-serial", "file:$SerialLog",
+        "-display", "none",
+        "-no-reboot",
+        "-d", "guest_errors"
+    )
+    $uefiAttempt = Invoke-QemuAttempt -Name "limine-uefi-fat" -Artifact $IsoDir -Arguments $uefiArgs
+    $attempts.Add($uefiAttempt)
+    if ($uefiAttempt.Status -eq "PASS") {
+        Write-BootLedger -Status "PASS" -Summary "Limine UEFI FAT boot marker captured" -Attempts $attempts.ToArray() -MatchedMarker $uefiAttempt.MatchedMarker -NextFix "Boot marker is proven. Next boot-hardening target: move past early memory allocation panic and reach kernel main loop."
+        exit 0
+    }
+} else {
+    $missing = @()
+    if (-not $IsoDir) { $missing += "build_out\iso" }
+    if (-not $EfiPath) { $missing += "build_out\iso\EFI\BOOT\BOOTX64.EFI" }
+    if (-not $LimineConf) { $missing += "build_out\iso\EFI\BOOT\limine.conf" }
+    if (-not $FirmwarePath) { $missing += "QEMU edk2-x86_64-code.fd" }
+    if (-not $VarsTemplate) { $missing += "QEMU edk2-i386-vars.fd" }
+    $attempts.Add((New-AttemptResult -Name "limine-uefi-fat" -Artifact "build_out\iso" -Status "FAIL" -Reason "UEFI FAT boot artifact incomplete: $($missing -join ', ')" -ExitCode -1))
+}
+
+# ---- Attempt 2: direct kernel load diagnostic ----
 $KernelPath = Resolve-ExistingPath (Join-Path $Root "dist\boot\kernel.elf")
 if (-not $KernelPath) {
     $KernelPath = Resolve-ExistingPath (Join-Path $Root "build_out\iso\boot\kernel.elf")
@@ -278,9 +342,8 @@ if ($KernelPath) {
     $attempts.Add((New-AttemptResult -Name "direct-kernel" -Artifact "dist\boot\kernel.elf" -Status "FAIL" -Reason "kernel artifact missing; run assemble_final.ps1" -ExitCode -1))
 }
 
-# ---- Attempt 2: packaged Limine path, only when actually bootable ----
+# ---- Attempt 3: packaged Limine ISO path, only when actually bootable ----
 $IsoPath = Resolve-ExistingPath (Join-Path $Root "artifacts\os\polymera-os-avengers.iso")
-$EfiPath = Resolve-ExistingPath (Join-Path $Root "build_out\iso\EFI\BOOT\BOOTX64.EFI")
 $LimineCfg = Resolve-ExistingPath (Join-Path $Root "build_out\iso\boot\limine\limine.cfg")
 
 if ($IsoPath) {
@@ -299,18 +362,18 @@ if ($IsoPath) {
         exit 0
     }
 } elseif ($EfiPath) {
-    $attempts.Add((New-AttemptResult -Name "limine-layout" -Artifact $EfiPath -Status "FAIL" -Reason "EFI loader exists but this smoke script has no OVMF path configured yet" -ExitCode -1))
+    $attempts.Add((New-AttemptResult -Name "limine-iso" -Artifact $EfiPath -Status "FAIL" -Reason "UEFI FAT path was attempted above; no bootable ISO artifact exists yet" -ExitCode -1))
 } elseif ($LimineCfg) {
-    $attempts.Add((New-AttemptResult -Name "limine-layout" -Artifact $LimineCfg -Status "FAIL" -Reason "Limine config exists, but no bootable ISO or EFI loader exists" -ExitCode -1))
+    $attempts.Add((New-AttemptResult -Name "limine-iso" -Artifact $LimineCfg -Status "FAIL" -Reason "Limine config exists, but no bootable ISO exists" -ExitCode -1))
 } else {
-    $attempts.Add((New-AttemptResult -Name "limine-layout" -Artifact "build_out\iso" -Status "FAIL" -Reason "packaged Limine layout missing" -ExitCode -1))
+    $attempts.Add((New-AttemptResult -Name "limine-iso" -Artifact "build_out\iso" -Status "FAIL" -Reason "packaged Limine layout missing" -ExitCode -1))
 }
 
 $stderrText = (Get-FileText $StderrLog).Trim()
 if ($stderrText -match "PVH ELF Note") {
     $nextFix = "Direct -kernel boot is rejected by QEMU because the ELF lacks a PVH note. Build a real Limine ISO/EFI boot artifact from build_out\iso, or add the correct PVH/direct-boot metadata if direct -kernel is intended."
 } else {
-    $nextFix = "Direct -kernel boot is silent and the packaged Limine layout is not bootable yet. Fix the boot protocol path first: produce a real Limine ISO/EFI boot artifact, or add an early serial marker in the kernel entry path if direct -kernel is intended."
+    $nextFix = "UEFI FAT, direct -kernel, and ISO diagnostics failed to capture a Polymera marker. Check Limine config syntax, EDK2 firmware path, kernel entry mapping, and early serial output."
 }
 Write-BootLedger -Status "FAIL" -Summary "QEMU ran but no Polymera serial boot marker was captured" -Attempts $attempts.ToArray() -MatchedMarker "" -NextFix $nextFix
 exit 1
