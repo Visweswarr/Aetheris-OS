@@ -10,6 +10,52 @@ This file is a snapshot; the running ledger is
 
 ---
 
+## 2026-05-21 Addendum — Bootable OS + Phase 4/6 Runnable Demo
+
+The boot truth gate has moved forward.
+
+Verified locally:
+
+- `assemble_final.ps1` builds `build_out\iso` as a UEFI FAT boot
+  artifact and downloads the official Limine `v12.3.0` binary release
+  only after verifying SHA-256
+  `2FAF7857D4AF93683391B8124EDE0DCB87ADE29B8D9F3F92ED5EB6D77B92F688`.
+- `scripts\qemu-smoke.ps1` boots that artifact through QEMU EDK2 and
+  Limine.
+- `BOOT-GREEN.md` records `PASS` with matched serial marker
+  `POLYMERA`.
+- `scripts\phase4-demo.ps1` runs the host-side Phase 4 AI path:
+  `goal-plan`, `browser-summarize`, `browser-classify`,
+  `summarize-log --approve`, and `runtime-run --backend deterministic`.
+- `scripts\phase6-demo.ps1` proves the host-side Phase 6 controls:
+  HITL reject, HITL modify, budget denial/refund, persisted task-state
+  resume, and replay divergence detection.
+
+Important limitation: the kernel is booted to banner, not to a stable
+main loop. The serial log currently shows an early memory allocation
+panic after the banner:
+
+```text
+Memory allocation failed for layout: Layout { size: 32, align: 8 }
+```
+
+So the honest current claim is: **QEMU reaches the Polymera kernel
+entry and captures the boot marker.** The next kernel task is to move
+past early heap initialization and reach the kernel main loop.
+
+Operator entrypoint: [RUN-POLYMERA.md](RUN-POLYMERA.md).
+
+Still not proven:
+
+- Stable kernel main loop after early memory manager initialization.
+- Real kernel metric bridge into the dashboard.
+- Real compiled wasm summarizer component in the AI workload path.
+- AI Core running inside the kernel; current Phase 4/6 demos are
+  host-side service demos.
+- Broad dirty-tree cleanup.
+
+---
+
 ## 2026-05-21 Addendum — Actual Progress And Current Truth Gate
 
 The recent work is real and committed:
@@ -24,25 +70,23 @@ The recent work is real and committed:
   backend boundary, CLI smoke tests, dashboard runtime metrics, and
   model-runtime release docs.
 
-The next truth gate is boot, not another feature. `BOOT-GREEN.md`
-now records a strict `FAIL`: QEMU runs against `dist\boot\kernel.elf`,
-but direct `-kernel` loading is rejected with
-`Error loading uncompressed kernel without PVH ELF Note`, and the
-packaged Limine layout is not bootable yet because it has `limine.cfg`
-but no ISO/EFI loader. That means kernel-green is still a type-check
-claim, not a booted-runtime claim.
+The next truth gate was boot, not another feature. That gate is now
+partially satisfied: QEMU reaches the Polymera kernel entry via the
+Limine UEFI FAT artifact and captures a serial boot marker. Direct
+`-kernel` loading remains diagnostic only because the ELF still lacks
+PVH metadata.
 
 Still not proven:
 
-- A QEMU boot banner or serial boot marker from the real kernel.
-- A bootable Limine ISO/EFI artifact, or correct PVH metadata for
-  direct QEMU `-kernel` boot.
+- Stable execution past the early memory allocation panic.
+- Correct PVH metadata for direct QEMU `-kernel` boot.
 - A real kernel metric bridge into the dashboard.
 - A real compiled wasm summarizer component in the AI workload path.
 - Broad dirty-tree triage for the OS-wide uncommitted work.
 
-Until QEMU captures a Polymera boot marker, release notes must avoid
-claiming the OS boots.
+Release notes may claim "boots to Polymera serial banner in QEMU via
+Limine UEFI FAT"; they must not yet claim "boots to a stable shell" or
+"runs the AI Core inside the kernel."
 
 ---
 
@@ -119,7 +163,7 @@ the new APIs.
 | ZK circuits used by anything | 🟡 Noir circuits have real constraints but no service routes through them |
 | Formal verification | ❌ aspirational; F* / Lean 4 pinned but not running |
 | Multi-VM polyglot runtime (CPython, JVM, CLR) | ❌ aspirational; only Rust services run today |
-| Bootable on real hardware | ❌ unverified — `cargo check` passes but the kernel has never been booted on QEMU or hardware in this branch |
+| Bootable on QEMU | 🟡 QEMU reaches the Polymera serial banner through Limine UEFI FAT; early heap panic still blocks stable runtime |
 
 The pitch oversells reality by maybe 2–3 phases of work. The
 *foundation* under the pitch is now sound enough to compound on.
@@ -415,10 +459,10 @@ Phrased so each line is something that needs a concrete deliverable
 before the claim it implies is honest.
 
 ### Architecture / correctness
-1. **Kernel boot.** `cargo check` passes; the kernel has never been
-   linked into a bootable image and run in QEMU on this branch.
-   Until that happens, nothing about runtime behaviour is verified —
-   only types.
+1. **Stable kernel boot.** `cargo check` passes and QEMU reaches the
+   Polymera serial banner through Limine UEFI FAT. It still panics
+   during early memory allocation, so runtime behaviour beyond the
+   banner is not verified yet.
 2. **Real PQC on at least one hot path.** Standalone `crypto/` crate
    is real; nothing in `kernel/`, `services/wallet`,
    `services/ipc`, or the IPC `pqc_helpers` actually calls it.
@@ -468,14 +512,14 @@ before the claim it implies is honest.
 Each item is *one focused session* of work; none requires speculation
 beyond what the current code base already proves possible.
 
-### A. Boot the kernel in QEMU (≈ 1 session)
+### A. Move QEMU boot past early heap panic (≈ 1 session)
 
-Highest leverage. Without this, "kernel green" is a type-check claim,
-not a runtime claim. Concrete output: a `make qemu-smoke` target that
-loads the kernel image, prints the boot banner, dumps the process
-table once, and exits. Whatever the smoke test catches (and it will
-catch things — green-on-types ≠ green-on-runtime) becomes the next
-KERNEL-BUILD-GREEN equivalent: BOOT-GREEN.md.
+Highest leverage. The boot marker is now proven through Limine UEFI
+FAT, but the kernel panics during early memory allocation. Concrete
+output: `qemu-smoke.ps1` still captures the Polymera banner, then the
+kernel reaches the main loop or a controlled halt after printing the
+process table. `BOOT-GREEN.md` should keep recording the serial marker
+and the next boot-hardening blocker.
 
 ### B. Wire one real kernel metric to the dashboard (≈ 1 session)
 
@@ -551,8 +595,10 @@ won't silently regress while the work is in flight.
 - **AnchorDAO Foundry tests:** I did not run them; the Solidity reads
   correctly but I cannot prove it works on EVM until Foundry/Hardhat
   is wired in CI.
-- **Boot behaviour:** the kernel has not been booted in QEMU on this
-  branch; any claim about runtime is a type-system claim only.
+- **Boot behaviour:** the kernel now boots to the Polymera serial
+  banner in QEMU through Limine UEFI FAT, then panics during early
+  memory allocation. Any claim beyond "boot marker captured" remains
+  unproven.
 - **Verify-web3 / verify-quantum scripts:** the user's walkthrough
   says they pass; I did not re-run them in this report's
   verification pass.
