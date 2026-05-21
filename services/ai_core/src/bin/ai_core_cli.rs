@@ -4,7 +4,11 @@ use aetheris_ai_core::intents::{create_system_intent_manager, SystemActionContex
 use aetheris_ai_core::ipc::ChatRequest;
 use aetheris_ai_core::orchestrator::{MultiModalOrchestrator, OrchestratorInput};
 use aetheris_ai_core::router::PromptRouter;
-use aetheris_ai_core::runtime::{AcceleratorKind, HegPolicy, RuntimeManager, RuntimeRequest};
+use aetheris_ai_core::runtime::{
+    backend::{DeterministicLocalBackend, LlamaCppServerBackend, OllamaRuntimeBackend, RuntimeBackend},
+    model_registry::ModelRegistry,
+    AcceleratorKind, HegPolicy, RuntimeConfig, RuntimeManager, RuntimeRequest,
+};
 use aetheris_ai_core::tools::registry::ToolRegistry;
 use aetheris_ai_core::tools::stt::{SpeechToTextTool, SttConfig};
 use std::collections::HashMap;
@@ -595,6 +599,70 @@ fn parse_accelerator(value: &str) -> Result<AcceleratorKind, Box<dyn std::error:
     }
 }
 
+fn runtime_manager_for_cli_backend(
+    backend: &str,
+    model: Option<&str>,
+    endpoint: Option<&str>,
+) -> Result<RuntimeManager, Box<dyn std::error::Error>> {
+    let backend: Arc<dyn RuntimeBackend> = match normalize_backend_name(backend).as_str() {
+        "deterministic" => Arc::new(DeterministicLocalBackend::new()),
+        "llama-cpp" => {
+            let model = model.ok_or("runtime-run --backend llama-cpp requires --model <id>")?;
+            let endpoint = endpoint.unwrap_or("http://127.0.0.1:8080/v1");
+            Arc::new(LlamaCppServerBackend::new(endpoint, model)?)
+        }
+        "ollama" => {
+            let model = model.ok_or("runtime-run --backend ollama requires --model <id>")?;
+            let endpoint = endpoint.unwrap_or("http://127.0.0.1:11434");
+            Arc::new(OllamaRuntimeBackend::new(endpoint, model)?)
+        }
+        other => {
+            return Err(format!(
+                "unsupported runtime backend '{other}', expected deterministic|llama-cpp|ollama"
+            )
+            .into())
+        }
+    };
+    Ok(RuntimeManager::with_backend(RuntimeConfig::default(), backend))
+}
+
+fn normalize_backend_name(backend: &str) -> String {
+    match backend.to_ascii_lowercase().replace('_', "-").as_str() {
+        "local" | "deterministic-local" => "deterministic".to_string(),
+        "llamacpp" | "llama" | "llama-cpp-server" => "llama-cpp".to_string(),
+        other => other.to_string(),
+    }
+}
+
+#[derive(Clone)]
+struct CliModelRegistryEntry {
+    repo: String,
+    file: String,
+    revision: String,
+    license: String,
+}
+
+async fn resolve_model_registry_entry(
+    model_id: &str,
+) -> Result<Option<CliModelRegistryEntry>, Box<dyn std::error::Error>> {
+    let registry_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../configs/ai/model-registry.toml");
+    if !registry_path.exists() {
+        return Ok(None);
+    }
+    let registry = ModelRegistry::load(&registry_path).await?;
+    match registry.get_reviewed(model_id) {
+        Ok(entry) => Ok(Some(CliModelRegistryEntry {
+            repo: entry.repo.clone(),
+            file: entry.file.clone(),
+            revision: entry.revision.clone(),
+            license: entry.license.clone(),
+        })),
+        Err(_) if model_id.contains('/') || model_id.contains(':') => Ok(None),
+        Err(err) => Err(err.into()),
+    }
+}
+
 fn default_dashboard_metrics_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ui/dashboard/ai_metrics.js")
 }
@@ -721,6 +789,11 @@ fn default_dashboard_metrics() -> serde_json::Value {
         "ai_runtime_backend_errors_total": 0,
         "ai_runtime_local_tokens_total": 0,
         "ai_runtime_backend_last_latency_ms": 0,
+        "ai_runtime_model_attempts_total": 0,
+        "ai_runtime_model_success_total": 0,
+        "ai_runtime_model_failures_total": 0,
+        "ai_runtime_model_last_latency_ms": 0,
+        "ai_runtime_model_tokens_total": 0,
         "updated_at_unix": 0,
         "last_summary": null,
         "last_goal_plan": null,
@@ -754,6 +827,11 @@ async fn read_dashboard_metrics(path: &Path) -> Option<serde_json::Value> {
         "ai_runtime_backend_errors_total",
         "ai_runtime_local_tokens_total",
         "ai_runtime_backend_last_latency_ms",
+        "ai_runtime_model_attempts_total",
+        "ai_runtime_model_success_total",
+        "ai_runtime_model_failures_total",
+        "ai_runtime_model_last_latency_ms",
+        "ai_runtime_model_tokens_total",
         "updated_at_unix",
     ] {
         if json.get(key).is_none() {
@@ -845,6 +923,9 @@ async fn run_runtime_run(args: &[String]) -> Result<(), Box<dyn std::error::Erro
     let mut prefer = None;
     let mut metrics_js = None;
     let mut workload = None;
+    let mut backend = "deterministic".to_string();
+    let mut model: Option<String> = None;
+    let mut endpoint: Option<String> = None;
 
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -853,6 +934,9 @@ async fn run_runtime_run(args: &[String]) -> Result<(), Box<dyn std::error::Erro
             "--prefer" => prefer = Some(parse_accelerator(iter.next().ok_or("--prefer requires cpu|igpu|npu")?)?),
             "--dashboard-metrics" | "--metrics-js" => metrics_js = iter.next().map(PathBuf::from),
             "--workload" => workload = iter.next().cloned(),
+            "--backend" => backend = iter.next().ok_or("--backend requires deterministic|llama-cpp|ollama")?.to_string(),
+            "--model" => model = iter.next().cloned(),
+            "--endpoint" => endpoint = iter.next().cloned(),
             other => {
                 if prompt.is_none() {
                     prompt = Some(other.to_string());
@@ -862,9 +946,22 @@ async fn run_runtime_run(args: &[String]) -> Result<(), Box<dyn std::error::Erro
     }
 
     let prompt = prompt.ok_or("runtime-run requires --prompt <text>")?;
+    let backend = normalize_backend_name(&backend);
     let mut metadata = HashMap::new();
     if let Some(workload) = workload {
         metadata.insert("workload".to_string(), workload);
+    }
+    if let Some(model) = &model {
+        metadata.insert("model_id".to_string(), model.clone());
+        if let Some(entry) = resolve_model_registry_entry(model).await? {
+            metadata.insert("model_repo".to_string(), entry.repo);
+            metadata.insert("model_file".to_string(), entry.file);
+            metadata.insert("model_revision".to_string(), entry.revision);
+            metadata.insert("model_license".to_string(), entry.license);
+        }
+    }
+    if let Some(endpoint) = &endpoint {
+        metadata.insert("endpoint".to_string(), endpoint.clone());
     }
     let request = RuntimeRequest {
         prompt,
@@ -877,7 +974,7 @@ async fn run_runtime_run(args: &[String]) -> Result<(), Box<dyn std::error::Erro
         preferred_accelerator: prefer,
         ..HegPolicy::default()
     };
-    let runtime = RuntimeManager::new_mock();
+    let runtime = runtime_manager_for_cli_backend(&backend, model.as_deref(), endpoint.as_deref())?;
     let metrics_path = metrics_js.unwrap_or_else(default_dashboard_metrics_path);
 
     let response_result = runtime.generate_response_with_policy(&request, &policy).await;
@@ -900,6 +997,17 @@ async fn run_runtime_run(args: &[String]) -> Result<(), Box<dyn std::error::Erro
             payload["ai_heg_plans_total"] = serde_json::json!(previous_heg_plans + 1);
 
             payload["last_heg_plan"] = serde_json::to_value(&response)?;
+            if response.model_id.is_some() {
+                let previous_attempts = payload["ai_runtime_model_attempts_total"].as_u64().unwrap_or(0);
+                payload["ai_runtime_model_attempts_total"] = serde_json::json!(previous_attempts + 1);
+                let previous_success = payload["ai_runtime_model_success_total"].as_u64().unwrap_or(0);
+                payload["ai_runtime_model_success_total"] = serde_json::json!(previous_success + 1);
+                let previous_model_tokens = payload["ai_runtime_model_tokens_total"].as_u64().unwrap_or(0);
+                payload["ai_runtime_model_tokens_total"] =
+                    serde_json::json!(previous_model_tokens + response.tokens_generated as u64);
+                payload["ai_runtime_model_last_latency_ms"] =
+                    serde_json::json!(response.processing_time_ms);
+            }
             payload["updated_at_unix"] = serde_json::json!(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs());
 
             let js = format!(
@@ -930,6 +1038,12 @@ async fn run_runtime_run(args: &[String]) -> Result<(), Box<dyn std::error::Erro
 
             let previous_errors = payload["ai_runtime_backend_errors_total"].as_u64().unwrap_or(0);
             payload["ai_runtime_backend_errors_total"] = serde_json::json!(previous_errors + 1);
+            if backend != "deterministic" {
+                let previous_attempts = payload["ai_runtime_model_attempts_total"].as_u64().unwrap_or(0);
+                payload["ai_runtime_model_attempts_total"] = serde_json::json!(previous_attempts + 1);
+                let previous_failures = payload["ai_runtime_model_failures_total"].as_u64().unwrap_or(0);
+                payload["ai_runtime_model_failures_total"] = serde_json::json!(previous_failures + 1);
+            }
 
             payload["updated_at_unix"] = serde_json::json!(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs());
 

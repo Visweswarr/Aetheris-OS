@@ -4,6 +4,14 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+fn metrics_json_from_file(path: &str) -> serde_json::Value {
+    let content = fs::read_to_string(path).expect("failed to read metrics file");
+    let json_start = content.find('{').expect("no opening brace found");
+    let json_end = content.rfind('}').expect("no closing brace found");
+    serde_json::from_str(&content[json_start..=json_end])
+        .expect("failed to parse metrics JSON from file")
+}
+
 #[test]
 fn test_cli_runtime_run_success_and_error_metrics() {
     let cli_path = env!("CARGO_BIN_EXE_ai_core_cli");
@@ -36,19 +44,14 @@ fn test_cli_runtime_run_success_and_error_metrics() {
         "Metrics file was not created"
     );
 
-    let content = fs::read_to_string(metrics_file_path)
-        .expect("failed to read created metrics file");
+    let content = fs::read_to_string(metrics_file_path).expect("failed to read created metrics file");
 
     assert!(
         content.contains("window.POLYMERA_AI_METRICS ="),
         "Metrics file doesn't contain expected JS window variable"
     );
 
-    // Extract JSON object from the JS file
-    let json_start = content.find('{').expect("no opening brace found");
-    let json_end = content.rfind('}').expect("no closing brace found");
-    let metrics_json: serde_json::Value = serde_json::from_str(&content[json_start..=json_end])
-        .expect("failed to parse metrics JSON from file");
+    let metrics_json = metrics_json_from_file(metrics_file_path);
 
     let executions = metrics_json["ai_runtime_backend_executions_total"]
         .as_u64()
@@ -80,13 +83,7 @@ fn test_cli_runtime_run_success_and_error_metrics() {
         "CLI exited successfully but error was expected"
     );
 
-    let content_after_error = fs::read_to_string(metrics_file_path)
-        .expect("failed to read updated metrics file");
-
-    let json_start_err = content_after_error.find('{').expect("no opening brace found after error");
-    let json_end_err = content_after_error.rfind('}').expect("no closing brace found after error");
-    let metrics_json_err: serde_json::Value = serde_json::from_str(&content_after_error[json_start_err..=json_end_err])
-        .expect("failed to parse updated metrics JSON");
+    let metrics_json_err = metrics_json_from_file(metrics_file_path);
 
     let executions_after = metrics_json_err["ai_runtime_backend_executions_total"]
         .as_u64()
@@ -100,4 +97,68 @@ fn test_cli_runtime_run_success_and_error_metrics() {
 
     // Clean up
     let _ = fs::remove_file(metrics_file_path);
+}
+
+#[test]
+fn test_cli_runtime_run_model_backends_fail_closed() {
+    let cli_path = env!("CARGO_BIN_EXE_ai_core_cli");
+    let llama_metrics_file = "target/tmp_dashboard_metrics_llama_fail.js";
+    let ollama_metrics_file = "target/tmp_dashboard_metrics_ollama_fail.js";
+    let _ = fs::remove_file(llama_metrics_file);
+    let _ = fs::remove_file(ollama_metrics_file);
+
+    let llama_output = Command::new(cli_path)
+        .arg("runtime-run")
+        .arg("--prompt")
+        .arg("hello from llama fail-closed smoke")
+        .arg("--backend")
+        .arg("llama-cpp")
+        .arg("--model")
+        .arg("smollm2-135m-instruct-q4")
+        .arg("--endpoint")
+        .arg("http://127.0.0.1:9/v1")
+        .arg("--dashboard-metrics")
+        .arg(llama_metrics_file)
+        .output()
+        .expect("failed to execute ai_core_cli llama-cpp fail-closed path");
+
+    assert!(
+        !llama_output.status.success(),
+        "llama-cpp path unexpectedly succeeded: stdout={} stderr={}",
+        String::from_utf8_lossy(&llama_output.stdout),
+        String::from_utf8_lossy(&llama_output.stderr)
+    );
+    let llama_metrics = metrics_json_from_file(llama_metrics_file);
+    assert_eq!(llama_metrics["ai_runtime_backend_errors_total"], 1);
+    assert_eq!(llama_metrics["ai_runtime_model_attempts_total"], 1);
+    assert_eq!(llama_metrics["ai_runtime_model_failures_total"], 1);
+
+    let ollama_output = Command::new(cli_path)
+        .arg("runtime-run")
+        .arg("--prompt")
+        .arg("hello from ollama fail-closed smoke")
+        .arg("--backend")
+        .arg("ollama")
+        .arg("--model")
+        .arg("hf.co/QuantFactory/SmolLM2-135M-Instruct-GGUF:Q4_K_M")
+        .arg("--endpoint")
+        .arg("http://127.0.0.1:9")
+        .arg("--dashboard-metrics")
+        .arg(ollama_metrics_file)
+        .output()
+        .expect("failed to execute ai_core_cli ollama fail-closed path");
+
+    assert!(
+        !ollama_output.status.success(),
+        "ollama path unexpectedly succeeded: stdout={} stderr={}",
+        String::from_utf8_lossy(&ollama_output.stdout),
+        String::from_utf8_lossy(&ollama_output.stderr)
+    );
+    let ollama_metrics = metrics_json_from_file(ollama_metrics_file);
+    assert_eq!(ollama_metrics["ai_runtime_backend_errors_total"], 1);
+    assert_eq!(ollama_metrics["ai_runtime_model_attempts_total"], 1);
+    assert_eq!(ollama_metrics["ai_runtime_model_failures_total"], 1);
+
+    let _ = fs::remove_file(llama_metrics_file);
+    let _ = fs::remove_file(ollama_metrics_file);
 }

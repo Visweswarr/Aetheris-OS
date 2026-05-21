@@ -24,6 +24,15 @@ function aiMetrics() {
     ai_heg_prefill_to_npu_total: 0,
     ai_heg_decode_to_igpu_total: 0,
     ai_heg_ddr_pressure_score: 0,
+    ai_runtime_backend_executions_total: 0,
+    ai_runtime_backend_errors_total: 0,
+    ai_runtime_local_tokens_total: 0,
+    ai_runtime_backend_last_latency_ms: 0,
+    ai_runtime_model_attempts_total: 0,
+    ai_runtime_model_success_total: 0,
+    ai_runtime_model_failures_total: 0,
+    ai_runtime_model_last_latency_ms: 0,
+    ai_runtime_model_tokens_total: 0,
     updated_at_unix: 0,
     last_summary: null,
     last_heg_plan: null,
@@ -302,10 +311,13 @@ function update() {
   const aiCapabilityDenials = metrics.ai_capability_denials_total || 0;
   const aiHegPlans = metrics.ai_heg_plans_total || 0;
   const aiHegDdrPressure = metrics.ai_heg_ddr_pressure_score || 0;
+  const aiModelAttempts = metrics.ai_runtime_model_attempts_total || 0;
+  const aiModelTokens = metrics.ai_runtime_model_tokens_total || 0;
+  const aiModelLatency = metrics.ai_runtime_model_last_latency_ms || 0;
   pushH(kernel.history.syscalls, aiBrowserSummaries);
   pushH(kernel.history.ipc, aiCapabilityDenials);
   pushH(kernel.history.memory, aiHegDdrPressure || Math.round(kernel.memory.user));
-  pushH(kernel.history.crypto, aiPlansGenerated);
+  pushH(kernel.history.crypto, aiModelAttempts || aiPlansGenerated);
   pushH(kernel.history.ticks, aiHegPlans || aiLogSummaries);
 
   // Periodic log entries
@@ -315,10 +327,10 @@ function update() {
 
   // ── Update DOM ──
   document.getElementById('metric-processes').textContent = kernel.processes.length;
-  document.getElementById('metric-syscalls').textContent = aiBrowserSummaries.toLocaleString();
-  document.getElementById('metric-ipc').textContent = aiCapabilityDenials.toLocaleString();
-  document.getElementById('metric-memory').textContent = aiHegDdrPressure ? `${aiHegDdrPressure}% HEG` : Math.round(kernel.memory.user) + ' MB';
-  document.getElementById('metric-crypto').textContent = aiPlansGenerated.toLocaleString();
+  document.getElementById('metric-syscalls').textContent = (metrics.ai_runtime_backend_executions_total || aiBrowserSummaries).toLocaleString();
+  document.getElementById('metric-ipc').textContent = (aiModelTokens || metrics.ai_runtime_local_tokens_total || aiCapabilityDenials).toLocaleString();
+  document.getElementById('metric-memory').textContent = (aiModelLatency || metrics.ai_runtime_backend_last_latency_ms || 0) + ' ms';
+  document.getElementById('metric-crypto').textContent = (aiModelAttempts || aiPlansGenerated).toLocaleString();
   document.getElementById('metric-ticks').textContent = aiHegPlans.toLocaleString();
 
   drawSparkline('spark-processes', kernel.history.processes, '#22c55e');
