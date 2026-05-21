@@ -12,3 +12,10 @@ only and must not be copied into Polymera source.
 | 2026-05-20 | `services/ai_core/src/privacy.rs` | `reference-os/services/privacy/src/dp.rs` | Repo-owned MIT-compatible | Reimplemented behavior | Seeded Laplace DP helper added for off-device metric export tests. |
 | 2026-05-20 | Design input only | `OS-REF/Reference OS/` | Mixed/unknown/vendor | Not copied | Treat as research/vendor library. Direct code import requires separate license review. |
 | 2026-05-21 | `services/ai_core/src/runtime/heg.rs` | `C:\Users\reddy\Downloads\OS Evolution_ AI, Web3, Metaverse, Quantum.pdf` | User-provided design document | Reimplemented behavior | Heterogeneous Execution Graph idea used as design input only. No PDF text or external OS code copied into Polymera source. |
+| 2026-05-21 | `services/ai_core/src/runtime/backend.rs` | `nebulet/nebulet` | MIT | Design input only | Ring-0 Wasm/user-mode isolation concept. Strictly no code copied in this phase; informed the design for the RuntimeBackend trait boundary. |
+| 2026-05-21 | `services/ai_core/src/runtime/backend.rs` | `substratum-labs/mini-castor` | Apache-2.0 | Design/reimplemented only | Syscall proxy pipeline, checkpoint/replay, budgets, and HITL patterns. Reimplemented structural logic matching Mini-Castor design constraints; strictly no code copied in this phase. |
+| 2026-05-21 | Design input only | `viralcode/tensoragentos` | BUSL-1.1 (non-production) | Not copied (BUSL restriction) | WebMCP/browser/agent-shell ideas reviewed for high-level desktop-OS context. Strictly no code copied in this phase. |
+| 2026-05-21 | Design input only | `agiresearch/AIOS` | Mixed / Unverified | Design input (unless local license verified) | Microkernel/SDK boundary, scheduling queues, and computer-use abstractions analyzed. Strictly no code copied in this phase. |
+
+> [!NOTE]
+> **Consolidation Record**: During this release consolidation phase, all reference materials were utilized strictly as high-level architectural inputs. No source code or assets from any external repository were copied, cloned, or direct-imported into the Polymera OS codebase.

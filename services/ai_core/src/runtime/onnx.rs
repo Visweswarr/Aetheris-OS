@@ -1,7 +1,8 @@
 //! ONNX Runtime backend
 
-use super::{RuntimeConfig, RuntimeRequest, RuntimeResponse};
+use super::{backend::RuntimeBackendKind, RuntimeConfig, RuntimeRequest, RuntimeResponse};
 use crate::error::Result;
+use std::collections::HashMap;
 
 pub struct OnnxRuntime {
     initialized: bool,
@@ -28,6 +29,11 @@ impl OnnxRuntime {
             generated_text: format!("ONNX response: {}", request.prompt),
             tokens_generated: 10,
             processing_time_ms: 100,
+            backend_kind: RuntimeBackendKind::Onnx,
+            backend_metadata: HashMap::from([(
+                "execution_mode".to_string(),
+                "onnx_adapter_stub".to_string(),
+            )]),
             heg_plan_id: None,
             placement_summary: Vec::new(),
             audit_event: None,

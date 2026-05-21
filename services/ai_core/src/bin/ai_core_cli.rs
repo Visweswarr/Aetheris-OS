@@ -41,6 +41,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.get(1).map(String::as_str) == Some("runtime-plan") {
         return run_runtime_plan(&args[2..]).await;
     }
+    if args.get(1).map(String::as_str) == Some("runtime-run") {
+        return run_runtime_run(&args[2..]).await;
+    }
+    if args.get(1).map(String::as_str) == Some("resume-task") {
+        return run_resume_task(&args[2..]).await;
+    }
 
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer)?;
@@ -115,6 +121,9 @@ async fn run_summarize_log(args: &[String]) -> Result<(), Box<dyn std::error::Er
     let mut metrics_js = None;
     let mut max_bytes = 2 * 1024 * 1024u64;
     let mut approved = false;
+    let mut model: Option<String> = None;
+    let mut reject: Option<String> = None;
+    let mut modify: Option<String> = None;
 
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -127,6 +136,9 @@ async fn run_summarize_log(args: &[String]) -> Result<(), Box<dyn std::error::Er
                 max_bytes = value.parse()?;
             }
             "--approve" => approved = true,
+            "--model" => model = iter.next().cloned(),
+            "--reject" => reject = iter.next().cloned(),
+            "--modify" => modify = iter.next().cloned(),
             other => {
                 if log_path.is_none() {
                     log_path = Some(PathBuf::from(other));
@@ -141,7 +153,7 @@ async fn run_summarize_log(args: &[String]) -> Result<(), Box<dyn std::error::Er
     let cap_manager = Arc::new(CapTokenManager::new_mock());
     let planner = TaskPlanner::new(runtime_manager, tool_registry.clone());
     let policy_enforcer = Arc::new(PolicyEnforcer::new(cap_manager));
-    let executor = StepExecutor::new(tool_registry, policy_enforcer);
+    let executor = StepExecutor::new(tool_registry, policy_enforcer.clone());
 
     let mut metadata = HashMap::new();
     if approved {
@@ -162,6 +174,39 @@ async fn run_summarize_log(args: &[String]) -> Result<(), Box<dyn std::error::Er
         .generate_log_summary_plan(&log_path, max_bytes, component_path.as_deref(), &context)
         .await?;
     eprintln!("{}", serde_json::to_string_pretty(&plan)?);
+
+    // HITL reject/modify handling (Track 2.1)
+    if let Some(reason) = reject {
+        use aetheris_ai_core::agent::policy::HitlDecision;
+        let hitl = HitlDecision::Reject { reason };
+        let _result = policy_enforcer.handle_hitl_decision(&plan.steps[0], &hitl);
+        eprintln!("Plan rejected via --reject flag");
+        return Ok(());
+    }
+    if let Some(feedback) = modify {
+        use aetheris_ai_core::agent::policy::HitlDecision;
+        let hitl = HitlDecision::Modify { feedback };
+        match policy_enforcer.handle_hitl_decision(&plan.steps[0], &hitl) {
+            Err(modified) => {
+                println!("{}", serde_json::to_string_pretty(&modified)?);
+                eprintln!("Plan modification requested. Re-plan with the feedback above.");
+                return Ok(());
+            }
+            _ => {}
+        }
+    }
+
+    // If --model is specified, override the tool to use local_llm_summarizer
+    let plan = if let Some(ref model_name) = model {
+        let mut plan = plan;
+        for step in &mut plan.steps {
+            step.tool_name = "local_llm_summarizer".to_string();
+            step.parameters["model"] = serde_json::json!(model_name);
+        }
+        plan
+    } else {
+        plan
+    };
 
     let results = executor.execute_plan(plan, context).await?;
     let payload = results
@@ -668,6 +713,14 @@ fn default_dashboard_metrics() -> serde_json::Value {
         "ai_heg_prefill_to_npu_total": 0,
         "ai_heg_decode_to_igpu_total": 0,
         "ai_heg_ddr_pressure_score": 0,
+        "ai_llm_calls_total": 0,
+        "ai_hitl_rejects_total": 0,
+        "ai_hitl_modifies_total": 0,
+        "ai_budget_exhausted_total": 0,
+        "ai_runtime_backend_executions_total": 0,
+        "ai_runtime_backend_errors_total": 0,
+        "ai_runtime_local_tokens_total": 0,
+        "ai_runtime_backend_last_latency_ms": 0,
         "updated_at_unix": 0,
         "last_summary": null,
         "last_goal_plan": null,
@@ -693,6 +746,14 @@ async fn read_dashboard_metrics(path: &Path) -> Option<serde_json::Value> {
         "ai_heg_prefill_to_npu_total",
         "ai_heg_decode_to_igpu_total",
         "ai_heg_ddr_pressure_score",
+        "ai_llm_calls_total",
+        "ai_hitl_rejects_total",
+        "ai_hitl_modifies_total",
+        "ai_budget_exhausted_total",
+        "ai_runtime_backend_executions_total",
+        "ai_runtime_backend_errors_total",
+        "ai_runtime_local_tokens_total",
+        "ai_runtime_backend_last_latency_ms",
         "updated_at_unix",
     ] {
         if json.get(key).is_none() {
@@ -757,4 +818,132 @@ fn plan_requires_approval(plan: &aetheris_ai_core::agent::TaskPlan) -> bool {
     plan.steps
         .iter()
         .any(|step| step.requires_approval || step.is_destructive)
+}
+
+async fn run_resume_task(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let plan_id = args.first().ok_or("resume-task requires a plan ID")?;
+    let tool_registry = Arc::new(ToolRegistry::new_mock());
+    let cap_manager = Arc::new(CapTokenManager::new_mock());
+    let policy_enforcer = Arc::new(PolicyEnforcer::new(cap_manager));
+    let executor = StepExecutor::new(tool_registry, policy_enforcer);
+
+    let persisted = StepExecutor::load_persisted_state(plan_id)?;
+    eprintln!(
+        "Resuming task {} from step {}, {} steps cached",
+        plan_id,
+        persisted.suspended_at_step,
+        persisted.cached_results.len()
+    );
+
+    let results = executor.resume_task(persisted).await?;
+    println!("{}", serde_json::to_string_pretty(&results)?);
+    Ok(())
+}
+
+async fn run_runtime_run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let mut prompt = None;
+    let mut prefer = None;
+    let mut metrics_js = None;
+    let mut workload = None;
+
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--prompt" => prompt = iter.next().cloned(),
+            "--prefer" => prefer = Some(parse_accelerator(iter.next().ok_or("--prefer requires cpu|igpu|npu")?)?),
+            "--dashboard-metrics" | "--metrics-js" => metrics_js = iter.next().map(PathBuf::from),
+            "--workload" => workload = iter.next().cloned(),
+            other => {
+                if prompt.is_none() {
+                    prompt = Some(other.to_string());
+                }
+            }
+        }
+    }
+
+    let prompt = prompt.ok_or("runtime-run requires --prompt <text>")?;
+    let mut metadata = HashMap::new();
+    if let Some(workload) = workload {
+        metadata.insert("workload".to_string(), workload);
+    }
+    let request = RuntimeRequest {
+        prompt,
+        max_tokens: Some(128),
+        temperature: Some(0.0),
+        stop_sequences: Vec::new(),
+        metadata,
+    };
+    let policy = HegPolicy {
+        preferred_accelerator: prefer,
+        ..HegPolicy::default()
+    };
+    let runtime = RuntimeManager::new_mock();
+    let metrics_path = metrics_js.unwrap_or_else(default_dashboard_metrics_path);
+
+    let response_result = runtime.generate_response_with_policy(&request, &policy).await;
+
+    match response_result {
+        Ok(response) => {
+            // Update executions total, last latency, tokens, plan id etc.
+            let mut payload = read_dashboard_metrics(&metrics_path).await.unwrap_or_else(default_dashboard_metrics);
+
+            let previous_executions = payload["ai_runtime_backend_executions_total"].as_u64().unwrap_or(0);
+            let total_executions = previous_executions + 1;
+            payload["ai_runtime_backend_executions_total"] = serde_json::json!(total_executions);
+
+            payload["ai_runtime_backend_last_latency_ms"] = serde_json::json!(response.processing_time_ms);
+
+            let previous_tokens = payload["ai_runtime_local_tokens_total"].as_u64().unwrap_or(0);
+            payload["ai_runtime_local_tokens_total"] = serde_json::json!(previous_tokens + response.tokens_generated as u64);
+
+            let previous_heg_plans = payload["ai_heg_plans_total"].as_u64().unwrap_or(0);
+            payload["ai_heg_plans_total"] = serde_json::json!(previous_heg_plans + 1);
+
+            payload["last_heg_plan"] = serde_json::to_value(&response)?;
+            payload["updated_at_unix"] = serde_json::json!(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs());
+
+            let js = format!(
+                "window.POLYMERA_AI_METRICS = {};\n",
+                serde_json::to_string_pretty(&payload)?
+            );
+            if let Some(parent) = metrics_path.parent() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+            tokio::fs::write(&metrics_path, js).await?;
+
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ai_runtime_backend_executions_total": total_executions,
+                    "dashboard_metric": metrics_path,
+                    "response": response,
+                }))?
+            );
+            Ok(())
+        }
+        Err(err) => {
+            // Update executions total and error total
+            let mut payload = read_dashboard_metrics(&metrics_path).await.unwrap_or_else(default_dashboard_metrics);
+
+            let previous_executions = payload["ai_runtime_backend_executions_total"].as_u64().unwrap_or(0);
+            payload["ai_runtime_backend_executions_total"] = serde_json::json!(previous_executions + 1);
+
+            let previous_errors = payload["ai_runtime_backend_errors_total"].as_u64().unwrap_or(0);
+            payload["ai_runtime_backend_errors_total"] = serde_json::json!(previous_errors + 1);
+
+            payload["updated_at_unix"] = serde_json::json!(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs());
+
+            let js = format!(
+                "window.POLYMERA_AI_METRICS = {};\n",
+                serde_json::to_string_pretty(&payload)?
+            );
+            if let Some(parent) = metrics_path.parent() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+            tokio::fs::write(&metrics_path, js).await?;
+
+            eprintln!("Error executing backend: {}", err);
+            Err(err.into())
+        }
+    }
 }
