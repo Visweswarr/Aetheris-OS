@@ -89,6 +89,25 @@ graphics: no
     Set-Content -Path $rootConfig -Value $config -Encoding ASCII
 }
 
+function Write-LegacyLimineConfig {
+    param([string]$Path)
+
+    $config = @"
+TIMEOUT=0
+VERBOSE=yes
+GRAPHICS=no
+
+:Polymera OS
+    PROTOCOL=limine
+    KERNEL_PATH=boot:///boot/kernel.elf
+    MODULE_PATH=boot:///boot/initramfs.cpio.gz
+    MODULE_CMDLINE=initramfs
+    CMDLINE=loglevel=7 avengers=assemble console=ttyS0,115200 console=tty0 earlycon
+"@
+
+    Set-Content -Path $Path -Value $config -Encoding ASCII
+}
+
 # ============================================================
 # STEP 1: Ensure dist structure
 # ============================================================
@@ -201,6 +220,9 @@ $limCfg = "$Root\tools\build\limine.cfg"
 if (Test-Path $limCfg) {
     Copy-Item $limCfg "$IsoDir\boot\limine\limine.cfg" -Force
     Write-Host "   [OK] limine.cfg -> iso/boot/limine/" -ForegroundColor Green
+} else {
+    Write-LegacyLimineConfig -Path "$IsoDir\boot\limine\limine.cfg"
+    Write-Host "   [OK] generated compatibility limine.cfg -> iso/boot/limine/" -ForegroundColor Green
 }
 
 # Copy official pinned Limine UEFI loader and modern v12 config.
