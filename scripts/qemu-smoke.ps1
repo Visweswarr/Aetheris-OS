@@ -1,0 +1,316 @@
+# ===============================================================================
+# QEMU Smoke Test - Boot kernel and verify serial output
+# ===============================================================================
+# Boot truth rules:
+#   PASS = QEMU ran and a Polymera boot marker appeared on serial output.
+#   FAIL = QEMU ran but no boot marker appeared, or no bootable artifact exists.
+#   SKIP = QEMU is not installed or boot verification is explicitly disabled.
+# ===============================================================================
+
+$ErrorActionPreference = "Stop"
+
+$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+Set-Location $Root
+
+$BuildOut = Join-Path $Root "build_out"
+$SerialLog = Join-Path $BuildOut "qemu-serial.log"
+$StdoutLog = Join-Path $BuildOut "qemu-stdout.log"
+$StderrLog = Join-Path $BuildOut "qemu-stderr.log"
+$LedgerPath = Join-Path $Root "BOOT-GREEN.md"
+$TimeoutSec = 10
+
+$BootMarkers = @(
+    "POLYMERA",
+    "Polymera OS",
+    "[POLYMERA]",
+    "[AVENGERS]",
+    "All Avengers assembled",
+    "PROCESS TABLE"
+)
+
+Write-Host "[QEMU-SMOKE] Polymera OS Boot Verification" -ForegroundColor Cyan
+
+function Resolve-ExistingPath {
+    param([string]$Path)
+    if (Test-Path $Path) {
+        return (Resolve-Path $Path).Path
+    }
+    return $null
+}
+
+function Get-FileText {
+    param([string]$Path)
+    if (Test-Path $Path) {
+        $content = Get-Content $Path -Raw -ErrorAction SilentlyContinue
+        if ($null -eq $content) {
+            return ""
+        }
+        return [string]$content
+    }
+    return ""
+}
+
+function Find-BootMarker {
+    param([string]$SerialText)
+    foreach ($marker in $BootMarkers) {
+        if ($SerialText -match [regex]::Escape($marker)) {
+            return $marker
+        }
+    }
+    return ""
+}
+
+function New-AttemptResult {
+    param(
+        [string]$Name,
+        [string]$Artifact,
+        [string]$Status,
+        [string]$Reason,
+        [string]$MatchedMarker = "",
+        [int]$ExitCode = -9999,
+        [bool]$TimedOut = $false,
+        [int]$SerialBytes = 0
+    )
+
+    return [pscustomobject]@{
+        Name = $Name
+        Artifact = $Artifact
+        Status = $Status
+        Reason = $Reason
+        MatchedMarker = $MatchedMarker
+        ExitCode = $ExitCode
+        TimedOut = $TimedOut
+        SerialBytes = $SerialBytes
+    }
+}
+
+function Invoke-QemuAttempt {
+    param(
+        [string]$Name,
+        [string]$Artifact,
+        [string[]]$Arguments
+    )
+
+    Remove-Item $SerialLog, $StdoutLog, $StderrLog -Force -ErrorAction SilentlyContinue
+
+    Write-Host "[QEMU-SMOKE] Attempt: $Name" -ForegroundColor Cyan
+    Write-Host "[QEMU-SMOKE] Artifact: $Artifact" -ForegroundColor Gray
+    Write-Host "[QEMU-SMOKE] Args: $($Arguments -join ' ')" -ForegroundColor DarkGray
+
+    $process = Start-Process -FilePath $script:QemuCmd `
+        -ArgumentList $Arguments `
+        -PassThru `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $StdoutLog `
+        -RedirectStandardError $StderrLog
+
+    $finished = $process.WaitForExit($TimeoutSec * 1000)
+    $timedOut = -not $finished
+    if ($timedOut) {
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        $process.WaitForExit() | Out-Null
+    }
+
+    $serial = Get-FileText $SerialLog
+    $stderr = (Get-FileText $StderrLog).Trim()
+    $marker = Find-BootMarker $serial
+    $serialBytes = [Text.Encoding]::UTF8.GetByteCount($serial)
+    $exitCode = if ($process.ExitCode -ne $null) { [int]$process.ExitCode } else { -1 }
+
+    if ($marker) {
+        Write-Host "[QEMU-SMOKE] PASS: Found serial boot marker '$marker'" -ForegroundColor Green
+        return New-AttemptResult -Name $Name -Artifact $Artifact -Status "PASS" -Reason "serial boot marker captured" -MatchedMarker $marker -ExitCode $exitCode -TimedOut $timedOut -SerialBytes $serialBytes
+    }
+
+    if ($serialBytes -eq 0) {
+        Write-Host "[QEMU-SMOKE] FAIL: QEMU ran but captured 0 serial bytes" -ForegroundColor Red
+        $reason = "QEMU ran but serial output was empty"
+        if ($stderr) {
+            $firstStderrLine = ($stderr -split "`r?`n" | Select-Object -First 1)
+            $reason = "$reason; stderr: $firstStderrLine"
+        }
+        return New-AttemptResult -Name $Name -Artifact $Artifact -Status "FAIL" -Reason $reason -ExitCode $exitCode -TimedOut $timedOut -SerialBytes $serialBytes
+    }
+
+    Write-Host "[QEMU-SMOKE] FAIL: Serial output present but no Polymera marker was found" -ForegroundColor Red
+    return New-AttemptResult -Name $Name -Artifact $Artifact -Status "FAIL" -Reason "serial output did not contain a Polymera boot marker" -ExitCode $exitCode -TimedOut $timedOut -SerialBytes $serialBytes
+}
+
+function Format-AttemptRows {
+    param([object[]]$Attempts)
+    $rows = New-Object System.Collections.Generic.List[string]
+    $rows.Add("| Attempt | Artifact | Status | Exit | Timed Out | Serial Bytes | Marker | Reason |")
+    $rows.Add("|---------|----------|--------|------|-----------|--------------|--------|--------|")
+    foreach ($attempt in $Attempts) {
+        $artifact = if ($attempt.Artifact) { $attempt.Artifact } else { "N/A" }
+        $marker = if ($attempt.MatchedMarker) { $attempt.MatchedMarker } else { "N/A" }
+        $rows.Add("| $($attempt.Name) | $artifact | $($attempt.Status) | $($attempt.ExitCode) | $($attempt.TimedOut) | $($attempt.SerialBytes) | $marker | $($attempt.Reason) |")
+    }
+    return ($rows -join "`n")
+}
+
+function Write-BootLedger {
+    param(
+        [string]$Status,
+        [string]$Summary,
+        [object[]]$Attempts,
+        [string]$MatchedMarker,
+        [string]$NextFix
+    )
+
+    $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
+    $serialLines = if (Test-Path $SerialLog) { (Get-FileText $SerialLog | Measure-Object -Line).Lines } else { 0 }
+    $serialBytes = if (Test-Path $SerialLog) { [Text.Encoding]::UTF8.GetByteCount((Get-FileText $SerialLog)) } else { 0 }
+    $attemptRows = Format-AttemptRows $Attempts
+    $markerValue = if ($MatchedMarker) { $MatchedMarker } else { "N/A" }
+    $qemuValue = if ($script:QemuCmd) { $script:QemuCmd } else { "NOT FOUND" }
+
+    $historyLine = "- $timestamp : $Status - $Summary"
+    $oldHistory = ""
+    if (Test-Path $LedgerPath) {
+        $old = Get-FileText $LedgerPath
+        $historyMatch = [regex]::Match($old, "(?ms)^## History\s*(.*)$")
+        if ($historyMatch.Success) {
+            $oldHistory = $historyMatch.Groups[1].Value.Trim()
+        }
+    }
+    $history = if ($oldHistory) { "$historyLine`n$oldHistory" } else { $historyLine }
+
+    $ledgerContent = @"
+# BOOT-GREEN Ledger
+
+## Latest Boot Verification
+
+| Field | Value |
+|-------|-------|
+| Timestamp | $timestamp |
+| Status | $Status |
+| Summary | $Summary |
+| QEMU | $qemuValue |
+| Timeout | ${TimeoutSec}s |
+| Matched Marker | $markerValue |
+| Serial Log | $SerialLog |
+| Serial Lines | $serialLines |
+| Serial Bytes | $serialBytes |
+| Stdout Log | $StdoutLog |
+| Stderr Log | $StderrLog |
+
+## Attempts
+
+$attemptRows
+
+## Next Suspected Fix
+
+$NextFix
+
+## History
+
+$history
+"@
+
+    Set-Content -Path $LedgerPath -Value $ledgerContent -Encoding UTF8
+    Write-Host "[QEMU-SMOKE] Ledger written to $LedgerPath" -ForegroundColor Green
+}
+
+if ($env:POLYMERA_SKIP_QEMU_SMOKE -eq "1") {
+    $attempt = New-AttemptResult -Name "environment" -Artifact "N/A" -Status "SKIP" -Reason "POLYMERA_SKIP_QEMU_SMOKE=1"
+    Write-BootLedger -Status "SKIP" -Summary "boot verification explicitly disabled" -Attempts @($attempt) -MatchedMarker "" -NextFix "Unset POLYMERA_SKIP_QEMU_SMOKE and rerun make qemu-smoke."
+    exit 0
+}
+
+# ---- Locate QEMU ----
+$QemuPaths = @(
+    "qemu-system-x86_64.exe",
+    "C:\Program Files\qemu\qemu-system-x86_64.exe",
+    "C:\Program Files (x86)\qemu\qemu-system-x86_64.exe",
+    "$env:ProgramFiles\qemu\qemu-system-x86_64.exe"
+)
+
+$script:QemuCmd = $null
+foreach ($candidate in $QemuPaths) {
+    $resolved = Resolve-ExistingPath $candidate
+    if ($resolved) {
+        $script:QemuCmd = $resolved
+        break
+    }
+
+    $command = Get-Command $candidate -ErrorAction SilentlyContinue
+    if ($command) {
+        $script:QemuCmd = $command.Source
+        break
+    }
+}
+
+if (-not $script:QemuCmd) {
+    Write-Host "[QEMU-SMOKE] QEMU not found - install qemu-system-x86_64" -ForegroundColor Yellow
+    $attempt = New-AttemptResult -Name "qemu-discovery" -Artifact "N/A" -Status "SKIP" -Reason "qemu-system-x86_64 not found"
+    Write-BootLedger -Status "SKIP" -Summary "QEMU is not installed" -Attempts @($attempt) -MatchedMarker "" -NextFix "Install QEMU and rerun make qemu-smoke."
+    exit 0
+}
+
+New-Item -ItemType Directory -Force -Path $BuildOut | Out-Null
+Write-Host "[QEMU-SMOKE] Using QEMU: $script:QemuCmd" -ForegroundColor Gray
+
+$attempts = New-Object System.Collections.Generic.List[object]
+
+# ---- Attempt 1: direct kernel load ----
+$KernelPath = Resolve-ExistingPath (Join-Path $Root "dist\boot\kernel.elf")
+if (-not $KernelPath) {
+    $KernelPath = Resolve-ExistingPath (Join-Path $Root "build_out\iso\boot\kernel.elf")
+}
+
+if ($KernelPath) {
+    $directArgs = @(
+        "-kernel", $KernelPath,
+        "-m", "256M",
+        "-serial", "file:$SerialLog",
+        "-display", "none",
+        "-no-reboot",
+        "-d", "guest_errors"
+    )
+    $direct = Invoke-QemuAttempt -Name "direct-kernel" -Artifact $KernelPath -Arguments $directArgs
+    $attempts.Add($direct)
+    if ($direct.Status -eq "PASS") {
+        Write-BootLedger -Status "PASS" -Summary "direct kernel boot marker captured" -Attempts $attempts.ToArray() -MatchedMarker $direct.MatchedMarker -NextFix "None. Keep this smoke test in CI before adding broader runtime claims."
+        exit 0
+    }
+} else {
+    $attempts.Add((New-AttemptResult -Name "direct-kernel" -Artifact "dist\boot\kernel.elf" -Status "FAIL" -Reason "kernel artifact missing; run assemble_final.ps1" -ExitCode -1))
+}
+
+# ---- Attempt 2: packaged Limine path, only when actually bootable ----
+$IsoPath = Resolve-ExistingPath (Join-Path $Root "artifacts\os\polymera-os-avengers.iso")
+$EfiPath = Resolve-ExistingPath (Join-Path $Root "build_out\iso\EFI\BOOT\BOOTX64.EFI")
+$LimineCfg = Resolve-ExistingPath (Join-Path $Root "build_out\iso\boot\limine\limine.cfg")
+
+if ($IsoPath) {
+    $isoArgs = @(
+        "-cdrom", $IsoPath,
+        "-m", "256M",
+        "-serial", "file:$SerialLog",
+        "-display", "none",
+        "-no-reboot",
+        "-d", "guest_errors"
+    )
+    $isoAttempt = Invoke-QemuAttempt -Name "limine-iso" -Artifact $IsoPath -Arguments $isoArgs
+    $attempts.Add($isoAttempt)
+    if ($isoAttempt.Status -eq "PASS") {
+        Write-BootLedger -Status "PASS" -Summary "Limine ISO boot marker captured" -Attempts $attempts.ToArray() -MatchedMarker $isoAttempt.MatchedMarker -NextFix "None. Keep this smoke test in CI before adding broader runtime claims."
+        exit 0
+    }
+} elseif ($EfiPath) {
+    $attempts.Add((New-AttemptResult -Name "limine-layout" -Artifact $EfiPath -Status "FAIL" -Reason "EFI loader exists but this smoke script has no OVMF path configured yet" -ExitCode -1))
+} elseif ($LimineCfg) {
+    $attempts.Add((New-AttemptResult -Name "limine-layout" -Artifact $LimineCfg -Status "FAIL" -Reason "Limine config exists, but no bootable ISO or EFI loader exists" -ExitCode -1))
+} else {
+    $attempts.Add((New-AttemptResult -Name "limine-layout" -Artifact "build_out\iso" -Status "FAIL" -Reason "packaged Limine layout missing" -ExitCode -1))
+}
+
+$stderrText = (Get-FileText $StderrLog).Trim()
+if ($stderrText -match "PVH ELF Note") {
+    $nextFix = "Direct -kernel boot is rejected by QEMU because the ELF lacks a PVH note. Build a real Limine ISO/EFI boot artifact from build_out\iso, or add the correct PVH/direct-boot metadata if direct -kernel is intended."
+} else {
+    $nextFix = "Direct -kernel boot is silent and the packaged Limine layout is not bootable yet. Fix the boot protocol path first: produce a real Limine ISO/EFI boot artifact, or add an early serial marker in the kernel entry path if direct -kernel is intended."
+}
+Write-BootLedger -Status "FAIL" -Summary "QEMU ran but no Polymera serial boot marker was captured" -Attempts $attempts.ToArray() -MatchedMarker "" -NextFix $nextFix
+exit 1
