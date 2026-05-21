@@ -178,12 +178,32 @@ async fn run_summarize_log(args: &[String]) -> Result<(), Box<dyn std::error::Er
         .generate_log_summary_plan(&log_path, max_bytes, component_path.as_deref(), &context)
         .await?;
     eprintln!("{}", serde_json::to_string_pretty(&plan)?);
+    let metrics_path = metrics_js.unwrap_or_else(default_dashboard_metrics_path);
 
     // HITL reject/modify handling (Track 2.1)
     if let Some(reason) = reject {
         use aetheris_ai_core::agent::policy::HitlDecision;
         let hitl = HitlDecision::Reject { reason };
         let _result = policy_enforcer.handle_hitl_decision(&plan.steps[0], &hitl);
+        let total = write_dashboard_metric(
+            &metrics_path,
+            "ai_hitl_rejects_total",
+            "last_hitl_reject",
+            &serde_json::json!({
+                "plan_id": plan.plan_id,
+                "step_id": plan.steps[0].step_id,
+                "decision": "reject",
+            }),
+        )
+        .await?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "ai_hitl_rejects_total": total,
+                "dashboard_metric": metrics_path,
+                "decision": "reject",
+            }))?
+        );
         eprintln!("Plan rejected via --reject flag");
         return Ok(());
     }
@@ -192,7 +212,27 @@ async fn run_summarize_log(args: &[String]) -> Result<(), Box<dyn std::error::Er
         let hitl = HitlDecision::Modify { feedback };
         match policy_enforcer.handle_hitl_decision(&plan.steps[0], &hitl) {
             Err(modified) => {
+                let total = write_dashboard_metric(
+                    &metrics_path,
+                    "ai_hitl_modifies_total",
+                    "last_hitl_modify",
+                    &serde_json::json!({
+                        "plan_id": plan.plan_id,
+                        "step_id": plan.steps[0].step_id,
+                        "decision": "modify",
+                        "feedback": modified.human_feedback.clone(),
+                    }),
+                )
+                .await?;
                 println!("{}", serde_json::to_string_pretty(&modified)?);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "ai_hitl_modifies_total": total,
+                        "dashboard_metric": metrics_path,
+                        "decision": "modify",
+                    }))?
+                );
                 eprintln!("Plan modification requested. Re-plan with the feedback above.");
                 return Ok(());
             }
@@ -219,7 +259,6 @@ async fn run_summarize_log(args: &[String]) -> Result<(), Box<dyn std::error::Er
         .and_then(|result| result.result.as_ref())
         .ok_or("log summarizer completed without a result payload")?;
     let summary: serde_json::Value = serde_json::from_slice(payload)?;
-    let metrics_path = metrics_js.unwrap_or_else(default_dashboard_metrics_path);
     let total = write_dashboard_metric(
         &metrics_path,
         "ai_log_summaries_total",
@@ -799,6 +838,8 @@ fn default_dashboard_metrics() -> serde_json::Value {
         "last_goal_plan": null,
         "last_ltm_event": null,
         "last_browser_summary": null,
+        "last_hitl_reject": null,
+        "last_hitl_modify": null,
         "last_heg_plan": null,
     })
 }
