@@ -10,6 +10,42 @@ This file is a snapshot; the running ledger is
 
 ---
 
+## 2026-05-21 Addendum — Actual Progress And Current Truth Gate
+
+The recent work is real and committed:
+
+- `df6bf27` proves `cd kernel && cargo check` reaches 0 compile errors.
+- `8949f14` adds the first capability-gated AI workload:
+  `summarize-log`.
+- `a77cbaa` adds deterministic HEG runtime planning metadata.
+- `c5a1f93` removes the `"Mock response to: ..."` runtime path from
+  the main AI runtime boundary.
+- `107fae1`, `c2f9173`, and `e54b0d8` harden the local-only model
+  backend boundary, CLI smoke tests, dashboard runtime metrics, and
+  model-runtime release docs.
+
+The next truth gate is boot, not another feature. `BOOT-GREEN.md`
+now records a strict `FAIL`: QEMU runs against `dist\boot\kernel.elf`,
+but direct `-kernel` loading is rejected with
+`Error loading uncompressed kernel without PVH ELF Note`, and the
+packaged Limine layout is not bootable yet because it has `limine.cfg`
+but no ISO/EFI loader. That means kernel-green is still a type-check
+claim, not a booted-runtime claim.
+
+Still not proven:
+
+- A QEMU boot banner or serial boot marker from the real kernel.
+- A bootable Limine ISO/EFI artifact, or correct PVH metadata for
+  direct QEMU `-kernel` boot.
+- A real kernel metric bridge into the dashboard.
+- A real compiled wasm summarizer component in the AI workload path.
+- Broad dirty-tree triage for the OS-wide uncommitted work.
+
+Until QEMU captures a Polymera boot marker, release notes must avoid
+claiming the OS boots.
+
+---
+
 ## 2026-05-21 Addendum — Runtime Truth Consolidation
 
 The AI runtime boundary has been tightened so the main `RuntimeManager`
