@@ -16,6 +16,8 @@ only and must not be copied into Polymera source.
 | 2026-05-21 | `services/ai_core/src/runtime/backend.rs` | `substratum-labs/mini-castor` | Apache-2.0 | Design/reimplemented only | Syscall proxy pipeline, checkpoint/replay, budgets, and HITL patterns. Reimplemented structural logic matching Mini-Castor design constraints; strictly no code copied in this phase. |
 | 2026-05-21 | Design input only | `viralcode/tensoragentos` | BUSL-1.1 (non-production) | Not copied (BUSL restriction) | WebMCP/browser/agent-shell ideas reviewed for high-level desktop-OS context. Strictly no code copied in this phase. |
 | 2026-05-21 | Design input only | `agiresearch/AIOS` | Mixed / Unverified | Design input (unless local license verified) | Microkernel/SDK boundary, scheduling queues, and computer-use abstractions analyzed. Strictly no code copied in this phase. |
+| 2026-05-21 | `configs/ai/model-registry.toml` | `HuggingFaceTB/SmolLM2-135M-Instruct` | Apache-2.0 | Metadata reference only | Model card used to record a reviewed small local model candidate. No model weights, source code, or generated artifacts copied into Polymera. |
+| 2026-05-21 | `configs/ai/model-registry.toml` | `QuantFactory/SmolLM2-135M-Instruct-GGUF` | Apache-2.0 | Metadata reference only | GGUF model card used to record a local llama.cpp/Ollama candidate. No model weights copied; operators must explicitly download and verify artifacts. |
 
 > [!NOTE]
 > **Consolidation Record**: During this release consolidation phase, all reference materials were utilized strictly as high-level architectural inputs. No source code or assets from any external repository were copied, cloned, or direct-imported into the Polymera OS codebase.

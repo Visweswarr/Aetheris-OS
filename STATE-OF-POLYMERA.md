@@ -29,6 +29,25 @@ backed by `ai_metrics.js` should be treated as real.
 
 ---
 
+## 2026-05-21 Addendum — Local Model Runtime v1
+
+The runtime now has an opt-in local model backend boundary:
+
+- `RuntimeBackendKind::LlamaCppServer` targets a localhost
+  OpenAI-compatible llama.cpp server.
+- `RuntimeBackendKind::Ollama` targets a localhost Ollama daemon.
+- `configs/ai/model-registry.toml` tracks reviewed Hugging Face model
+  metadata only; no model weights are committed.
+- `runtime-run --backend deterministic|llama-cpp|ollama` rejects
+  non-local endpoints and records model attempts/success/failure metrics.
+
+This does **not** mean Polymera ships an embedded model yet. The model
+backends require an operator-started local daemon and fail closed when it is
+unavailable. The release gate remains daemon-free; the optional live model
+test is ignored unless `POLYMERA_RUN_LOCAL_MODEL_TESTS=1` is set.
+
+---
+
 ## 1. Executive summary
 
 The OS just crossed two real milestones:
