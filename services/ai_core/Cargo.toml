@@ -16,6 +16,8 @@ tokio-util = { version = "0.7", features = ["codec"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_cbor = "0.11"
 serde_json = "1.0"
+serde_yaml = "0.9"
+toml = "0.8"
 prost = "0.12"
 prost-types = "0.12"
 
@@ -67,7 +69,7 @@ reqwest = { version = "0.11", features = ["json"], optional = true }
 # LLM integration (optional features)
 [features]
 default = ["mock"]
-mock = []
+mock = ["dep:reqwest"]
 llama = ["dep:llama_cpp"]
 openai = ["dep:reqwest"]
 anthropic = ["dep:reqwest"]
@@ -77,7 +79,6 @@ anthropic = ["dep:reqwest"]
 tokio-test = "0.4"
 tempfile = "3.0"
 criterion = "0.5"
-toml = "0.8"
 
 [[example]]
 name = "client"

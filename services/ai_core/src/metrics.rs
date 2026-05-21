@@ -66,6 +66,19 @@ pub struct AiCoreMetrics {
     pub ai_heg_prefill_to_npu_total: u64,
     pub ai_heg_decode_to_igpu_total: u64,
     pub ai_heg_ddr_pressure_score: u64,
+    pub ai_llm_calls_total: u64,
+    pub ai_hitl_rejects_total: u64,
+    pub ai_hitl_modifies_total: u64,
+    pub ai_budget_exhausted_total: u64,
+    pub ai_runtime_backend_executions_total: u64,
+    pub ai_runtime_backend_errors_total: u64,
+    pub ai_runtime_local_tokens_total: u64,
+    pub ai_runtime_backend_last_latency_ms: u64,
+    pub ai_runtime_model_attempts_total: u64,
+    pub ai_runtime_model_success_total: u64,
+    pub ai_runtime_model_failures_total: u64,
+    pub ai_runtime_model_last_latency_ms: u64,
+    pub ai_runtime_model_tokens_total: u64,
     pub timestamp: u64,
 }
 
@@ -92,8 +105,54 @@ pub struct AiCoreMetricsCollector {
     ai_heg_prefill_to_npu_total: AtomicU64,
     ai_heg_decode_to_igpu_total: AtomicU64,
     ai_heg_ddr_pressure_score: AtomicU64,
+    ai_llm_calls_total: AtomicU64,
+    ai_hitl_rejects_total: AtomicU64,
+    ai_hitl_modifies_total: AtomicU64,
+    ai_budget_exhausted_total: AtomicU64,
+    ai_runtime_backend_executions_total: AtomicU64,
+    ai_runtime_backend_errors_total: AtomicU64,
+    ai_runtime_local_tokens_total: AtomicU64,
+    ai_runtime_backend_last_latency_ms: AtomicU64,
+    ai_runtime_model_attempts_total: AtomicU64,
+    ai_runtime_model_success_total: AtomicU64,
+    ai_runtime_model_failures_total: AtomicU64,
+    ai_runtime_model_last_latency_ms: AtomicU64,
+    ai_runtime_model_tokens_total: AtomicU64,
     latency_samples: Arc<RwLock<Vec<f64>>>,
     tool_errors: Arc<RwLock<HashMap<String, AtomicU64>>>,
+}
+
+#[derive(Default)]
+pub struct MockNgfsClient {
+    stored: RwLock<HashMap<String, AiCoreMetrics>>,
+}
+
+impl MockNgfsClient {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub async fn store_metrics(&self, metrics: &AiCoreMetrics) -> Result<String> {
+        let shard_id = format!("metrics-{}", metrics.timestamp);
+        self.stored
+            .write()
+            .await
+            .insert(shard_id.clone(), metrics.clone());
+        Ok(shard_id)
+    }
+
+    pub async fn retrieve_metrics(&self, shard_id: &str) -> Result<AiCoreMetrics> {
+        self.stored
+            .read()
+            .await
+            .get(shard_id)
+            .cloned()
+            .ok_or_else(|| crate::error::AiCoreError::NotFound(shard_id.to_string()))
+    }
+
+    pub async fn list_metrics_shards(&self) -> Result<Vec<String>> {
+        Ok(self.stored.read().await.keys().cloned().collect())
+    }
 }
 
 pub fn default_metrics_config() -> MetricsConfig {
@@ -135,6 +194,19 @@ impl AiCoreMetricsCollector {
             ai_heg_prefill_to_npu_total: AtomicU64::new(0),
             ai_heg_decode_to_igpu_total: AtomicU64::new(0),
             ai_heg_ddr_pressure_score: AtomicU64::new(0),
+            ai_llm_calls_total: AtomicU64::new(0),
+            ai_hitl_rejects_total: AtomicU64::new(0),
+            ai_hitl_modifies_total: AtomicU64::new(0),
+            ai_budget_exhausted_total: AtomicU64::new(0),
+            ai_runtime_backend_executions_total: AtomicU64::new(0),
+            ai_runtime_backend_errors_total: AtomicU64::new(0),
+            ai_runtime_local_tokens_total: AtomicU64::new(0),
+            ai_runtime_backend_last_latency_ms: AtomicU64::new(0),
+            ai_runtime_model_attempts_total: AtomicU64::new(0),
+            ai_runtime_model_success_total: AtomicU64::new(0),
+            ai_runtime_model_failures_total: AtomicU64::new(0),
+            ai_runtime_model_last_latency_ms: AtomicU64::new(0),
+            ai_runtime_model_tokens_total: AtomicU64::new(0),
             latency_samples: Arc::new(RwLock::new(Vec::new())),
             tool_errors: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -158,10 +230,14 @@ impl AiCoreMetricsCollector {
         } else {
             self.requests_error.fetch_add(1, Ordering::Relaxed);
         }
-        let samples = self.latency_samples.clone();
-        tokio::spawn(async move {
-            samples.write().await.push(latency_ms);
-        });
+        if let Ok(mut samples) = self.latency_samples.try_write() {
+            samples.push(latency_ms);
+        } else {
+            let samples = self.latency_samples.clone();
+            tokio::spawn(async move {
+                samples.write().await.push(latency_ms);
+            });
+        }
     }
 
     pub fn record_tokens(&self, input_tokens: u64, output_tokens: u64) {
@@ -178,7 +254,48 @@ impl AiCoreMetricsCollector {
             self.tool_calls_success.fetch_add(1, Ordering::Relaxed);
         } else {
             self.tool_calls_error.fetch_add(1, Ordering::Relaxed);
+            if let Some(tool_name) = _tool_name {
+                if let Ok(mut errors) = self.tool_errors.try_write() {
+                    errors
+                        .entry(tool_name.to_string())
+                        .or_insert_with(|| AtomicU64::new(0))
+                        .fetch_add(1, Ordering::Relaxed);
+                }
+            }
         }
+    }
+
+    pub fn record_llm_call(&self) {
+        self.ai_llm_calls_total.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn record_hitl_reject(&self) {
+        self.ai_hitl_rejects_total.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn record_hitl_modify(&self) {
+        self.ai_hitl_modifies_total.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn record_budget_exhausted(&self) {
+        self.ai_budget_exhausted_total
+            .fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn record_runtime_execution(&self, success: bool, tokens: u64, latency_ms: u64) {
+        self.ai_runtime_backend_executions_total.fetch_add(1, Ordering::Relaxed);
+        if !success {
+            self.ai_runtime_backend_errors_total.fetch_add(1, Ordering::Relaxed);
+        }
+        self.ai_runtime_local_tokens_total.fetch_add(tokens, Ordering::Relaxed);
+        self.ai_runtime_backend_last_latency_ms.store(latency_ms, Ordering::Relaxed);
+    }
+
+    pub fn record_runtime_model_execution(&self, success: bool, tokens: u64, latency_ms: u64) {
+        self.ai_runtime_model_attempts_total.fetch_add(1, Ordering::Relaxed);
+        if success {
+            self.ai_runtime_model_success_total.fetch_add(1, Ordering::Relaxed);
+            self.ai_runtime_model_tokens_total.fetch_add(tokens, Ordering::Relaxed);
+        } else {
+            self.ai_runtime_model_failures_total.fetch_add(1, Ordering::Relaxed);
+        }
+        self.ai_runtime_model_last_latency_ms.store(latency_ms, Ordering::Relaxed);
     }
 
     pub fn record_model_load(&self) {
@@ -229,20 +346,18 @@ impl AiCoreMetricsCollector {
         let mut sorted = latency_samples.clone();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-        let p50 = sorted
-            .get((sorted.len() as f64 * 0.5) as usize)
-            .copied()
-            .unwrap_or(0.0);
-        let p95 = sorted
-            .get((sorted.len() as f64 * 0.95) as usize)
-            .copied()
-            .unwrap_or(0.0);
-        let p99 = sorted
-            .get((sorted.len() as f64 * 0.99) as usize)
-            .copied()
-            .unwrap_or(0.0);
+        let p50 = percentile(&sorted, 0.50);
+        let p95 = percentile(&sorted, 0.95);
+        let p99 = percentile(&sorted, 0.99);
         let max = sorted.last().copied().unwrap_or(0.0);
 
+        let tool_errors_by_type = self
+            .tool_errors
+            .read()
+            .await
+            .iter()
+            .map(|(name, count)| (name.clone(), count.load(Ordering::Relaxed)))
+            .collect();
         Ok(AiCoreMetrics {
             requests_total: self.requests_total.load(Ordering::Relaxed),
             requests_success: self.requests_success.load(Ordering::Relaxed),
@@ -251,14 +366,18 @@ impl AiCoreMetricsCollector {
             latency_p95_ms: p95,
             latency_p99_ms: p99,
             latency_max_ms: max,
-            tokens_per_second: 0.0,
+            tokens_per_second: if max > 0.0 {
+                self.tokens_total.load(Ordering::Relaxed) as f64 / (max / 1000.0)
+            } else {
+                self.tokens_total.load(Ordering::Relaxed) as f64
+            },
             tokens_total: self.tokens_total.load(Ordering::Relaxed),
             tokens_input: self.tokens_input.load(Ordering::Relaxed),
             tokens_output: self.tokens_output.load(Ordering::Relaxed),
             tool_calls_total: self.tool_calls_total.load(Ordering::Relaxed),
             tool_calls_success: self.tool_calls_success.load(Ordering::Relaxed),
             tool_calls_error: self.tool_calls_error.load(Ordering::Relaxed),
-            tool_errors_by_type: HashMap::new(),
+            tool_errors_by_type,
             model_loads_total: self.model_loads_total.load(Ordering::Relaxed),
             model_inferences_total: self.model_inferences_total.load(Ordering::Relaxed),
             model_memory_usage_mb: 0.0,
@@ -283,11 +402,62 @@ impl AiCoreMetricsCollector {
                 .ai_heg_decode_to_igpu_total
                 .load(Ordering::Relaxed),
             ai_heg_ddr_pressure_score: self.ai_heg_ddr_pressure_score.load(Ordering::Relaxed),
+            ai_llm_calls_total: self.ai_llm_calls_total.load(Ordering::Relaxed),
+            ai_hitl_rejects_total: self.ai_hitl_rejects_total.load(Ordering::Relaxed),
+            ai_hitl_modifies_total: self.ai_hitl_modifies_total.load(Ordering::Relaxed),
+            ai_budget_exhausted_total: self.ai_budget_exhausted_total.load(Ordering::Relaxed),
+            ai_runtime_backend_executions_total: self.ai_runtime_backend_executions_total.load(Ordering::Relaxed),
+            ai_runtime_backend_errors_total: self.ai_runtime_backend_errors_total.load(Ordering::Relaxed),
+            ai_runtime_local_tokens_total: self.ai_runtime_local_tokens_total.load(Ordering::Relaxed),
+            ai_runtime_backend_last_latency_ms: self.ai_runtime_backend_last_latency_ms.load(Ordering::Relaxed),
+            ai_runtime_model_attempts_total: self.ai_runtime_model_attempts_total.load(Ordering::Relaxed),
+            ai_runtime_model_success_total: self.ai_runtime_model_success_total.load(Ordering::Relaxed),
+            ai_runtime_model_failures_total: self.ai_runtime_model_failures_total.load(Ordering::Relaxed),
+            ai_runtime_model_last_latency_ms: self.ai_runtime_model_last_latency_ms.load(Ordering::Relaxed),
+            ai_runtime_model_tokens_total: self.ai_runtime_model_tokens_total.load(Ordering::Relaxed),
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
         })
+    }
+
+    pub fn anonymize_metrics(&self, metrics: &AiCoreMetrics) -> AiCoreMetrics {
+        let mut anonymized = metrics.clone();
+        if !matches!(self.config.privacy_mode, PrivacyMode::Full) {
+            anonymized.tool_errors_by_type.clear();
+        }
+        anonymized
+    }
+
+    pub fn set_ngfs_client(&mut self, _client: Arc<MockNgfsClient>) {}
+
+    pub async fn cleanup_old_samples(&self) -> Result<()> {
+        let mut samples = self.latency_samples.write().await;
+        if samples.len() > self.config.max_samples_per_metric {
+            let keep_from = samples.len() - self.config.max_samples_per_metric;
+            samples.drain(0..keep_from);
+        }
+        Ok(())
+    }
+}
+
+fn percentile(sorted: &[f64], q: f64) -> f64 {
+    if sorted.is_empty() {
+        return 0.0;
+    }
+    if sorted.len() == 1 {
+        return sorted[0];
+    }
+    let rank = (q.clamp(0.0, 1.0) * sorted.len() as f64 - 1.0)
+        .clamp(0.0, (sorted.len() - 1) as f64);
+    let lower = rank.floor() as usize;
+    let upper = rank.ceil() as usize;
+    if lower == upper {
+        sorted[lower]
+    } else {
+        let weight = rank - lower as f64;
+        sorted[lower] * (1.0 - weight) + sorted[upper] * weight
     }
 }
 
@@ -372,5 +542,41 @@ pub fn record_capability_denial() {
 pub fn record_heg_plan(plan: &HegPlan) {
     if let Some(c) = get_global_metrics_collector() {
         c.record_heg_plan(plan);
+    }
+}
+
+pub fn record_llm_call() {
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_llm_call();
+    }
+}
+
+pub fn record_hitl_reject() {
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_hitl_reject();
+    }
+}
+
+pub fn record_hitl_modify() {
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_hitl_modify();
+    }
+}
+
+pub fn record_budget_exhausted() {
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_budget_exhausted();
+    }
+}
+
+pub fn record_runtime_execution(success: bool, tokens: u64, latency_ms: u64) {
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_runtime_execution(success, tokens, latency_ms);
+    }
+}
+
+pub fn record_runtime_model_execution(success: bool, tokens: u64, latency_ms: u64) {
+    if let Some(c) = get_global_metrics_collector() {
+        c.record_runtime_model_execution(success, tokens, latency_ms);
     }
 }

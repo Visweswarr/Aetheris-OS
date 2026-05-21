@@ -1,0 +1,29 @@
+# Polymera AI local model registry.
+#
+# This file tracks reviewed model metadata only. Model weights are not committed
+# to the repository; operators must download them explicitly and verify hashes
+# before use.
+
+[[models]]
+id = "smollm2-135m-instruct"
+source = "huggingface"
+repo = "HuggingFaceTB/SmolLM2-135M-Instruct"
+file = "model.safetensors"
+license = "apache-2.0"
+backend = "transformers"
+max_bytes = 300000000
+revision = "main"
+sha256 = "manual-download-required"
+status = "reviewed"
+
+[[models]]
+id = "smollm2-135m-instruct-q4"
+source = "huggingface"
+repo = "QuantFactory/SmolLM2-135M-Instruct-GGUF"
+file = "SmolLM2-135M-Instruct.Q4_K_M.gguf"
+license = "apache-2.0"
+backend = "llama-cpp"
+max_bytes = 160000000
+revision = "main"
+sha256 = "manual-download-required"
+status = "reviewed"

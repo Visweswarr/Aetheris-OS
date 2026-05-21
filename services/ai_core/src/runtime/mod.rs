@@ -13,6 +13,7 @@ pub mod backend;
 pub mod config;
 pub mod gguf;
 pub mod heg;
+pub mod model_registry;
 pub mod onnx;
 
 pub use heg::{
@@ -50,6 +51,12 @@ pub struct RuntimeResponse {
     pub processing_time_ms: u64,
     pub backend_kind: backend::RuntimeBackendKind,
     pub backend_metadata: HashMap<String, String>,
+    pub model_id: Option<String>,
+    pub model_source: Option<String>,
+    pub model_revision: Option<String>,
+    pub remote_execution: bool,
+    pub input_hash: String,
+    pub output_hash: String,
     pub heg_plan_id: Option<String>,
     pub placement_summary: Vec<PlacementDecision>,
     pub audit_event: Option<String>,
@@ -91,6 +98,14 @@ impl RuntimeManager {
         }
     }
 
+    pub fn with_backend(config: RuntimeConfig, backend: Arc<dyn backend::RuntimeBackend>) -> Self {
+        Self {
+            config,
+            stats: Arc::new(RwLock::new(RuntimeStats::default())),
+            backend,
+        }
+    }
+
     pub async fn initialize(&mut self) -> Result<()> {
         // Runtime manager initialized
         Ok(())
@@ -118,6 +133,8 @@ impl RuntimeManager {
             stop_sequences: request.stop_sequences.clone(),
             heg_plan: Some(heg_plan.clone()),
             metadata: request.metadata.clone(),
+            model_id: request.metadata.get("model_id").cloned(),
+            endpoint: request.metadata.get("endpoint").cloned(),
         };
 
         let exec_res = self.backend.execute(&exec_req).await;
@@ -126,26 +143,51 @@ impl RuntimeManager {
         let response = match exec_res {
             Ok(res) => {
                 crate::metrics::record_runtime_execution(true, res.tokens_generated as u64, latency_ms);
+                if is_model_backend(self.backend.kind()) {
+                    crate::metrics::record_runtime_model_execution(
+                        true,
+                        res.tokens_generated as u64,
+                        latency_ms,
+                    );
+                }
                 let execution_hash = runtime_execution_hash(
                     self.backend.kind(),
                     &res.generated_text,
                     res.tokens_generated,
                     &res.metadata,
                 );
-                let backend_audit = format!(
+                let mut backend_audit = format!(
                     "{}\nruntime.backend.executed backend={:?} tokens={} latency_ms={} execution_hash={}",
                     audit_event,
                     self.backend.kind(),
                     res.tokens_generated,
                     latency_ms,
-                    execution_hash,
+                    execution_hash
                 );
+                if is_model_backend(self.backend.kind()) {
+                    backend_audit.push_str(&format!(
+                        "\nruntime.model.selected backend={:?} model_id={} remote_execution={}\nruntime.model.execution_started input_hash={}\nruntime.model.execution_completed output_hash={} tokens={} latency_ms={}",
+                        self.backend.kind(),
+                        res.model_id.as_deref().unwrap_or("none"),
+                        res.remote_execution,
+                        res.input_hash,
+                        res.output_hash,
+                        res.tokens_generated,
+                        latency_ms,
+                    ));
+                }
                 RuntimeResponse {
                     generated_text: res.generated_text,
                     tokens_generated: res.tokens_generated,
                     processing_time_ms: res.processing_time_ms,
                     backend_kind: self.backend.kind(),
                     backend_metadata: res.metadata,
+                    model_id: res.model_id,
+                    model_source: res.model_source,
+                    model_revision: res.model_revision,
+                    remote_execution: res.remote_execution,
+                    input_hash: res.input_hash,
+                    output_hash: res.output_hash,
                     heg_plan_id: Some(heg_plan.graph_id.clone()),
                     placement_summary: heg_plan.decisions.clone(),
                     audit_event: Some(backend_audit),
@@ -153,6 +195,9 @@ impl RuntimeManager {
             }
             Err(e) => {
                 crate::metrics::record_runtime_execution(false, 0, latency_ms);
+                if is_model_backend(self.backend.kind()) {
+                    crate::metrics::record_runtime_model_execution(false, 0, latency_ms);
+                }
                 return Err(e);
             }
         };
@@ -188,6 +233,16 @@ impl RuntimeManager {
     ) -> Result<HegPlan> {
         heg::plan_request(request, policy)
     }
+}
+
+fn is_model_backend(kind: backend::RuntimeBackendKind) -> bool {
+    matches!(
+        kind,
+        backend::RuntimeBackendKind::LlamaCppServer
+            | backend::RuntimeBackendKind::Ollama
+            | backend::RuntimeBackendKind::Onnx
+            | backend::RuntimeBackendKind::Gguf
+    )
 }
 
 fn runtime_execution_hash(

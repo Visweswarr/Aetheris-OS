@@ -41,7 +41,8 @@ pub use drift::compare_metrics as compare_drift_metrics;
 pub use error::{
     get_error_hint, get_retry_policy_for_error, init_global_error_audit_logger,
     init_global_error_hints_manager, retry_with_backoff, AiCoreError, ErrorAuditLogger, ErrorHint,
-    ErrorHintsManager, Result, RetryAttempt, RetryContext, RetryPolicy,
+    ErrorCategory, ErrorHintsManager, Result, RetryAttempt, RetryContext, RetryPolicy,
+    RetryPolicyConfig, XorShiftRng,
 };
 pub use intents::{
     create_system_intent_manager, PlatformAdapter, SystemActionContext, SystemActionResult,
@@ -58,7 +59,8 @@ pub use memory::{
 pub use metrics::{
     default_metrics_config, init_global_metrics_collector, record_ai_plan_generated,
     record_browser_summary, record_capability_denial, record_ltm_event, record_model_inference,
-    record_heg_plan, record_model_load, record_request, record_session, record_tokens, record_tool_call,
+    record_heg_plan, record_model_load, record_request, record_runtime_model_execution,
+    record_session, record_tokens, record_tool_call,
     AiCoreMetrics, AiCoreMetricsCollector, MetricsConfig, PrivacyMode,
 };
 pub use model::{ModelBackendImpl, ModelManager, ModelRequest, ModelResponse};

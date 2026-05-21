@@ -6,6 +6,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::time::Duration;
 
 use crate::contracts::sha256_hex;
 use crate::error::{AiCoreError, Result};
@@ -18,7 +19,7 @@ pub enum RuntimeBackendKind {
     Ollama,
     Onnx,
     Gguf,
-    LlamaCpp,
+    LlamaCppServer,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +37,8 @@ pub struct RuntimeExecutionRequest {
     pub stop_sequences: Vec<String>,
     pub heg_plan: Option<HegPlan>,
     pub metadata: HashMap<String, String>,
+    pub model_id: Option<String>,
+    pub endpoint: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +47,12 @@ pub struct RuntimeExecutionResult {
     pub tokens_generated: u32,
     pub processing_time_ms: u64,
     pub metadata: HashMap<String, String>,
+    pub model_id: Option<String>,
+    pub model_source: Option<String>,
+    pub model_revision: Option<String>,
+    pub remote_execution: bool,
+    pub input_hash: String,
+    pub output_hash: String,
 }
 
 #[async_trait]
@@ -134,7 +143,10 @@ impl RuntimeBackend for DeterministicLocalBackend {
         metadata.insert("execution_mode".to_string(), "deterministic_local".to_string());
         metadata.insert("model_loaded".to_string(), "false".to_string());
         metadata.insert("remote_execution".to_string(), "false".to_string());
-        metadata.insert("prompt_hash".to_string(), sha256_hex(request.prompt.as_bytes()));
+        let input_hash = sha256_hex(request.prompt.as_bytes());
+        let output_hash = sha256_hex(generated_text.as_bytes());
+        metadata.insert("prompt_hash".to_string(), input_hash.clone());
+        metadata.insert("output_hash".to_string(), output_hash.clone());
         metadata.insert("tokens_generated".to_string(), tokens_generated.to_string());
         metadata.insert(
             "processing_time_ms".to_string(),
@@ -154,6 +166,254 @@ impl RuntimeBackend for DeterministicLocalBackend {
             tokens_generated,
             processing_time_ms,
             metadata,
+            model_id: None,
+            model_source: None,
+            model_revision: None,
+            remote_execution: false,
+            input_hash,
+            output_hash,
+        })
+    }
+}
+
+/// OpenAI-compatible local llama.cpp server backend.
+///
+/// This backend only connects to localhost/loopback endpoints. It does not
+/// download models or call remote APIs; operators must start llama-server with a
+/// reviewed local model artifact before selecting this backend.
+pub struct LlamaCppServerBackend {
+    endpoint: String,
+    model_id: String,
+}
+
+impl LlamaCppServerBackend {
+    pub fn new(endpoint: impl Into<String>, model_id: impl Into<String>) -> Result<Self> {
+        let endpoint = normalize_local_endpoint(&endpoint.into())?;
+        let model_id = model_id.into();
+        if model_id.trim().is_empty() {
+            return Err(AiCoreError::ValidationError(
+                "llama.cpp backend requires --model <id>".to_string(),
+            ));
+        }
+        Ok(Self { endpoint, model_id })
+    }
+}
+
+#[async_trait]
+impl RuntimeBackend for LlamaCppServerBackend {
+    fn kind(&self) -> RuntimeBackendKind {
+        RuntimeBackendKind::LlamaCppServer
+    }
+
+    fn capabilities(&self) -> BackendCapabilities {
+        BackendCapabilities {
+            gpu_support: true,
+            npu_support: false,
+            supported_operators: vec!["prefill".to_string(), "decode".to_string()],
+        }
+    }
+
+    async fn execute(&self, request: &RuntimeExecutionRequest) -> Result<RuntimeExecutionResult> {
+        if request.prompt.trim().is_empty() {
+            return Err(AiCoreError::ValidationError(
+                "runtime prompt must not be empty".to_string(),
+            ));
+        }
+        let model_id = request
+            .model_id
+            .clone()
+            .unwrap_or_else(|| self.model_id.clone());
+        let endpoint = request
+            .endpoint
+            .as_deref()
+            .map(normalize_local_endpoint)
+            .transpose()?
+            .unwrap_or_else(|| self.endpoint.clone());
+        let url = openai_chat_url(&endpoint);
+        let max_tokens = request.max_tokens.unwrap_or(128);
+        let temperature = request.temperature.unwrap_or(0.0);
+        let body = serde_json::json!({
+            "model": model_id,
+            "messages": [{"role": "user", "content": request.prompt}],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": false
+        });
+        let started = std::time::Instant::now();
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(3))
+            .build()
+            .map_err(|err| AiCoreError::NetworkError(format!("failed to build local llama.cpp client: {err}")))?;
+        let response = client
+            .post(url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|err| AiCoreError::ServiceUnavailableError(format!("local llama.cpp server unavailable: {err}")))?;
+        if !response.status().is_success() {
+            return Err(AiCoreError::ExternalServiceError(format!(
+                "local llama.cpp server returned HTTP {}",
+                response.status()
+            )));
+        }
+        let payload: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|err| AiCoreError::SerializationError(format!("invalid llama.cpp response JSON: {err}")))?;
+        let generated_text = payload["choices"][0]["message"]["content"]
+            .as_str()
+            .or_else(|| payload["choices"][0]["text"].as_str())
+            .ok_or_else(|| AiCoreError::ProtocolError("llama.cpp response missing generated text".to_string()))?
+            .to_string();
+        let tokens_generated = payload["usage"]["completion_tokens"]
+            .as_u64()
+            .unwrap_or_else(|| generated_text.split_whitespace().count() as u64) as u32;
+        let processing_time_ms = started.elapsed().as_millis() as u64;
+        let input_hash = sha256_hex(request.prompt.as_bytes());
+        let output_hash = sha256_hex(generated_text.as_bytes());
+        let mut metadata = model_backend_metadata(
+            "llama_cpp_server",
+            "local_openai_compatible",
+            &model_id,
+            &endpoint,
+            request,
+            tokens_generated,
+            processing_time_ms,
+            &input_hash,
+            &output_hash,
+        );
+        metadata.insert("model_loaded".to_string(), "true".to_string());
+
+        Ok(RuntimeExecutionResult {
+            generated_text,
+            tokens_generated,
+            processing_time_ms,
+            metadata,
+            model_id: Some(model_id),
+            model_source: Some("local_llama_cpp_server".to_string()),
+            model_revision: request.metadata.get("model_revision").cloned(),
+            remote_execution: false,
+            input_hash,
+            output_hash,
+        })
+    }
+}
+
+/// Local Ollama runtime backend. This is opt-in and fails closed if Ollama is
+/// not reachable on localhost.
+pub struct OllamaRuntimeBackend {
+    endpoint: String,
+    model_id: String,
+}
+
+impl OllamaRuntimeBackend {
+    pub fn new(endpoint: impl Into<String>, model_id: impl Into<String>) -> Result<Self> {
+        let endpoint = normalize_local_endpoint(&endpoint.into())?;
+        let model_id = model_id.into();
+        if model_id.trim().is_empty() {
+            return Err(AiCoreError::ValidationError(
+                "ollama backend requires --model <id>".to_string(),
+            ));
+        }
+        Ok(Self { endpoint, model_id })
+    }
+}
+
+#[async_trait]
+impl RuntimeBackend for OllamaRuntimeBackend {
+    fn kind(&self) -> RuntimeBackendKind {
+        RuntimeBackendKind::Ollama
+    }
+
+    fn capabilities(&self) -> BackendCapabilities {
+        BackendCapabilities {
+            gpu_support: true,
+            npu_support: false,
+            supported_operators: vec!["prefill".to_string(), "decode".to_string()],
+        }
+    }
+
+    async fn execute(&self, request: &RuntimeExecutionRequest) -> Result<RuntimeExecutionResult> {
+        if request.prompt.trim().is_empty() {
+            return Err(AiCoreError::ValidationError(
+                "runtime prompt must not be empty".to_string(),
+            ));
+        }
+        let model_id = request
+            .model_id
+            .clone()
+            .unwrap_or_else(|| self.model_id.clone());
+        let endpoint = request
+            .endpoint
+            .as_deref()
+            .map(normalize_local_endpoint)
+            .transpose()?
+            .unwrap_or_else(|| self.endpoint.clone());
+        let url = format!("{}/api/generate", endpoint.trim_end_matches('/'));
+        let body = serde_json::json!({
+            "model": model_id,
+            "prompt": request.prompt,
+            "stream": false,
+            "options": {
+                "temperature": request.temperature.unwrap_or(0.0),
+                "num_predict": request.max_tokens.unwrap_or(128)
+            }
+        });
+        let started = std::time::Instant::now();
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(3))
+            .build()
+            .map_err(|err| AiCoreError::NetworkError(format!("failed to build local Ollama client: {err}")))?;
+        let response = client
+            .post(url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|err| AiCoreError::ServiceUnavailableError(format!("local Ollama server unavailable: {err}")))?;
+        if !response.status().is_success() {
+            return Err(AiCoreError::ExternalServiceError(format!(
+                "local Ollama server returned HTTP {}",
+                response.status()
+            )));
+        }
+        let payload: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|err| AiCoreError::SerializationError(format!("invalid Ollama response JSON: {err}")))?;
+        let generated_text = payload["response"]
+            .as_str()
+            .ok_or_else(|| AiCoreError::ProtocolError("Ollama response missing response field".to_string()))?
+            .to_string();
+        let tokens_generated = payload["eval_count"]
+            .as_u64()
+            .unwrap_or_else(|| generated_text.split_whitespace().count() as u64) as u32;
+        let processing_time_ms = started.elapsed().as_millis() as u64;
+        let input_hash = sha256_hex(request.prompt.as_bytes());
+        let output_hash = sha256_hex(generated_text.as_bytes());
+        let mut metadata = model_backend_metadata(
+            "ollama",
+            "local_ollama_generate",
+            &model_id,
+            &endpoint,
+            request,
+            tokens_generated,
+            processing_time_ms,
+            &input_hash,
+            &output_hash,
+        );
+        metadata.insert("model_loaded".to_string(), "true".to_string());
+
+        Ok(RuntimeExecutionResult {
+            generated_text,
+            tokens_generated,
+            processing_time_ms,
+            metadata,
+            model_id: Some(model_id),
+            model_source: Some("local_ollama".to_string()),
+            model_revision: request.metadata.get("model_revision").cloned(),
+            remote_execution: false,
+            input_hash,
+            output_hash,
         })
     }
 }
@@ -241,5 +501,73 @@ fn accelerator_name(kind: AcceleratorKind) -> &'static str {
         AcceleratorKind::Cpu => "cpu",
         AcceleratorKind::Igpu => "igpu",
         AcceleratorKind::Npu => "npu",
+    }
+}
+
+fn model_backend_metadata(
+    backend_kind: &str,
+    execution_mode: &str,
+    model_id: &str,
+    endpoint: &str,
+    request: &RuntimeExecutionRequest,
+    tokens_generated: u32,
+    processing_time_ms: u64,
+    input_hash: &str,
+    output_hash: &str,
+) -> HashMap<String, String> {
+    let mut metadata = HashMap::new();
+    metadata.insert("backend_kind".to_string(), backend_kind.to_string());
+    metadata.insert("execution_mode".to_string(), execution_mode.to_string());
+    metadata.insert("model_id".to_string(), model_id.to_string());
+    metadata.insert("endpoint".to_string(), endpoint.to_string());
+    metadata.insert("remote_execution".to_string(), "false".to_string());
+    metadata.insert("prompt_hash".to_string(), input_hash.to_string());
+    metadata.insert("output_hash".to_string(), output_hash.to_string());
+    metadata.insert("tokens_generated".to_string(), tokens_generated.to_string());
+    metadata.insert("processing_time_ms".to_string(), processing_time_ms.to_string());
+    if let Some(plan) = &request.heg_plan {
+        metadata.insert("heg_plan_id".to_string(), plan.graph_id.clone());
+        metadata.insert("placement_summary".to_string(), placement_summary(plan));
+        metadata.insert(
+            "heg_deterministic_hash".to_string(),
+            plan.deterministic_hash.clone(),
+        );
+    }
+    metadata
+}
+
+pub fn normalize_local_endpoint(endpoint: &str) -> Result<String> {
+    let trimmed = endpoint.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Err(AiCoreError::ValidationError(
+            "runtime backend endpoint must not be empty".to_string(),
+        ));
+    }
+    let parsed = reqwest::Url::parse(trimmed)
+        .map_err(|err| AiCoreError::ValidationError(format!("invalid runtime backend endpoint: {err}")))?;
+    if parsed.scheme() != "http" {
+        return Err(AiCoreError::ValidationError(
+            "runtime backend endpoint must use http on localhost".to_string(),
+        ));
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| AiCoreError::ValidationError("runtime backend endpoint missing host".to_string()))?;
+    if !matches!(host, "localhost" | "127.0.0.1" | "::1") {
+        return Err(AiCoreError::ValidationError(format!(
+            "runtime backend endpoint must be local-only, got '{host}'"
+        )));
+    }
+    Ok(trimmed.to_string())
+}
+
+fn openai_chat_url(endpoint: &str) -> String {
+    let trimmed = endpoint.trim_end_matches('/');
+    if trimmed.ends_with("/chat/completions") {
+        trimmed.to_string()
+    } else if trimmed.ends_with("/v1") {
+        format!("{trimmed}/chat/completions")
+    } else {
+        format!("{trimmed}/v1/chat/completions")
     }
 }

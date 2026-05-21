@@ -1,12 +1,15 @@
 //! Current-contract runtime tests for AI Core.
 
 use std::collections::HashMap;
+use std::env;
 use std::process::Command;
+use std::sync::Arc;
 
 use aetheris_ai_core::metrics::{AiCoreMetricsCollector, MetricsConfig, PrivacyMode};
 use aetheris_ai_core::runtime::{
-    backend::RuntimeBackendKind, AcceleratorKind, HegPolicy, OperatorKind, RuntimeConfig,
-    RuntimeManager, RuntimeRequest,
+    backend::{normalize_local_endpoint, LlamaCppServerBackend, OllamaRuntimeBackend, RuntimeBackendKind},
+    model_registry::ModelRegistry,
+    AcceleratorKind, HegPolicy, OperatorKind, RuntimeConfig, RuntimeManager, RuntimeRequest,
 };
 
 fn test_config() -> RuntimeConfig {
@@ -36,6 +39,27 @@ fn request(prompt: &str, workload: Option<&str>) -> RuntimeRequest {
         stop_sequences: vec!["\n\n".to_string()],
         metadata,
     }
+}
+
+#[test]
+fn model_registry_parses_reviewed_entries_and_rejects_unknown() {
+    let registry_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../configs/ai/model-registry.toml");
+    let text = std::fs::read_to_string(registry_path).unwrap();
+    let registry = ModelRegistry::from_toml_str(&text).unwrap();
+
+    let entry = registry.get_reviewed("smollm2-135m-instruct-q4").unwrap();
+    assert_eq!(entry.license, "apache-2.0");
+    assert_eq!(entry.backend, "llama-cpp");
+    assert!(registry.get_reviewed("does-not-exist").is_err());
+}
+
+#[test]
+fn non_local_runtime_endpoints_are_rejected() {
+    assert!(normalize_local_endpoint("http://127.0.0.1:8080/v1").is_ok());
+    assert!(normalize_local_endpoint("http://localhost:11434").is_ok());
+    let err = normalize_local_endpoint("https://api.example.com/v1").unwrap_err();
+    assert!(err.to_string().contains("localhost") || err.to_string().contains("local-only"));
 }
 
 #[tokio::test]
@@ -180,6 +204,94 @@ async fn metrics_reliability() {
     assert!(
         snapshot_after_error.ai_runtime_backend_errors_total >= initial_errors + 1
     );
+}
+
+#[tokio::test]
+async fn llama_cpp_backend_fails_closed_when_local_daemon_is_unavailable() {
+    use aetheris_ai_core::metrics::{
+        default_metrics_config, get_global_metrics_collector, init_global_metrics_collector,
+    };
+
+    let _ = init_global_metrics_collector(default_metrics_config());
+    let collector = get_global_metrics_collector().expect("global metrics collector should exist");
+    let initial = collector.get_metrics_snapshot().await.unwrap();
+
+    let backend = Arc::new(
+        LlamaCppServerBackend::new(
+            "http://127.0.0.1:9/v1",
+            "smollm2-135m-instruct-q4",
+        )
+        .unwrap(),
+    );
+    let manager = RuntimeManager::with_backend(test_config(), backend);
+    let err = manager
+        .generate_response(&request("hello local model", None))
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("local llama.cpp server unavailable")
+            || err.to_string().contains("local llama.cpp server returned HTTP")
+    );
+
+    let after = collector.get_metrics_snapshot().await.unwrap();
+    assert!(after.ai_runtime_model_attempts_total >= initial.ai_runtime_model_attempts_total + 1);
+    assert!(after.ai_runtime_model_failures_total >= initial.ai_runtime_model_failures_total + 1);
+}
+
+#[tokio::test]
+async fn ollama_backend_fails_closed_when_local_daemon_is_unavailable() {
+    let backend = Arc::new(
+        OllamaRuntimeBackend::new(
+            "http://127.0.0.1:9",
+            "hf.co/QuantFactory/SmolLM2-135M-Instruct-GGUF:Q4_K_M",
+        )
+        .unwrap(),
+    );
+    let manager = RuntimeManager::with_backend(test_config(), backend);
+    let err = manager
+        .generate_response(&request("hello local ollama model", None))
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("local Ollama server unavailable")
+            || err.to_string().contains("local Ollama server returned HTTP")
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires POLYMERA_RUN_LOCAL_MODEL_TESTS=1 and a running localhost model daemon"]
+async fn live_local_model() {
+    if env::var("POLYMERA_RUN_LOCAL_MODEL_TESTS").ok().as_deref() != Some("1") {
+        eprintln!("skipping live local model test: set POLYMERA_RUN_LOCAL_MODEL_TESTS=1 to enable");
+        return;
+    }
+
+    let backend_name =
+        env::var("POLYMERA_LIVE_MODEL_BACKEND").unwrap_or_else(|_| "ollama".to_string());
+    let model_id = env::var("POLYMERA_LIVE_MODEL_ID")
+        .unwrap_or_else(|_| "hf.co/QuantFactory/SmolLM2-135M-Instruct-GGUF:Q4_K_M".to_string());
+    let endpoint = env::var("POLYMERA_LIVE_MODEL_ENDPOINT")
+        .unwrap_or_else(|_| "http://127.0.0.1:11434".to_string());
+
+    let backend: Arc<dyn aetheris_ai_core::runtime::backend::RuntimeBackend> =
+        match backend_name.as_str() {
+            "llama-cpp" => Arc::new(LlamaCppServerBackend::new(endpoint, model_id).unwrap()),
+            "ollama" => Arc::new(OllamaRuntimeBackend::new(endpoint, model_id).unwrap()),
+            other => panic!("unsupported POLYMERA_LIVE_MODEL_BACKEND '{other}'"),
+        };
+
+    let manager = RuntimeManager::with_backend(test_config(), backend);
+    let response = manager
+        .generate_response(&request("Say Polymera in one short sentence.", None))
+        .await
+        .expect("live localhost model backend should generate a response");
+
+    assert!(!response.generated_text.trim().is_empty());
+    assert_eq!(response.remote_execution, false);
+    assert!(response.model_id.is_some());
+    assert!(response.input_hash.len() >= 32);
+    assert!(response.output_hash.len() >= 32);
+    assert!(response.heg_plan_id.unwrap().starts_with("heg-"));
 }
 
 #[test]
