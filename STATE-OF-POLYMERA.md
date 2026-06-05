@@ -10,9 +10,58 @@ This file is a snapshot; the running ledger is
 
 ---
 
+## 2026-05-22 Addendum - Boot MVP Complete
+
+The boot MVP gate is now green.
+
+Verified locally:
+
+- `cd C:\polymera-os\kernel && cargo check` exits 0.
+- `cd C:\polymera-os\kernel && cargo build --release --features insecure-toy-crypto` exits 0.
+- `assemble_final.ps1` assembles the Limine UEFI FAT artifact under `build_out\iso`.
+- `scripts\qemu-smoke.ps1` boots the artifact in QEMU and requires `POLYMERA_MAIN_LOOP_READY`.
+- `BOOT-GREEN.md` records `PASS` with matched marker `POLYMERA_MAIN_LOOP_READY`.
+
+### Boot Proof Sequence
+
+The following sequential milestones were successfully captured from the kernel serial output during QEMU UEFI boot verification:
+
+1. **`POLYMERA_BOOT_START`** - Serial interface initialized and early entry point active.
+2. **`POLYMERA_ALLOC_READY`** - Stage-0 bootstrap allocator (static lock-free bump allocator) active.
+3. **`[BOOTSTRAP] Deactivated`** - Handed off `3,313,104` / `4,194,304` bytes of bootstrap memory to the real page, slab, block, and bump allocator stack.
+4. **`POLYMERA_ALLOC_READY`** - Memory allocators fully initialized.
+5. **`POLYMERA_MM_READY`** - Memory Management initialization complete (LZ4 compression, virtual memory API validated, stack protection active).
+6. **`POLYMERA_MAIN_LOOP_READY`** - Core initialization successful, spawned system services (`polybus`, `keyvault`, `ngfs`, `polynet`, `polyaudio`, `compositor`, `attestation`, `ai_runtime`), and entered the kernel main scheduler loop.
+
+The previous early allocation panic (`Layout { size: 32, align: 8 }`) and the follow-on paging remap panic are fixed for the normal boot path. The kernel now reaches the main loop. This does not yet mean Polymera has a shell, installer, or in-kernel AI Core.
+
+### Kernel Telemetry Bridge v1
+
+The first real kernel-to-dashboard metric bridge is now proven.
+
+Verified locally:
+
+- The kernel emits `POLYMERA_KERNEL_METRIC_V1 ticks=<n> active_processes=<n> syscalls=<n> ipc=<n> ctx_sw=<n> security_checks=<n>` immediately after `POLYMERA_MAIN_LOOP_READY`.
+- `scripts\qemu-smoke.ps1` captures that line in `build_out\qemu-serial.log`.
+- `cargo run --manifest-path C:\polymera-os\services\dashboard_bridge\Cargo.toml -- --once --require-real` parses the newest structured serial metric and writes `ui\dashboard\kernel_metrics.js`.
+- `ui\dashboard\kernel_metrics.js` records `source: "qemu-serial"` and the current captured kernel values.
+
+This is a serial-log bridge only. It is not a shared-memory telemetry ABI, live kernel socket, shell, or installer.
+
+Still not proven:
+
+- Controlled QEMU shutdown or operator shell after the main-loop marker.
+- Real compiled wasm summarizer component in the AI workload path.
+- AI Core running inside the kernel; current Phase 4/6 demos remain host-side service demos.
+- Broad dirty-tree cleanup.
+
+Operator entrypoint: [RUN-POLYMERA.md](RUN-POLYMERA.md).
+
+---
+
 ## 2026-05-21 Addendum — Bootable OS + Phase 4/6 Runnable Demo
 
-The boot truth gate has moved forward.
+Historical note: this addendum described the state before the 2026-05-22 Boot MVP fix. The current boot truth is recorded above.
 
 Verified locally:
 
@@ -22,8 +71,8 @@ Verified locally:
   `2FAF7857D4AF93683391B8124EDE0DCB87ADE29B8D9F3F92ED5EB6D77B92F688`.
 - `scripts\qemu-smoke.ps1` boots that artifact through QEMU EDK2 and
   Limine.
-- `BOOT-GREEN.md` records `PASS` with matched serial marker
-  `POLYMERA`.
+- `BOOT-GREEN.md` now records `PASS` with matched serial marker
+  `POLYMERA_MAIN_LOOP_READY`.
 - `scripts\phase4-demo.ps1` runs the host-side Phase 4 AI path:
   `goal-plan`, `browser-summarize`, `browser-classify`,
   `summarize-log --approve`, and `runtime-run --backend deterministic`.
@@ -31,23 +80,14 @@ Verified locally:
   HITL reject, HITL modify, budget denial/refund, persisted task-state
   resume, and replay divergence detection.
 
-Important limitation: the kernel is booted to banner, not to a stable
-main loop. The serial log currently shows an early memory allocation
-panic after the banner:
-
-```text
-Memory allocation failed for layout: Layout { size: 32, align: 8 }
-```
-
-So the honest current claim is: **QEMU reaches the Polymera kernel
-entry and captures the boot marker.** The next kernel task is to move
-past early heap initialization and reach the kernel main loop.
+Important limitation: this is a boot MVP, not a full OS shell. The
+current honest claim is: **QEMU reaches the Polymera kernel main loop
+through Limine UEFI FAT and captures the main-loop marker.**
 
 Operator entrypoint: [RUN-POLYMERA.md](RUN-POLYMERA.md).
 
 Still not proven:
 
-- Stable kernel main loop after early memory manager initialization.
 - Real kernel metric bridge into the dashboard.
 - Real compiled wasm summarizer component in the AI workload path.
 - AI Core running inside the kernel; current Phase 4/6 demos are
@@ -71,22 +111,20 @@ The recent work is real and committed:
   model-runtime release docs.
 
 The next truth gate was boot, not another feature. That gate is now
-partially satisfied: QEMU reaches the Polymera kernel entry via the
-Limine UEFI FAT artifact and captures a serial boot marker. Direct
-`-kernel` loading remains diagnostic only because the ELF still lacks
-PVH metadata.
+satisfied for the Boot MVP: QEMU reaches the Polymera kernel main loop
+via the Limine UEFI FAT artifact and captures `POLYMERA_MAIN_LOOP_READY`.
+Direct `-kernel` loading remains diagnostic only because the ELF still
+lacks PVH metadata.
 
 Still not proven:
 
-- Stable execution past the early memory allocation panic.
 - Correct PVH metadata for direct QEMU `-kernel` boot.
-- A real kernel metric bridge into the dashboard.
 - A real compiled wasm summarizer component in the AI workload path.
 - Broad dirty-tree triage for the OS-wide uncommitted work.
 
-Release notes may claim "boots to Polymera serial banner in QEMU via
-Limine UEFI FAT"; they must not yet claim "boots to a stable shell" or
-"runs the AI Core inside the kernel."
+Release notes may claim "boots to the Polymera kernel main loop in QEMU
+via Limine UEFI FAT"; they must not yet claim "boots to a stable shell"
+or "runs the AI Core inside the kernel."
 
 ---
 
@@ -163,7 +201,7 @@ the new APIs.
 | ZK circuits used by anything | 🟡 Noir circuits have real constraints but no service routes through them |
 | Formal verification | ❌ aspirational; F* / Lean 4 pinned but not running |
 | Multi-VM polyglot runtime (CPython, JVM, CLR) | ❌ aspirational; only Rust services run today |
-| Bootable on QEMU | 🟡 QEMU reaches the Polymera serial banner through Limine UEFI FAT; early heap panic still blocks stable runtime |
+| Bootable on QEMU | ✅ QEMU reaches `POLYMERA_MAIN_LOOP_READY` through Limine UEFI FAT; shell/controlled shutdown still pending |
 
 The pitch oversells reality by maybe 2–3 phases of work. The
 *foundation* under the pitch is now sound enough to compound on.

@@ -1,0 +1,300 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* Base styles */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: transparent;
+  overflow: hidden;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  background: transparent;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+/* Selection styles */
+::selection {
+  background: rgba(59, 130, 246, 0.3);
+  color: inherit;
+}
+
+/* Focus styles */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.5);
+  outline-offset: 2px;
+}
+
+/* Animation utilities */
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+.animate-pulse-slow {
+  animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Glass morphism effect */
+.glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-dark {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Custom components */
+.btn {
+  @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+}
+
+.btn-primary {
+  @apply bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+}
+
+.btn-secondary {
+  @apply bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500;
+}
+
+.btn-ghost {
+  @apply bg-transparent text-gray-700 hover:bg-gray-100 focus:ring-gray-500;
+}
+
+.btn-danger {
+  @apply bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+}
+
+.btn-sm {
+  @apply px-3 py-1.5 text-sm;
+}
+
+.btn-lg {
+  @apply px-6 py-3 text-lg;
+}
+
+.input {
+  @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+}
+
+.textarea {
+  @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none;
+}
+
+.card {
+  @apply bg-white rounded-lg shadow-sm border border-gray-200;
+}
+
+.card-dark {
+  @apply bg-gray-800 rounded-lg shadow-sm border border-gray-700;
+}
+
+/* Markdown styles */
+.markdown {
+  @apply prose prose-sm max-w-none;
+}
+
+.markdown h1 {
+  @apply text-xl font-bold text-gray-900 mb-4;
+}
+
+.markdown h2 {
+  @apply text-lg font-semibold text-gray-900 mb-3;
+}
+
+.markdown h3 {
+  @apply text-base font-semibold text-gray-900 mb-2;
+}
+
+.markdown p {
+  @apply text-gray-700 mb-3 leading-relaxed;
+}
+
+.markdown ul {
+  @apply list-disc list-inside mb-3;
+}
+
+.markdown ol {
+  @apply list-decimal list-inside mb-3;
+}
+
+.markdown li {
+  @apply text-gray-700 mb-1;
+}
+
+.markdown code {
+  @apply bg-gray-100 text-gray-800 px-1 py-0.5 rounded text-sm font-mono;
+}
+
+.markdown pre {
+  @apply bg-gray-100 text-gray-800 p-3 rounded-lg overflow-x-auto mb-3;
+}
+
+.markdown pre code {
+  @apply bg-transparent p-0;
+}
+
+.markdown blockquote {
+  @apply border-l-4 border-gray-300 pl-4 italic text-gray-600 mb-3;
+}
+
+.markdown a {
+  @apply text-primary-600 hover:text-primary-700 underline;
+}
+
+.markdown table {
+  @apply w-full border-collapse border border-gray-300 mb-3;
+}
+
+.markdown th {
+  @apply border border-gray-300 px-3 py-2 bg-gray-100 font-semibold text-left;
+}
+
+.markdown td {
+  @apply border border-gray-300 px-3 py-2;
+}
+
+/* Dark mode markdown styles */
+.dark .markdown h1,
+.dark .markdown h2,
+.dark .markdown h3 {
+  @apply text-gray-100;
+}
+
+.dark .markdown p,
+.dark .markdown li {
+  @apply text-gray-300;
+}
+
+.dark .markdown code {
+  @apply bg-gray-700 text-gray-200;
+}
+
+.dark .markdown pre {
+  @apply bg-gray-800 text-gray-200;
+}
+
+.dark .markdown pre code {
+  @apply bg-transparent;
+}
+
+.dark .markdown blockquote {
+  @apply border-gray-600 text-gray-400;
+}
+
+.dark .markdown a {
+  @apply text-primary-400 hover:text-primary-300;
+}
+
+.dark .markdown table {
+  @apply border-gray-600;
+}
+
+.dark .markdown th {
+  @apply border-gray-600 bg-gray-700 text-gray-200;
+}
+
+.dark .markdown td {
+  @apply border-gray-600 text-gray-300;
+}
+
+/* Loading spinner */
+.spinner {
+  @apply inline-block w-4 h-4 border-2 border-gray-300 border-t-primary-600 rounded-full animate-spin;
+}
+
+/* Tooltip */
+.tooltip {
+  @apply absolute z-50 px-2 py-1 text-xs text-white bg-gray-900 rounded shadow-lg opacity-0 pointer-events-none transition-opacity duration-200;
+}
+
+.tooltip.show {
+  @apply opacity-100;
+}
+
+/* Notification */
+.notification {
+  @apply fixed top-4 right-4 z-50 max-w-sm bg-white rounded-lg shadow-lg border border-gray-200 p-4 transform translate-x-full transition-transform duration-300;
+}
+
+.notification.show {
+  @apply translate-x-0;
+}
+
+.notification.success {
+  @apply border-green-200 bg-green-50;
+}
+
+.notification.error {
+  @apply border-red-200 bg-red-50;
+}
+
+.notification.warning {
+  @apply border-yellow-200 bg-yellow-50;
+}
+
+.notification.info {
+  @apply border-blue-200 bg-blue-50;
+}

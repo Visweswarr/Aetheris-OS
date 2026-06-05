@@ -1,0 +1,325 @@
+name: Performance Dashboard Generation & Deployment
+
+on:
+  # Run on pushes to main branch
+  push:
+    branches: [ main ]
+    paths:
+      - 'perf/**'
+      - 'tooling/perf/**'
+      - '.github/workflows/perf-dashboard.yml'
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild dashboard'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  DASHBOARD_OUTPUT: docs/site/perf
+  HISTORY_DIR: perf/history
+  BASELINE_FILE: perf/baselines/p2.json
+
+jobs:
+  generate-dashboard:
+    name: Generate Performance Dashboard
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: |
+        npm install -g npm@latest
+        
+    - name: Create performance history directory
+      run: |
+        mkdir -p ${{ env.HISTORY_DIR }}
+        echo "[]" > ${{ env.HISTORY_DIR }}/sample.json
+        
+    - name: Create baseline directory
+      run: |
+        mkdir -p perf/baselines
+        echo '{"version": "0.2.0-phase2", "baselines": {}}' > ${{ env.BASELINE_FILE }}
+        
+    - name: Generate performance dashboard
+      run: |
+        echo "🚀 Generating performance dashboard..."
+        node tooling/perf/render_dashboard.js \
+          --input ${{ env.HISTORY_DIR }} \
+          --output ${{ env.DASHBOARD_OUTPUT }} \
+          --baseline ${{ env.BASELINE_FILE }}
+        
+    - name: Verify dashboard files
+      run: |
+        echo "🔍 Verifying generated dashboard files..."
+        
+        # Check main HTML file
+        if [ ! -f "${{ env.DASHBOARD_OUTPUT }}/index.html" ]; then
+          echo "❌ Dashboard HTML file not found"
+          exit 1
+        fi
+        
+        # Check CSS file
+        if [ ! -f "${{ env.DASHBOARD_OUTPUT }}/style.css" ]; then
+          echo "❌ Dashboard CSS file not found"
+          exit 1
+        fi
+        
+        # Check JavaScript file
+        if [ ! -f "${{ env.DASHBOARD_OUTPUT }}/dashboard.js" ]; then
+          echo "❌ Dashboard JavaScript file not found"
+          exit 1
+        fi
+        
+        # Check data directory
+        if [ ! -d "${{ env.DASHBOARD_OUTPUT }}/data" ]; then
+          echo "❌ Dashboard data directory not found"
+          exit 1
+        fi
+        
+        echo "✅ All dashboard files verified"
+        
+    - name: Upload dashboard artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-dashboard
+        path: ${{ env.DASHBOARD_OUTPUT }}
+        retention-days: 30
+        
+  deploy-dashboard:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: generate-dashboard
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download dashboard artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: performance-dashboard
+        path: ${{ env.DASHBOARD_OUTPUT }}
+        
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+      
+    - name: Upload to GitHub Pages
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ${{ env.DASHBOARD_OUTPUT }}
+        
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+      
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const comment = \`## 📊 Performance Dashboard Updated
+          
+          The performance dashboard has been regenerated and deployed.
+          
+          **Dashboard URL**: https://\${context.repo.owner}.github.io/\${context.repo.repo}/\${env.DASHBOARD_OUTPUT}/
+          
+          **Generated Files**:
+          - \`index.html\` - Main dashboard page
+          - \`style.css\` - Dashboard styles
+          - \`dashboard.js\` - Dashboard functionality
+          - \`data/\` - Performance data shards
+          
+          **Last Updated**: \${new Date().toISOString()}
+          
+          ---
+          *This dashboard is automatically generated from performance history data.*\`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+          
+  test-dashboard:
+    name: Test Dashboard Locally
+    runs-on: ubuntu-latest
+    needs: generate-dashboard
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download dashboard artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: performance-dashboard
+        path: ${{ env.DASHBOARD_OUTPUT }}
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Test dashboard generation
+      run: |
+        echo "🧪 Testing dashboard generation..."
+        
+        # Test the renderer script
+        node tooling/perf/render_dashboard.js --help
+        
+        # Test with sample data
+        mkdir -p test_history
+        echo '[]' > test_history/test.json
+        
+        node tooling/perf/render_dashboard.js \
+          --input test_history \
+          --output test_output \
+          --baseline ${{ env.BASELINE_FILE }}
+        
+        # Verify test output
+        if [ -f "test_output/index.html" ]; then
+          echo "✅ Test dashboard generation successful"
+        else
+          echo "❌ Test dashboard generation failed"
+          exit 1
+        fi
+        
+    - name: Test dashboard files
+      run: |
+        echo "🔍 Testing generated dashboard files..."
+        
+        # Test HTML syntax
+        if node -e "
+          const fs = require('fs');
+          const html = fs.readFileSync('${{ env.DASHBOARD_OUTPUT }}/index.html', 'utf8');
+          if (html.includes('<html') && html.includes('</html>')) {
+            console.log('✅ HTML syntax valid');
+          } else {
+            console.error('❌ HTML syntax invalid');
+            process.exit(1);
+          }
+        "; then
+          echo "✅ HTML validation passed"
+        else
+          echo "❌ HTML validation failed"
+          exit 1
+        fi
+        
+        # Test CSS syntax
+        if node -e "
+          const fs = require('fs');
+          const css = fs.readFileSync('${{ env.DASHBOARD_OUTPUT }}/style.css', 'utf8');
+          if (css.includes('body') && css.includes('{')) {
+            console.log('✅ CSS syntax valid');
+          } else {
+            console.error('❌ CSS syntax invalid');
+            process.exit(1);
+          }
+        "; then
+          echo "✅ CSS validation passed"
+        else
+          echo "❌ CSS validation failed"
+          exit 1
+        fi
+        
+        # Test JavaScript syntax
+        if node -c "${{ env.DASHBOARD_OUTPUT }}/dashboard.js"; then
+          echo "✅ JavaScript syntax valid"
+        else
+          echo "❌ JavaScript syntax failed"
+          exit 1
+        fi
+        
+        echo "✅ All dashboard file tests passed"
+        
+    - name: Test data shards
+      run: |
+        echo "📊 Testing data shards..."
+        
+        # Check if data directory exists
+        if [ ! -d "${{ env.DASHBOARD_OUTPUT }}/data" ]; then
+          echo "❌ Data directory not found"
+          exit 1
+        fi
+        
+        # Check if index.json exists
+        if [ ! -f "${{ env.DASHBOARD_OUTPUT }}/data/index.json" ]; then
+          echo "❌ Data index file not found"
+          exit 1
+        fi
+        
+        # Validate JSON syntax
+        if node -e "
+          const fs = require('fs');
+          const data = JSON.parse(fs.readFileSync('${{ env.DASHBOARD_OUTPUT }}/data/index.json', 'utf8'));
+          if (data.generated_at && data.total_configurations !== undefined) {
+            console.log('✅ Data index JSON valid');
+          } else {
+            console.error('❌ Data index JSON invalid');
+            process.exit(1);
+          }
+        "; then
+          echo "✅ Data shard validation passed"
+        else
+          echo "❌ Data shard validation failed"
+          exit 1
+        fi
+        
+        echo "✅ All data shard tests passed"
+        
+    - name: Performance test
+      run: |
+        echo "⚡ Testing dashboard performance..."
+        
+        # Check file sizes
+        html_size=$(wc -c < "${{ env.DASHBOARD_OUTPUT }}/index.html")
+        css_size=$(wc -c < "${{ env.DASHBOARD_OUTPUT }}/style.css")
+        js_size=$(wc -c < "${{ env.DASHBOARD_OUTPUT }}/dashboard.js")
+        
+        echo "File sizes:"
+        echo "  HTML: ${html_size} bytes"
+        echo "  CSS:  ${css_size} bytes"
+        echo "  JS:   ${js_size} bytes"
+        
+        # Check if files are under reasonable size limits
+        if [ $html_size -gt 100000 ]; then
+          echo "⚠️  HTML file is large (>100KB)"
+        fi
+        
+        if [ $css_size -gt 50000 ]; then
+          echo "⚠️  CSS file is large (>50KB)"
+        fi
+        
+        if [ $js_size -gt 100000 ]; then
+          echo "⚠️  JavaScript file is large (>100KB)"
+        fi
+        
+        echo "✅ Performance test completed"
+        
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    needs: [generate-dashboard, test-dashboard]
+    if: always()
+    
+    steps:
+    - name: Cleanup test files
+      run: |
+        echo "🧹 Cleaning up test files..."
+        rm -rf test_history test_output || true
+        echo "✅ Cleanup completed"

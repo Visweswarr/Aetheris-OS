@@ -1,0 +1,42 @@
+[package]
+name = "devices"
+version = "0.1.0"
+edition = "2021"
+authors = ["Aetheris OS Team"]
+description = "Device Runtime - Camera, Microphone, BLE & Sensor Services"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+cbor2 = "0.2"
+blake3 = "1.5"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+async-trait = "0.1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+anyhow = "1.0"
+thiserror = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.21"
+hex = "0.4"
+ciborium = "0.2"
+
+# Internal dependencies
+ngfs = { path = "../ngfs" }
+identity = { path = "../identity" }
+audit = { path = "../audit" }
+dao = { path = "../dao" }
+
+[features]
+default = []
+mock_ble = []
+mock_sensor = []
+
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = "0.5"
+
+[[bench]]
+name = "capture_performance"
+harness = false

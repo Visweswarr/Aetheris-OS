@@ -1,24 +1,28 @@
 //! UEFI entry point for Polymera OS kernel
 //!
 //! This module provides the main entry point when booting via UEFI.
+//! This module is only compiled when the `uefi` feature is enabled.
 
-#![no_main]
-#![no_std]
+#![cfg(feature = "uefi")]
 
 extern crate alloc;
 
 use alloc::{vec, vec::Vec};
-use core::mem;
+
+// UEFI-specific imports - only available when uefi feature is enabled
+#[cfg(feature = "uefi")]
 use uefi::prelude::*;
+#[cfg(feature = "uefi")]
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat as UefiPixelFormat};
+#[cfg(feature = "uefi")]
 use uefi::proto::loaded_image::LoadedImage;
+#[cfg(feature = "uefi")]
 use uefi::table::boot::{MemoryDescriptor, MemoryType as UefiMemoryType};
 
-use polymera_kernel::{
+// Kernel imports - use crate:: since we're inside the kernel
+use crate::{
     boot::{BootConfig, BootMethod, FramebufferInfo, PixelFormat, memory},
-    KernelConfig, KernelInfo, MemoryRegion, MemoryType,
-    kernel_early_init, kernel_main_init, kernel_main_loop,
-    log, error::KernelResult,
+    KernelConfig, error::KernelResult,
 };
 
 /// UEFI entry point

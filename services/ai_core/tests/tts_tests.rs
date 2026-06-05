@@ -1,23 +1,22 @@
 //! Tests for Text-to-Speech functionality
-//! 
+//!
 //! This module contains comprehensive tests for the TTS tool integration
 //! with the AI Core Service, including audio synthesis, streaming, and Opus encoding.
 
 use std::path::PathBuf;
+use std::fs;
 use tempfile::TempDir;
-use tokio::fs;
 
 use aetheris_ai_core::tools::tts::{
-    TextToSpeechTool, TtsConfig, TtsInput, TtsOutput, 
-    VoiceConfig, AudioOutputConfig, StreamingConfig, OpusConfig,
-    AudioFormat, default_tts_config, execute_text_to_speech
+    default_tts_config, execute_text_to_speech, AudioFormat, AudioOutputConfig, OpusConfig,
+    StreamingConfig, TextToSpeechTool, TtsConfig, TtsInput, TtsOutput, VoiceConfig,
 };
 
 #[tokio::test]
 async fn test_tts_tool_creation() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(&temp_dir);
-    
+
     let tool = TextToSpeechTool::new(config);
     assert!(tool.is_ok());
 }
@@ -26,7 +25,7 @@ async fn test_tts_tool_creation() {
 async fn test_tts_tool_initialization() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(&temp_dir);
-    
+
     let mut tool = TextToSpeechTool::new(config).unwrap();
     let result = tool.initialize(None).await;
     assert!(result.is_ok());
@@ -36,10 +35,10 @@ async fn test_tts_tool_initialization() {
 async fn test_tts_tool_synthesize_text() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(&temp_dir);
-    
+
     let mut tool = TextToSpeechTool::new(config).unwrap();
     tool.initialize(None).await.unwrap();
-    
+
     let input = TtsInput {
         text: "Hello, this is a test.".to_string(),
         voice: Some("en_female_1".to_string()),
@@ -52,10 +51,10 @@ async fn test_tts_tool_synthesize_text() {
         output_device: None,
         save_to_file: None,
     };
-    
+
     let result = tool.synthesize_text(&input).await;
     assert!(result.is_ok());
-    
+
     let output = result.unwrap();
     assert!(output.duration_ms > 0);
     assert!(output.processing_time_ms > 0);
@@ -67,13 +66,13 @@ async fn test_tts_tool_synthesize_text() {
 async fn test_tts_tool_list_voices() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(&temp_dir);
-    
+
     let mut tool = TextToSpeechTool::new(config).unwrap();
     tool.initialize(None).await.unwrap();
-    
+
     let voices = tool.list_available_voices().await.unwrap();
     assert!(!voices.is_empty());
-    
+
     // Check that we have the expected mock voices
     let voice_ids: Vec<&str> = voices.iter().map(|v| v.id.as_str()).collect();
     assert!(voice_ids.contains(&"en_female_1"));
@@ -85,10 +84,10 @@ async fn test_tts_tool_list_voices() {
 async fn test_tts_tool_validation() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(&temp_dir);
-    
+
     let mut tool = TextToSpeechTool::new(config).unwrap();
     tool.initialize(None).await.unwrap();
-    
+
     // Test empty text
     let input = TtsInput {
         text: "".to_string(),
@@ -102,10 +101,10 @@ async fn test_tts_tool_validation() {
         output_device: None,
         save_to_file: None,
     };
-    
+
     let result = tool.synthesize_text(&input).await;
     assert!(result.is_err());
-    
+
     // Test invalid speed
     let input = TtsInput {
         text: "Hello".to_string(),
@@ -119,10 +118,10 @@ async fn test_tts_tool_validation() {
         output_device: None,
         save_to_file: None,
     };
-    
+
     let result = tool.synthesize_text(&input).await;
     assert!(result.is_err());
-    
+
     // Test invalid pitch
     let input = TtsInput {
         text: "Hello".to_string(),
@@ -136,10 +135,10 @@ async fn test_tts_tool_validation() {
         output_device: None,
         save_to_file: None,
     };
-    
+
     let result = tool.synthesize_text(&input).await;
     assert!(result.is_err());
-    
+
     // Test invalid volume
     let input = TtsInput {
         text: "Hello".to_string(),
@@ -153,7 +152,7 @@ async fn test_tts_tool_validation() {
         output_device: None,
         save_to_file: None,
     };
-    
+
     let result = tool.synthesize_text(&input).await;
     assert!(result.is_err());
 }
@@ -162,17 +161,17 @@ async fn test_tts_tool_validation() {
 async fn test_tts_tool_audio_formats() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(&temp_dir);
-    
+
     let mut tool = TextToSpeechTool::new(config).unwrap();
     tool.initialize(None).await.unwrap();
-    
+
     let formats = vec![
         AudioFormat::S16LE,
         AudioFormat::F32LE,
         AudioFormat::Opus,
         AudioFormat::Wav,
     ];
-    
+
     for format in formats {
         let input = TtsInput {
             text: "Test audio format".to_string(),
@@ -186,7 +185,7 @@ async fn test_tts_tool_audio_formats() {
             output_device: None,
             save_to_file: None,
         };
-        
+
         let result = tool.synthesize_text(&input).await;
         assert!(result.is_ok());
     }
@@ -196,12 +195,12 @@ async fn test_tts_tool_audio_formats() {
 async fn test_tts_tool_save_to_file() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(&temp_dir);
-    
+
     let mut tool = TextToSpeechTool::new(config).unwrap();
     tool.initialize(None).await.unwrap();
-    
+
     let output_file = temp_dir.path().join("test_output.wav");
-    
+
     let input = TtsInput {
         text: "Hello, this is a test file.".to_string(),
         voice: None,
@@ -214,14 +213,14 @@ async fn test_tts_tool_save_to_file() {
         output_device: None,
         save_to_file: Some(output_file.to_string_lossy().to_string()),
     };
-    
+
     let result = tool.synthesize_text(&input).await;
     assert!(result.is_ok());
-    
+
     let output = result.unwrap();
     assert!(output.file_path.is_some());
     assert!(output.audio_data.is_some());
-    
+
     // Verify file was created
     assert!(output_file.exists());
 }
@@ -230,10 +229,10 @@ async fn test_tts_tool_save_to_file() {
 async fn test_tts_tool_streaming() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(&temp_dir);
-    
+
     let mut tool = TextToSpeechTool::new(config).unwrap();
     tool.initialize(None).await.unwrap();
-    
+
     let input = TtsInput {
         text: "This is a streaming test with longer text to ensure proper chunking.".to_string(),
         voice: None,
@@ -246,10 +245,10 @@ async fn test_tts_tool_streaming() {
         output_device: None,
         save_to_file: None,
     };
-    
+
     let result = tool.synthesize_text(&input).await;
     assert!(result.is_ok());
-    
+
     let output = result.unwrap();
     assert!(output.streaming_session_id.is_some());
 }
@@ -258,17 +257,17 @@ async fn test_tts_tool_streaming() {
 async fn test_tts_tool_voice_parameters() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(&temp_dir);
-    
+
     let mut tool = TextToSpeechTool::new(config).unwrap();
     tool.initialize(None).await.unwrap();
-    
+
     // Test different voice parameters
     let test_cases = vec![
         (1.5, 1.2, 0.9), // Fast, high pitch, high volume
         (0.8, 0.9, 0.5), // Slow, low pitch, low volume
         (1.0, 1.0, 0.8), // Normal parameters
     ];
-    
+
     for (speed, pitch, volume) in test_cases {
         let input = TtsInput {
             text: "Testing voice parameters".to_string(),
@@ -282,7 +281,7 @@ async fn test_tts_tool_voice_parameters() {
             output_device: None,
             save_to_file: None,
         };
-        
+
         let result = tool.synthesize_text(&input).await;
         assert!(result.is_ok());
     }
@@ -292,12 +291,12 @@ async fn test_tts_tool_voice_parameters() {
 async fn test_tts_tool_language_support() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(&temp_dir);
-    
+
     let mut tool = TextToSpeechTool::new(config).unwrap();
     tool.initialize(None).await.unwrap();
-    
+
     let languages = vec!["en", "es", "fr", "de"];
-    
+
     for language in languages {
         let input = TtsInput {
             text: "Hello world".to_string(),
@@ -311,10 +310,10 @@ async fn test_tts_tool_language_support() {
             output_device: None,
             save_to_file: None,
         };
-        
+
         let result = tool.synthesize_text(&input).await;
         assert!(result.is_ok());
-        
+
         let output = result.unwrap();
         assert_eq!(output.language_used, language);
     }
@@ -324,10 +323,10 @@ async fn test_tts_tool_language_support() {
 async fn test_tts_tool_opus_encoding() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(&temp_dir);
-    
+
     let mut tool = TextToSpeechTool::new(config).unwrap();
     tool.initialize(None).await.unwrap();
-    
+
     let input = TtsInput {
         text: "Testing Opus encoding for efficient audio compression.".to_string(),
         voice: None,
@@ -340,10 +339,10 @@ async fn test_tts_tool_opus_encoding() {
         output_device: None,
         save_to_file: None,
     };
-    
+
     let result = tool.synthesize_text(&input).await;
     assert!(result.is_ok());
-    
+
     let output = result.unwrap();
     assert_eq!(output.audio_format, AudioFormat::Opus);
 }
@@ -352,10 +351,10 @@ async fn test_tts_tool_opus_encoding() {
 async fn test_tts_tool_wav_output() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(&temp_dir);
-    
+
     let mut tool = TextToSpeechTool::new(config).unwrap();
     tool.initialize(None).await.unwrap();
-    
+
     let input = TtsInput {
         text: "Testing WAV output format.".to_string(),
         voice: None,
@@ -368,10 +367,10 @@ async fn test_tts_tool_wav_output() {
         output_device: None,
         save_to_file: None,
     };
-    
+
     let result = tool.synthesize_text(&input).await;
     assert!(result.is_ok());
-    
+
     let output = result.unwrap();
     assert_eq!(output.audio_format, AudioFormat::Wav);
 }
@@ -380,10 +379,10 @@ async fn test_tts_tool_wav_output() {
 async fn test_tts_tool_performance() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(&temp_dir);
-    
+
     let mut tool = TextToSpeechTool::new(config).unwrap();
     tool.initialize(None).await.unwrap();
-    
+
     let input = TtsInput {
         text: "Performance test with moderate length text to measure synthesis time.".to_string(),
         voice: None,
@@ -396,15 +395,15 @@ async fn test_tts_tool_performance() {
         output_device: None,
         save_to_file: None,
     };
-    
+
     // Measure performance
     let start = std::time::Instant::now();
     let result = tool.synthesize_text(&input).await;
     let duration = start.elapsed();
-    
+
     assert!(result.is_ok());
     assert!(duration.as_millis() < 5000); // Should complete within 5 seconds (mock)
-    
+
     let output = result.unwrap();
     assert!(output.processing_time_ms > 0);
 }
@@ -412,7 +411,7 @@ async fn test_tts_tool_performance() {
 #[tokio::test]
 async fn test_tts_tool_configuration() {
     let temp_dir = TempDir::new().unwrap();
-    
+
     // Test with custom configuration
     let config = TtsConfig {
         models_dir: temp_dir.path().join("models"),
@@ -447,7 +446,7 @@ async fn test_tts_tool_configuration() {
             enable_vbr: false,
         },
     };
-    
+
     let tool = TextToSpeechTool::new(config);
     assert!(tool.is_ok());
 }
@@ -456,10 +455,10 @@ async fn test_tts_tool_configuration() {
 async fn test_execute_text_to_speech() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(&temp_dir);
-    
+
     let mut tool = TextToSpeechTool::new(config).unwrap();
     tool.initialize(None).await.unwrap();
-    
+
     let input = TtsInput {
         text: "Hello, this is a test.".to_string(),
         voice: Some("en_female_1".to_string()),
@@ -472,15 +471,15 @@ async fn test_execute_text_to_speech() {
         output_device: None,
         save_to_file: None,
     };
-    
+
     let input_cbor = serde_cbor::to_vec(&input).unwrap();
     let result = execute_text_to_speech(&tool, &input_cbor).await;
-    
+
     assert!(result.is_ok());
     let tool_result = result.unwrap();
     assert!(tool_result.success);
-    assert!(tool_result.data.is_some());
-    assert!(tool_result.error.is_none());
+    assert!(tool_result.result.is_some());
+    assert!(tool_result.error_message.is_none());
     assert!(tool_result.execution_time_ms > 0);
 }
 
@@ -488,10 +487,10 @@ async fn test_execute_text_to_speech() {
 async fn test_tts_tool_error_handling() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(&temp_dir);
-    
+
     let mut tool = TextToSpeechTool::new(config).unwrap();
     tool.initialize(None).await.unwrap();
-    
+
     // Test text too long
     let long_text = "a".repeat(10001); // Exceeds 10000 character limit
     let input = TtsInput {
@@ -506,7 +505,7 @@ async fn test_tts_tool_error_handling() {
         output_device: None,
         save_to_file: None,
     };
-    
+
     let result = tool.synthesize_text(&input).await;
     assert!(result.is_err());
 }
@@ -514,10 +513,10 @@ async fn test_tts_tool_error_handling() {
 fn create_test_config(temp_dir: &TempDir) -> TtsConfig {
     let models_dir = temp_dir.path().join("models");
     fs::create_dir_all(&models_dir).unwrap();
-    
+
     // Create a mock model file
     fs::write(models_dir.join("coqui-tts.bin"), b"mock model data").unwrap();
-    
+
     TtsConfig {
         models_dir,
         default_model: "coqui-tts".to_string(),

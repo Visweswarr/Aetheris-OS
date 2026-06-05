@@ -1,0 +1,620 @@
+/**
+ * Aetheris OS Design Tokens - Generated TypeScript
+ * Generated from: design/Design-Tokens.yaml
+ * Version: 1.0.0
+ * Last Modified: 2024-01-01T00:00:00Z
+ */
+
+export interface DesignTokens {
+  "metadata-name": string;
+  "metadata-version": string;
+  "metadata-description": string;
+  "metadata-last-modified": string;
+  "colors-primary-light-50": string;
+  "colors-primary-light-100": string;
+  "colors-primary-light-200": string;
+  "colors-primary-light-300": string;
+  "colors-primary-light-400": string;
+  "colors-primary-light-500": string;
+  "colors-primary-light-600": string;
+  "colors-primary-light-700": string;
+  "colors-primary-light-800": string;
+  "colors-primary-light-900": string;
+  "colors-primary-light-950": string;
+  "colors-primary-dark-50": string;
+  "colors-primary-dark-100": string;
+  "colors-primary-dark-200": string;
+  "colors-primary-dark-300": string;
+  "colors-primary-dark-400": string;
+  "colors-primary-dark-500": string;
+  "colors-primary-dark-600": string;
+  "colors-primary-dark-700": string;
+  "colors-primary-dark-800": string;
+  "colors-primary-dark-900": string;
+  "colors-primary-dark-950": string;
+  "colors-secondary-light-50": string;
+  "colors-secondary-light-100": string;
+  "colors-secondary-light-200": string;
+  "colors-secondary-light-300": string;
+  "colors-secondary-light-400": string;
+  "colors-secondary-light-500": string;
+  "colors-secondary-light-600": string;
+  "colors-secondary-light-700": string;
+  "colors-secondary-light-800": string;
+  "colors-secondary-light-900": string;
+  "colors-secondary-light-950": string;
+  "colors-secondary-dark-50": string;
+  "colors-secondary-dark-100": string;
+  "colors-secondary-dark-200": string;
+  "colors-secondary-dark-300": string;
+  "colors-secondary-dark-400": string;
+  "colors-secondary-dark-500": string;
+  "colors-secondary-dark-600": string;
+  "colors-secondary-dark-700": string;
+  "colors-secondary-dark-800": string;
+  "colors-secondary-dark-900": string;
+  "colors-secondary-dark-950": string;
+  "colors-surface-light-primary": string;
+  "colors-surface-light-secondary": string;
+  "colors-surface-light-tertiary": string;
+  "colors-surface-light-elevated": string;
+  "colors-surface-light-overlay": string;
+  "colors-surface-dark-primary": string;
+  "colors-surface-dark-secondary": string;
+  "colors-surface-dark-tertiary": string;
+  "colors-surface-dark-elevated": string;
+  "colors-surface-dark-overlay": string;
+  "colors-background-light-primary": string;
+  "colors-background-light-secondary": string;
+  "colors-background-light-tertiary": string;
+  "colors-background-light-inverse": string;
+  "colors-background-dark-primary": string;
+  "colors-background-dark-secondary": string;
+  "colors-background-dark-tertiary": string;
+  "colors-background-dark-inverse": string;
+  "colors-ok-light-50": string;
+  "colors-ok-light-100": string;
+  "colors-ok-light-200": string;
+  "colors-ok-light-300": string;
+  "colors-ok-light-400": string;
+  "colors-ok-light-500": string;
+  "colors-ok-light-600": string;
+  "colors-ok-light-700": string;
+  "colors-ok-light-800": string;
+  "colors-ok-light-900": string;
+  "colors-ok-light-950": string;
+  "colors-ok-dark-50": string;
+  "colors-ok-dark-100": string;
+  "colors-ok-dark-200": string;
+  "colors-ok-dark-300": string;
+  "colors-ok-dark-400": string;
+  "colors-ok-dark-500": string;
+  "colors-ok-dark-600": string;
+  "colors-ok-dark-700": string;
+  "colors-ok-dark-800": string;
+  "colors-ok-dark-900": string;
+  "colors-ok-dark-950": string;
+  "colors-warn-light-50": string;
+  "colors-warn-light-100": string;
+  "colors-warn-light-200": string;
+  "colors-warn-light-300": string;
+  "colors-warn-light-400": string;
+  "colors-warn-light-500": string;
+  "colors-warn-light-600": string;
+  "colors-warn-light-700": string;
+  "colors-warn-light-800": string;
+  "colors-warn-light-900": string;
+  "colors-warn-light-950": string;
+  "colors-warn-dark-50": string;
+  "colors-warn-dark-100": string;
+  "colors-warn-dark-200": string;
+  "colors-warn-dark-300": string;
+  "colors-warn-dark-400": string;
+  "colors-warn-dark-500": string;
+  "colors-warn-dark-600": string;
+  "colors-warn-dark-700": string;
+  "colors-warn-dark-800": string;
+  "colors-warn-dark-900": string;
+  "colors-warn-dark-950": string;
+  "colors-error-light-50": string;
+  "colors-error-light-100": string;
+  "colors-error-light-200": string;
+  "colors-error-light-300": string;
+  "colors-error-light-400": string;
+  "colors-error-light-500": string;
+  "colors-error-light-600": string;
+  "colors-error-light-700": string;
+  "colors-error-light-800": string;
+  "colors-error-light-900": string;
+  "colors-error-light-950": string;
+  "colors-error-dark-50": string;
+  "colors-error-dark-100": string;
+  "colors-error-dark-200": string;
+  "colors-error-dark-300": string;
+  "colors-error-dark-400": string;
+  "colors-error-dark-500": string;
+  "colors-error-dark-600": string;
+  "colors-error-dark-700": string;
+  "colors-error-dark-800": string;
+  "colors-error-dark-900": string;
+  "colors-error-dark-950": string;
+  "typography-font-sizes-xs": string;
+  "typography-font-sizes-sm": string;
+  "typography-font-sizes-base": string;
+  "typography-font-sizes-lg": string;
+  "typography-font-sizes-xl": string;
+  "typography-font-sizes-2xl": string;
+  "typography-font-sizes-3xl": string;
+  "typography-font-sizes-4xl": string;
+  "typography-font-sizes-5xl": string;
+  "typography-font-sizes-6xl": string;
+  "typography-font-sizes-7xl": string;
+  "typography-font-sizes-8xl": string;
+  "typography-font-sizes-9xl": string;
+  "typography-font-weights-thin": number;
+  "typography-font-weights-extralight": number;
+  "typography-font-weights-light": number;
+  "typography-font-weights-normal": number;
+  "typography-font-weights-medium": number;
+  "typography-font-weights-semibold": number;
+  "typography-font-weights-bold": number;
+  "typography-font-weights-extrabold": number;
+  "typography-font-weights-black": number;
+  "typography-line-heights-none": number;
+  "typography-line-heights-tight": number;
+  "typography-line-heights-snug": number;
+  "typography-line-heights-normal": number;
+  "typography-line-heights-relaxed": number;
+  "typography-line-heights-loose": number;
+  "typography-letter-spacing-tighter": string;
+  "typography-letter-spacing-tight": string;
+  "typography-letter-spacing-normal": string;
+  "typography-letter-spacing-wide": string;
+  "typography-letter-spacing-wider": string;
+  "typography-letter-spacing-widest": string;
+  "spacing-0": string;
+  "spacing-1": string;
+  "spacing-2": string;
+  "spacing-3": string;
+  "spacing-4": string;
+  "spacing-5": string;
+  "spacing-6": string;
+  "spacing-7": string;
+  "spacing-8": string;
+  "spacing-9": string;
+  "spacing-10": string;
+  "spacing-11": string;
+  "spacing-12": string;
+  "spacing-14": string;
+  "spacing-16": string;
+  "spacing-20": string;
+  "spacing-24": string;
+  "spacing-28": string;
+  "spacing-32": string;
+  "spacing-36": string;
+  "spacing-40": string;
+  "spacing-44": string;
+  "spacing-48": string;
+  "spacing-52": string;
+  "spacing-56": string;
+  "spacing-60": string;
+  "spacing-64": string;
+  "spacing-72": string;
+  "spacing-80": string;
+  "spacing-96": string;
+  "spacing-px": string;
+  "spacing-0.5": string;
+  "spacing-1.5": string;
+  "spacing-2.5": string;
+  "spacing-3.5": string;
+  "radius-none": string;
+  "radius-sm": string;
+  "radius-base": string;
+  "radius-md": string;
+  "radius-lg": string;
+  "radius-xl": string;
+  "radius-2xl": string;
+  "radius-3xl": string;
+  "radius-full": string;
+  "elevation-0-shadow": string;
+  "elevation-0-description": string;
+  "elevation-1-shadow": string;
+  "elevation-1-description": string;
+  "elevation-2-shadow": string;
+  "elevation-2-description": string;
+  "elevation-3-shadow": string;
+  "elevation-3-description": string;
+  "elevation-4-shadow": string;
+  "elevation-4-description": string;
+  "elevation-5-shadow": string;
+  "elevation-5-description": string;
+  "motion-durations-instant": string;
+  "motion-durations-fast": string;
+  "motion-durations-normal": string;
+  "motion-durations-slow": string;
+  "motion-durations-slower": string;
+  "motion-durations-slowest": string;
+  "motion-curves-linear": string;
+  "motion-curves-standard": string;
+  "motion-curves-ease-in": string;
+  "motion-curves-ease-out": string;
+  "motion-curves-ease-in-out": string;
+  "motion-curves-ease-in-back": string;
+  "motion-curves-ease-out-back": string;
+  "motion-curves-ease-in-out-back": string;
+  "motion-transitions-fast": string;
+  "motion-transitions-normal": string;
+  "motion-transitions-slow": string;
+  "motion-transitions-color": string;
+  "motion-transitions-transform": string;
+  "motion-transitions-opacity": string;
+  "breakpoints-xs": string;
+  "breakpoints-sm": string;
+  "breakpoints-md": string;
+  "breakpoints-lg": string;
+  "breakpoints-xl": string;
+  "breakpoints-2xl": string;
+  "z-index-hide": number;
+  "z-index-auto": string;
+  "z-index-base": number;
+  "z-index-docked": number;
+  "z-index-dropdown": number;
+  "z-index-sticky": number;
+  "z-index-banner": number;
+  "z-index-overlay": number;
+  "z-index-modal": number;
+  "z-index-popover": number;
+  "z-index-skip-link": number;
+  "z-index-toast": number;
+  "z-index-tooltip": number;
+  "components-button-height-sm": string;
+  "components-button-height-md": string;
+  "components-button-height-lg": string;
+  "components-button-padding-sm": string;
+  "components-button-padding-md": string;
+  "components-button-padding-lg": string;
+  "components-button-border-radius": string;
+  "components-input-height-sm": string;
+  "components-input-height-md": string;
+  "components-input-height-lg": string;
+  "components-input-padding": string;
+  "components-input-border-radius": string;
+  "components-input-border-width": string;
+  "components-card-padding": string;
+  "components-card-border-radius": string;
+  "components-card-border-width": string;
+  "components-modal-border-radius": string;
+  "components-modal-max-width": string;
+  "components-modal-padding": string;
+  "semantic-colors-text-primary": string;
+  "semantic-colors-text-secondary": string;
+  "semantic-colors-text-tertiary": string;
+  "semantic-colors-text-inverse": string;
+  "semantic-colors-background-primary": string;
+  "semantic-colors-background-secondary": string;
+  "semantic-colors-background-tertiary": string;
+  "semantic-colors-border-primary": string;
+  "semantic-colors-border-secondary": string;
+  "semantic-colors-status-success": string;
+  "semantic-colors-status-warning": string;
+  "semantic-colors-status-error": string;
+  "semantic-colors-status-info": string;
+}
+
+export const tokens: DesignTokens = {
+  "metadata-name": "Aetheris OS Design Tokens",
+  "metadata-version": "1.0.0",
+  "metadata-description": "Design tokens for Aetheris OS user interface components",
+  "metadata-last-modified": "2024-01-01T00:00:00Z",
+  "colors-primary-light-50": "#f0f9ff",
+  "colors-primary-light-100": "#e0f2fe",
+  "colors-primary-light-200": "#bae6fd",
+  "colors-primary-light-300": "#7dd3fc",
+  "colors-primary-light-400": "#38bdf8",
+  "colors-primary-light-500": "#0ea5e9",
+  "colors-primary-light-600": "#0284c7",
+  "colors-primary-light-700": "#0369a1",
+  "colors-primary-light-800": "#075985",
+  "colors-primary-light-900": "#0c4a6e",
+  "colors-primary-light-950": "#082f49",
+  "colors-primary-dark-50": "#082f49",
+  "colors-primary-dark-100": "#0c4a6e",
+  "colors-primary-dark-200": "#075985",
+  "colors-primary-dark-300": "#0369a1",
+  "colors-primary-dark-400": "#0284c7",
+  "colors-primary-dark-500": "#0ea5e9",
+  "colors-primary-dark-600": "#38bdf8",
+  "colors-primary-dark-700": "#7dd3fc",
+  "colors-primary-dark-800": "#bae6fd",
+  "colors-primary-dark-900": "#e0f2fe",
+  "colors-primary-dark-950": "#f0f9ff",
+  "colors-secondary-light-50": "#fafafa",
+  "colors-secondary-light-100": "#f4f4f5",
+  "colors-secondary-light-200": "#e4e4e7",
+  "colors-secondary-light-300": "#d4d4d8",
+  "colors-secondary-light-400": "#a1a1aa",
+  "colors-secondary-light-500": "#71717a",
+  "colors-secondary-light-600": "#52525b",
+  "colors-secondary-light-700": "#3f3f46",
+  "colors-secondary-light-800": "#27272a",
+  "colors-secondary-light-900": "#18181b",
+  "colors-secondary-light-950": "#09090b",
+  "colors-secondary-dark-50": "#09090b",
+  "colors-secondary-dark-100": "#18181b",
+  "colors-secondary-dark-200": "#27272a",
+  "colors-secondary-dark-300": "#3f3f46",
+  "colors-secondary-dark-400": "#52525b",
+  "colors-secondary-dark-500": "#71717a",
+  "colors-secondary-dark-600": "#a1a1aa",
+  "colors-secondary-dark-700": "#d4d4d8",
+  "colors-secondary-dark-800": "#e4e4e7",
+  "colors-secondary-dark-900": "#f4f4f5",
+  "colors-secondary-dark-950": "#fafafa",
+  "colors-surface-light-primary": "#ffffff",
+  "colors-surface-light-secondary": "#f8fafc",
+  "colors-surface-light-tertiary": "#f1f5f9",
+  "colors-surface-light-elevated": "#ffffff",
+  "colors-surface-light-overlay": "rgba(0, 0, 0, 0.5)",
+  "colors-surface-dark-primary": "#0f172a",
+  "colors-surface-dark-secondary": "#1e293b",
+  "colors-surface-dark-tertiary": "#334155",
+  "colors-surface-dark-elevated": "#1e293b",
+  "colors-surface-dark-overlay": "rgba(0, 0, 0, 0.7)",
+  "colors-background-light-primary": "#ffffff",
+  "colors-background-light-secondary": "#f8fafc",
+  "colors-background-light-tertiary": "#f1f5f9",
+  "colors-background-light-inverse": "#0f172a",
+  "colors-background-dark-primary": "#0f172a",
+  "colors-background-dark-secondary": "#1e293b",
+  "colors-background-dark-tertiary": "#334155",
+  "colors-background-dark-inverse": "#ffffff",
+  "colors-ok-light-50": "#f0fdf4",
+  "colors-ok-light-100": "#dcfce7",
+  "colors-ok-light-200": "#bbf7d0",
+  "colors-ok-light-300": "#86efac",
+  "colors-ok-light-400": "#4ade80",
+  "colors-ok-light-500": "#22c55e",
+  "colors-ok-light-600": "#16a34a",
+  "colors-ok-light-700": "#15803d",
+  "colors-ok-light-800": "#166534",
+  "colors-ok-light-900": "#14532d",
+  "colors-ok-light-950": "#052e16",
+  "colors-ok-dark-50": "#052e16",
+  "colors-ok-dark-100": "#14532d",
+  "colors-ok-dark-200": "#166534",
+  "colors-ok-dark-300": "#15803d",
+  "colors-ok-dark-400": "#16a34a",
+  "colors-ok-dark-500": "#22c55e",
+  "colors-ok-dark-600": "#4ade80",
+  "colors-ok-dark-700": "#86efac",
+  "colors-ok-dark-800": "#bbf7d0",
+  "colors-ok-dark-900": "#dcfce7",
+  "colors-ok-dark-950": "#f0fdf4",
+  "colors-warn-light-50": "#fffbeb",
+  "colors-warn-light-100": "#fef3c7",
+  "colors-warn-light-200": "#fde68a",
+  "colors-warn-light-300": "#fcd34d",
+  "colors-warn-light-400": "#fbbf24",
+  "colors-warn-light-500": "#f59e0b",
+  "colors-warn-light-600": "#d97706",
+  "colors-warn-light-700": "#b45309",
+  "colors-warn-light-800": "#92400e",
+  "colors-warn-light-900": "#78350f",
+  "colors-warn-light-950": "#451a03",
+  "colors-warn-dark-50": "#451a03",
+  "colors-warn-dark-100": "#78350f",
+  "colors-warn-dark-200": "#92400e",
+  "colors-warn-dark-300": "#b45309",
+  "colors-warn-dark-400": "#d97706",
+  "colors-warn-dark-500": "#f59e0b",
+  "colors-warn-dark-600": "#fbbf24",
+  "colors-warn-dark-700": "#fcd34d",
+  "colors-warn-dark-800": "#fde68a",
+  "colors-warn-dark-900": "#fef3c7",
+  "colors-warn-dark-950": "#fffbeb",
+  "colors-error-light-50": "#fef2f2",
+  "colors-error-light-100": "#fee2e2",
+  "colors-error-light-200": "#fecaca",
+  "colors-error-light-300": "#fca5a5",
+  "colors-error-light-400": "#f87171",
+  "colors-error-light-500": "#ef4444",
+  "colors-error-light-600": "#dc2626",
+  "colors-error-light-700": "#b91c1c",
+  "colors-error-light-800": "#991b1b",
+  "colors-error-light-900": "#7f1d1d",
+  "colors-error-light-950": "#450a0a",
+  "colors-error-dark-50": "#450a0a",
+  "colors-error-dark-100": "#7f1d1d",
+  "colors-error-dark-200": "#991b1b",
+  "colors-error-dark-300": "#b91c1c",
+  "colors-error-dark-400": "#dc2626",
+  "colors-error-dark-500": "#ef4444",
+  "colors-error-dark-600": "#f87171",
+  "colors-error-dark-700": "#fca5a5",
+  "colors-error-dark-800": "#fecaca",
+  "colors-error-dark-900": "#fee2e2",
+  "colors-error-dark-950": "#fef2f2",
+  "typography-font-sizes-xs": "0.75rem",
+  "typography-font-sizes-sm": "0.875rem",
+  "typography-font-sizes-base": "1rem",
+  "typography-font-sizes-lg": "1.125rem",
+  "typography-font-sizes-xl": "1.25rem",
+  "typography-font-sizes-2xl": "1.5rem",
+  "typography-font-sizes-3xl": "1.875rem",
+  "typography-font-sizes-4xl": "2.25rem",
+  "typography-font-sizes-5xl": "3rem",
+  "typography-font-sizes-6xl": "3.75rem",
+  "typography-font-sizes-7xl": "4.5rem",
+  "typography-font-sizes-8xl": "6rem",
+  "typography-font-sizes-9xl": "8rem",
+  "typography-font-weights-thin": 100,
+  "typography-font-weights-extralight": 200,
+  "typography-font-weights-light": 300,
+  "typography-font-weights-normal": 400,
+  "typography-font-weights-medium": 500,
+  "typography-font-weights-semibold": 600,
+  "typography-font-weights-bold": 700,
+  "typography-font-weights-extrabold": 800,
+  "typography-font-weights-black": 900,
+  "typography-line-heights-none": 1,
+  "typography-line-heights-tight": 1.25,
+  "typography-line-heights-snug": 1.375,
+  "typography-line-heights-normal": 1.5,
+  "typography-line-heights-relaxed": 1.625,
+  "typography-line-heights-loose": 2,
+  "typography-letter-spacing-tighter": "-0.05em",
+  "typography-letter-spacing-tight": "-0.025em",
+  "typography-letter-spacing-normal": "0em",
+  "typography-letter-spacing-wide": "0.025em",
+  "typography-letter-spacing-wider": "0.05em",
+  "typography-letter-spacing-widest": "0.1em",
+  "spacing-0": "0",
+  "spacing-1": "0.25rem",
+  "spacing-2": "0.5rem",
+  "spacing-3": "0.75rem",
+  "spacing-4": "1rem",
+  "spacing-5": "1.25rem",
+  "spacing-6": "1.5rem",
+  "spacing-7": "1.75rem",
+  "spacing-8": "2rem",
+  "spacing-9": "2.25rem",
+  "spacing-10": "2.5rem",
+  "spacing-11": "2.75rem",
+  "spacing-12": "3rem",
+  "spacing-14": "3.5rem",
+  "spacing-16": "4rem",
+  "spacing-20": "5rem",
+  "spacing-24": "6rem",
+  "spacing-28": "7rem",
+  "spacing-32": "8rem",
+  "spacing-36": "9rem",
+  "spacing-40": "10rem",
+  "spacing-44": "11rem",
+  "spacing-48": "12rem",
+  "spacing-52": "13rem",
+  "spacing-56": "14rem",
+  "spacing-60": "15rem",
+  "spacing-64": "16rem",
+  "spacing-72": "18rem",
+  "spacing-80": "20rem",
+  "spacing-96": "24rem",
+  "spacing-px": "1px",
+  "spacing-0.5": "0.125rem",
+  "spacing-1.5": "0.375rem",
+  "spacing-2.5": "0.625rem",
+  "spacing-3.5": "0.875rem",
+  "radius-none": "0",
+  "radius-sm": "0.125rem",
+  "radius-base": "0.25rem",
+  "radius-md": "0.375rem",
+  "radius-lg": "0.5rem",
+  "radius-xl": "0.75rem",
+  "radius-2xl": "1rem",
+  "radius-3xl": "1.5rem",
+  "radius-full": "9999px",
+  "elevation-0-shadow": "none",
+  "elevation-0-description": "No elevation",
+  "elevation-1-shadow": "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+  "elevation-1-description": "Subtle elevation",
+  "elevation-2-shadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)",
+  "elevation-2-description": "Low elevation",
+  "elevation-3-shadow": "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+  "elevation-3-description": "Medium elevation",
+  "elevation-4-shadow": "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+  "elevation-4-description": "High elevation",
+  "elevation-5-shadow": "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+  "elevation-5-description": "Maximum elevation",
+  "motion-durations-instant": "0ms",
+  "motion-durations-fast": "100ms",
+  "motion-durations-normal": "200ms",
+  "motion-durations-slow": "300ms",
+  "motion-durations-slower": "400ms",
+  "motion-durations-slowest": "500ms",
+  "motion-curves-linear": "linear",
+  "motion-curves-standard": "cubic-bezier(0.4, 0, 0.2, 1)",
+  "motion-curves-ease-in": "cubic-bezier(0.4, 0, 1, 1)",
+  "motion-curves-ease-out": "cubic-bezier(0, 0, 0.2, 1)",
+  "motion-curves-ease-in-out": "cubic-bezier(0.4, 0, 0.2, 1)",
+  "motion-curves-ease-in-back": "cubic-bezier(0.36, 0, 0.66, -0.56)",
+  "motion-curves-ease-out-back": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+  "motion-curves-ease-in-out-back": "cubic-bezier(0.68, -0.6, 0.32, 1.6)",
+  "motion-transitions-fast": "all 100ms cubic-bezier(0.4, 0, 0.2, 1)",
+  "motion-transitions-normal": "all 200ms cubic-bezier(0.4, 0, 0.2, 1)",
+  "motion-transitions-slow": "all 300ms cubic-bezier(0.4, 0, 0.2, 1)",
+  "motion-transitions-color": "color 200ms cubic-bezier(0.4, 0, 0.2, 1)",
+  "motion-transitions-transform": "transform 200ms cubic-bezier(0.4, 0, 0.2, 1)",
+  "motion-transitions-opacity": "opacity 200ms cubic-bezier(0.4, 0, 0.2, 1)",
+  "breakpoints-xs": "0px",
+  "breakpoints-sm": "640px",
+  "breakpoints-md": "768px",
+  "breakpoints-lg": "1024px",
+  "breakpoints-xl": "1280px",
+  "breakpoints-2xl": "1536px",
+  "z-index-hide": -1,
+  "z-index-auto": "auto",
+  "z-index-base": 0,
+  "z-index-docked": 10,
+  "z-index-dropdown": 1000,
+  "z-index-sticky": 1100,
+  "z-index-banner": 1200,
+  "z-index-overlay": 1300,
+  "z-index-modal": 1400,
+  "z-index-popover": 1500,
+  "z-index-skip-link": 1600,
+  "z-index-toast": 1700,
+  "z-index-tooltip": 1800,
+  "components-button-height-sm": "2rem",
+  "components-button-height-md": "2.5rem",
+  "components-button-height-lg": "3rem",
+  "components-button-padding-sm": "0.5rem 0.75rem",
+  "components-button-padding-md": "0.75rem 1rem",
+  "components-button-padding-lg": "1rem 1.5rem",
+  "components-button-border-radius": "0.375rem",
+  "components-input-height-sm": "2rem",
+  "components-input-height-md": "2.5rem",
+  "components-input-height-lg": "3rem",
+  "components-input-padding": "0.75rem 1rem",
+  "components-input-border-radius": "0.375rem",
+  "components-input-border-width": "1px",
+  "components-card-padding": "1.5rem",
+  "components-card-border-radius": "0.5rem",
+  "components-card-border-width": "1px",
+  "components-modal-border-radius": "0.75rem",
+  "components-modal-max-width": "32rem",
+  "components-modal-padding": "1.5rem",
+  "semantic-colors-text-primary": "{colors.primary.light.900}",
+  "semantic-colors-text-secondary": "{colors.secondary.light.600}",
+  "semantic-colors-text-tertiary": "{colors.secondary.light.500}",
+  "semantic-colors-text-inverse": "{colors.background.light.primary}",
+  "semantic-colors-background-primary": "{colors.background.light.primary}",
+  "semantic-colors-background-secondary": "{colors.background.light.secondary}",
+  "semantic-colors-background-tertiary": "{colors.background.light.tertiary}",
+  "semantic-colors-border-primary": "{colors.secondary.light.200}",
+  "semantic-colors-border-secondary": "{colors.secondary.light.100}",
+  "semantic-colors-status-success": "{colors.ok.light.500}",
+  "semantic-colors-status-warning": "{colors.warn.light.500}",
+  "semantic-colors-status-error": "{colors.error.light.500}",
+  "semantic-colors-status-info": "{colors.primary.light.500}",
+};
+
+/**
+ * Get a design token value
+ */
+export function getToken(key: keyof DesignTokens): string | number {
+  return tokens[key];
+}
+
+/**
+ * Get a CSS custom property name for a token
+ */
+export function getCSSVar(key: keyof DesignTokens): string {
+  return `var(--${key})`;
+}
+
+export const metadata = {
+  name: "Aetheris OS Design Tokens",
+  version: "1.0.0",
+  description: "Design tokens for Aetheris OS user interface components",
+  lastModified: "2024-01-01T00:00:00Z",
+  generated: "2025-09-07T17:01:53.022Z",
+};

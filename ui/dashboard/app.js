@@ -39,6 +39,23 @@ function aiMetrics() {
   };
 }
 
+function kernelMetrics() {
+  return window.POLYMERA_KERNEL_METRICS || {
+    kernel_ticks: 0,
+    kernel_active_processes: 0,
+    kernel_syscalls_total: 0,
+    kernel_ipc_total: 0,
+    kernel_context_switches_total: 0,
+    kernel_security_checks_total: 0,
+    source: 'unavailable',
+    updated_at_unix: 0,
+  };
+}
+
+function hasRealKernelMetrics(metrics) {
+  return metrics && metrics.source === 'qemu-serial';
+}
+
 const SERVICES = [
   { name: 'kernel', priority: 'KERNEL', state: 'RUNNING', cpu: 2.1, mem: 32768 },
   { name: 'init', priority: 'HIGH', state: 'RUNNING', cpu: 0.3, mem: 8192 },
@@ -303,22 +320,22 @@ function update() {
 
   // Push history
   const pushH = (arr, val) => { arr.push(val); if (arr.length > 30) arr.shift(); };
-  pushH(kernel.history.processes, kernel.processes.length);
-  const metrics = aiMetrics();
-  const aiLogSummaries = metrics.ai_log_summaries_total || 0;
-  const aiPlansGenerated = metrics.ai_plans_generated_total || 0;
-  const aiBrowserSummaries = metrics.ai_browser_summaries_total || 0;
-  const aiCapabilityDenials = metrics.ai_capability_denials_total || 0;
-  const aiHegPlans = metrics.ai_heg_plans_total || 0;
-  const aiHegDdrPressure = metrics.ai_heg_ddr_pressure_score || 0;
-  const aiModelAttempts = metrics.ai_runtime_model_attempts_total || 0;
-  const aiModelTokens = metrics.ai_runtime_model_tokens_total || 0;
-  const aiModelLatency = metrics.ai_runtime_model_last_latency_ms || 0;
-  pushH(kernel.history.syscalls, aiBrowserSummaries);
-  pushH(kernel.history.ipc, aiCapabilityDenials);
-  pushH(kernel.history.memory, aiHegDdrPressure || Math.round(kernel.memory.user));
-  pushH(kernel.history.crypto, aiModelAttempts || aiPlansGenerated);
-  pushH(kernel.history.ticks, aiHegPlans || aiLogSummaries);
+  const kmetrics = kernelMetrics();
+  const realKernel = hasRealKernelMetrics(kmetrics);
+
+  const activeProcesses = realKernel ? kmetrics.kernel_active_processes : kernel.processes.length;
+  const kernelSyscalls = realKernel ? kmetrics.kernel_syscalls_total : kernel.syscalls;
+  const kernelIpc = realKernel ? kmetrics.kernel_ipc_total : kernel.ipcRouted;
+  const kernelCtxSwitches = realKernel ? kmetrics.kernel_context_switches_total : 0;
+  const kernelSecurityChecks = realKernel ? kmetrics.kernel_security_checks_total : 0;
+  const kernelTicks = realKernel ? kmetrics.kernel_ticks : kernel.ticks;
+
+  pushH(kernel.history.processes, activeProcesses);
+  pushH(kernel.history.syscalls, kernelSyscalls);
+  pushH(kernel.history.ipc, kernelIpc);
+  pushH(kernel.history.memory, kernelCtxSwitches);
+  pushH(kernel.history.crypto, kernelSecurityChecks);
+  pushH(kernel.history.ticks, kernelTicks);
 
   // Periodic log entries
   if (kernel.ticks % 20 === 0) klog('INFO', `Tick ${kernel.ticks}: ${kernel.processes.length} processes, ${newSyscalls} syscalls/tick`);
@@ -326,12 +343,12 @@ function update() {
   if (kernel.ticks % 70 === 0) klog('INFO', `PQC: ${kernel.crypto.dilSigns} signatures, ${kernel.crypto.kyberEncaps} encapsulations`);
 
   // ── Update DOM ──
-  document.getElementById('metric-processes').textContent = kernel.processes.length;
-  document.getElementById('metric-syscalls').textContent = (metrics.ai_runtime_backend_executions_total || aiBrowserSummaries).toLocaleString();
-  document.getElementById('metric-ipc').textContent = (aiModelTokens || metrics.ai_runtime_local_tokens_total || aiCapabilityDenials).toLocaleString();
-  document.getElementById('metric-memory').textContent = (aiModelLatency || metrics.ai_runtime_backend_last_latency_ms || 0) + ' ms';
-  document.getElementById('metric-crypto').textContent = (aiModelAttempts || aiPlansGenerated).toLocaleString();
-  document.getElementById('metric-ticks').textContent = aiHegPlans.toLocaleString();
+  document.getElementById('metric-processes').textContent = activeProcesses.toLocaleString();
+  document.getElementById('metric-syscalls').textContent = kernelSyscalls.toLocaleString();
+  document.getElementById('metric-ipc').textContent = kernelIpc.toLocaleString();
+  document.getElementById('metric-memory').textContent = kernelCtxSwitches.toLocaleString();
+  document.getElementById('metric-crypto').textContent = kernelSecurityChecks.toLocaleString();
+  document.getElementById('metric-ticks').textContent = kernelTicks.toLocaleString();
 
   drawSparkline('spark-processes', kernel.history.processes, '#22c55e');
   drawSparkline('spark-syscalls', kernel.history.syscalls, '#06b6d4');

@@ -16,6 +16,41 @@ use crate::privacy::PrivacyEngine;
 use crate::replay::ReplayRecorder;
 use crate::tools::{ToolRegistry, ToolResult};
 
+/// A suspend-interrupt signal (Track 2.3).  When the executor encounters this,
+/// it persists the current task state and returns `Err(SuspendInterrupt)` up the
+/// call stack.  The CLI `resume-task <id>` command can resume from the saved state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SuspendInterrupt {
+    pub task_id: String,
+    pub pending_step_id: String,
+    pub completed_steps: Vec<String>,
+    pub state_path: std::path::PathBuf,
+}
+
+impl std::fmt::Display for SuspendInterrupt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "task {} suspended at step {}, state persisted to {}",
+            self.task_id,
+            self.pending_step_id,
+            self.state_path.display()
+        )
+    }
+}
+
+impl std::error::Error for SuspendInterrupt {}
+
+/// Serializable snapshot of a task's execution state for suspend/resume.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistedTaskState {
+    pub plan: TaskPlan,
+    pub completed_step_ids: Vec<String>,
+    pub cached_results: HashMap<String, ToolResult>,
+    pub user_context: SystemActionContext,
+    pub suspended_at_step: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum StepState {
     Pending,
@@ -253,7 +288,11 @@ impl StepExecutor {
         };
 
         let result = self.tool_registry.execute_tool(&request).await;
-        let _ = self.budget_engine.release(&budget_request_id).await;
+        let tool_success = result.as_ref().map(|r| r.success).unwrap_or(false);
+        let _ = self
+            .budget_engine
+            .release_or_refund(&budget_request_id, tool_success)
+            .await;
         let result = result?;
 
         self.replay_recorder
@@ -272,6 +311,112 @@ impl StepExecutor {
         context.completed_at = Some(SystemTime::now());
         context.result = Some(result.clone());
         Ok(result)
+    }
+
+    /// Resume a previously suspended task.  Cached results from the persisted
+    /// state are replayed without re-executing the tool; only the step that was
+    /// suspended at (and any remaining steps) execute live.
+    pub async fn resume_task(
+        &self,
+        persisted: PersistedTaskState,
+    ) -> Result<Vec<StepExecutionContext>> {
+        let mut state = self.initialize_execution_state(
+            persisted.plan.clone(),
+            persisted.user_context.clone(),
+        );
+        let execution_order = self.topological_sort(&state.plan.steps)?;
+
+        for step_id in execution_order {
+            let step = state
+                .plan
+                .steps
+                .iter()
+                .find(|s| s.step_id == step_id)
+                .cloned()
+                .ok_or_else(|| {
+                    AiCoreError::InvalidInput(format!("Step not found: {}", step_id))
+                })?;
+
+            state.current_step_id = Some(step_id.clone());
+
+            // Fast-forward: if the step was already completed, replay cached result.
+            if let Some(cached) = persisted.cached_results.get(&step_id) {
+                let context = state.step_contexts.get_mut(&step_id).unwrap();
+                context.state = StepState::Completed;
+                context.result = Some(cached.clone());
+                state.completed_steps += 1;
+                continue;
+            }
+
+            // Live execution from here
+            match self.execute_step(step, &mut state).await {
+                Ok(_) => {
+                    state.completed_steps += 1;
+                }
+                Err(e) => {
+                    state.failed_steps += 1;
+                    eprintln!("Step {} failed: {}", step_id, e);
+                    return Err(e);
+                }
+            }
+        }
+
+        state.completed_at = Some(SystemTime::now());
+        Ok(state.step_contexts.values().cloned().collect())
+    }
+
+    /// Persist the current execution state to disk for later resume.
+    pub fn persist_state(
+        plan: &TaskPlan,
+        completed: &HashMap<String, StepExecutionContext>,
+        suspended_step: &str,
+        user_context: &SystemActionContext,
+    ) -> std::io::Result<std::path::PathBuf> {
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_else(|_| ".".to_string());
+        let state_dir = std::path::PathBuf::from(home)
+            .join(".polymera")
+            .join("tasks")
+            .join(&plan.plan_id);
+        std::fs::create_dir_all(&state_dir)?;
+
+        let cached_results: HashMap<String, ToolResult> = completed
+            .iter()
+            .filter(|(_, ctx)| ctx.state == StepState::Completed)
+            .filter_map(|(id, ctx)| ctx.result.clone().map(|r| (id.clone(), r)))
+            .collect();
+
+        let persisted = PersistedTaskState {
+            plan: plan.clone(),
+            completed_step_ids: cached_results.keys().cloned().collect(),
+            cached_results,
+            user_context: user_context.clone(),
+            suspended_at_step: suspended_step.to_string(),
+        };
+
+        let path = state_dir.join("state.json");
+        let json = serde_json::to_string_pretty(&persisted)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        std::fs::write(&path, json)?;
+        Ok(path)
+    }
+
+    /// Load persisted state from a task directory.
+    pub fn load_persisted_state(
+        plan_id: &str,
+    ) -> std::io::Result<PersistedTaskState> {
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_else(|_| ".".to_string());
+        let path = std::path::PathBuf::from(home)
+            .join(".polymera")
+            .join("tasks")
+            .join(plan_id)
+            .join("state.json");
+        let json = std::fs::read_to_string(&path)?;
+        serde_json::from_str(&json)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
 
     fn topological_sort(&self, steps: &[TaskStep]) -> Result<Vec<String>> {

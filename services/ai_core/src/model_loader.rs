@@ -53,7 +53,12 @@ impl SecureModelLoader {
         }
     }
 
-    pub async fn load(&self, manifest: ModelManifest, actor: &str, trace_id: Option<String>) -> Result<VerificationResult> {
+    pub async fn load(
+        &self,
+        manifest: ModelManifest,
+        actor: &str,
+        trace_id: Option<String>,
+    ) -> Result<VerificationResult> {
         let verification = self.verify(&manifest).await?;
         let allowed = verification.is_allowed();
 
@@ -102,7 +107,10 @@ impl SecureModelLoader {
                 if actual.eq_ignore_ascii_case(&manifest.sha256) {
                     true
                 } else {
-                    errors.push(format!("hash mismatch: expected {}, got {}", manifest.sha256, actual));
+                    errors.push(format!(
+                        "hash mismatch: expected {}, got {}",
+                        manifest.sha256, actual
+                    ));
                     false
                 }
             }
@@ -115,10 +123,9 @@ impl SecureModelLoader {
         let signature_verified = self.verify_signatures(manifest).map_err(|error| {
             AiCoreError::AuthorizationError(format!("signature verification failed: {}", error))
         })?;
-        if !signature_verified
-            && self.policy.require_signature {
-                errors.push("no trusted signature verified".to_string());
-            }
+        if !signature_verified && self.policy.require_signature {
+            errors.push("no trusted signature verified".to_string());
+        }
 
         let policy_allowed = self.policy_allows(manifest, &mut errors);
 
@@ -139,7 +146,12 @@ impl SecureModelLoader {
                 action: "model.unload".to_string(),
                 subject: model_id.to_string(),
                 allowed: removed,
-                reason: if removed { "model unloaded" } else { "model not loaded" }.to_string(),
+                reason: if removed {
+                    "model unloaded"
+                } else {
+                    "model not loaded"
+                }
+                .to_string(),
                 timestamp_90khz: timestamp_90khz(),
                 trace_id: None,
                 metadata: HashMap::new(),
@@ -178,9 +190,9 @@ impl SecureModelLoader {
             )));
         }
 
-        tokio::fs::read(path)
-            .await
-            .map_err(|error| AiCoreError::ModelError(format!("cannot read model {}: {}", manifest.path, error)))
+        tokio::fs::read(path).await.map_err(|error| {
+            AiCoreError::ModelError(format!("cannot read model {}: {}", manifest.path, error))
+        })
     }
 
     fn verify_signatures(&self, manifest: &ModelManifest) -> std::result::Result<bool, String> {
@@ -227,11 +239,15 @@ impl SecureModelLoader {
         let public_key: [u8; 32] = public_key
             .try_into()
             .map_err(|_| "ed25519 public key must be 32 bytes".to_string())?;
-        let verifying_key = VerifyingKey::from_bytes(&public_key).map_err(|error| error.to_string())?;
-        let signature = Ed25519Signature::from_slice(&signature_bytes).map_err(|error| error.to_string())?;
+        let verifying_key =
+            VerifyingKey::from_bytes(&public_key).map_err(|error| error.to_string())?;
+        let signature =
+            Ed25519Signature::from_slice(&signature_bytes).map_err(|error| error.to_string())?;
 
         let signed_payload = self.signature_payload(manifest);
-        Ok(verifying_key.verify(signed_payload.as_bytes(), &signature).is_ok())
+        Ok(verifying_key
+            .verify(signed_payload.as_bytes(), &signature)
+            .is_ok())
     }
 
     fn verify_ecdsa_p256_sha256(
@@ -246,20 +262,26 @@ impl SecureModelLoader {
             .decode(&signature.signature_b64)
             .map_err(|error| error.to_string())?;
 
-        let verifying_key = EcdsaVerifyingKey::from_sec1_bytes(&public_key)
-            .map_err(|error| error.to_string())?;
+        let verifying_key =
+            EcdsaVerifyingKey::from_sec1_bytes(&public_key).map_err(|error| error.to_string())?;
         let signature = EcdsaSignature::from_der(&signature_bytes)
             .or_else(|_| EcdsaSignature::try_from(signature_bytes.as_slice()))
             .map_err(|error| error.to_string())?;
 
         let signed_payload = self.signature_payload(manifest);
-        Ok(verifying_key.verify(signed_payload.as_bytes(), &signature).is_ok())
+        Ok(verifying_key
+            .verify(signed_payload.as_bytes(), &signature)
+            .is_ok())
     }
 
     fn signature_payload(&self, manifest: &ModelManifest) -> String {
         format!(
             "{}:{}:{}:{}:{}",
-            manifest.model_id, manifest.version, manifest.sha256, manifest.size_bytes, manifest.license
+            manifest.model_id,
+            manifest.version,
+            manifest.sha256,
+            manifest.size_bytes,
+            manifest.license
         )
     }
 
@@ -288,7 +310,7 @@ mod tests {
     use tempfile::NamedTempFile;
     use tokio::io::AsyncWriteExt;
 
-    use crate::contracts::{ModelFormat, ModelSignature, Modality};
+    use crate::contracts::{Modality, ModelFormat, ModelSignature};
 
     use super::*;
 
@@ -322,7 +344,10 @@ mod tests {
 
         let verification = loader.verify(&manifest).await.unwrap();
         assert!(!verification.is_allowed());
-        assert!(verification.errors.iter().any(|error| error.contains("signature")));
+        assert!(verification
+            .errors
+            .iter()
+            .any(|error| error.contains("signature")));
     }
 
     #[tokio::test]

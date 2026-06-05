@@ -30,7 +30,9 @@ impl AssistantKernel {
     pub async fn plan(&self, goal: impl Into<String>, priority: Priority) -> Result<TaskGraph> {
         let goal = goal.into();
         if goal.trim().is_empty() {
-            return Err(AiCoreError::InvalidInput("assistant goal cannot be empty".to_string()));
+            return Err(AiCoreError::InvalidInput(
+                "assistant goal cannot be empty".to_string(),
+            ));
         }
 
         let graph = TaskGraph {
@@ -56,7 +58,10 @@ impl AssistantKernel {
 
     pub async fn submit(&self, graph: TaskGraph) -> Result<TaskGraph> {
         self.validate_graph(&graph).await?;
-        self.graphs.write().await.insert(graph.graph_id.clone(), graph.clone());
+        self.graphs
+            .write()
+            .await
+            .insert(graph.graph_id.clone(), graph.clone());
         Ok(graph)
     }
 
@@ -72,11 +77,17 @@ impl AssistantKernel {
             .ok_or_else(|| AiCoreError::NotFound(format!("task graph not found: {}", graph_id)))?;
 
         if graph.status == TaskGraphStatus::Cancelled {
-            return Err(AiCoreError::InvalidInput(format!("task graph {} is cancelled", graph_id)));
+            return Err(AiCoreError::InvalidInput(format!(
+                "task graph {} is cancelled",
+                graph_id
+            )));
         }
 
         graph.status = TaskGraphStatus::Running;
-        self.graphs.write().await.insert(graph.graph_id.clone(), graph.clone());
+        self.graphs
+            .write()
+            .await
+            .insert(graph.graph_id.clone(), graph.clone());
 
         let order = self.execution_order(&graph)?;
         let nodes_by_id: HashMap<_, _> = graph
@@ -86,9 +97,9 @@ impl AssistantKernel {
             .collect();
 
         for node_id in order {
-            let node = nodes_by_id
-                .get(&node_id)
-                .ok_or_else(|| AiCoreError::InvalidInput(format!("missing task node: {}", node_id)))?;
+            let node = nodes_by_id.get(&node_id).ok_or_else(|| {
+                AiCoreError::InvalidInput(format!("missing task node: {}", node_id))
+            })?;
             let request = ToolCallRequest {
                 tool_name: node.tool_name.clone(),
                 call_id: format!("tool-{}-{}", graph.graph_id, node.node_id),
@@ -101,9 +112,14 @@ impl AssistantKernel {
             let result = self.tool_registry.execute_tool(&request).await?;
             if !result.success {
                 graph.status = TaskGraphStatus::Failed;
-                self.graphs.write().await.insert(graph.graph_id.clone(), graph.clone());
+                self.graphs
+                    .write()
+                    .await
+                    .insert(graph.graph_id.clone(), graph.clone());
                 return Err(AiCoreError::ToolError(
-                    result.error_message.unwrap_or_else(|| "tool execution failed".to_string()),
+                    result
+                        .error_message
+                        .unwrap_or_else(|| "tool execution failed".to_string()),
                 ));
             }
         }
@@ -112,7 +128,10 @@ impl AssistantKernel {
         if let Some(memory) = &self.memory_store {
             memory
                 .put(
-                    format!("assistant:{}:last_graph", user_id.as_deref().unwrap_or("anonymous")),
+                    format!(
+                        "assistant:{}:last_graph",
+                        user_id.as_deref().unwrap_or("anonymous")
+                    ),
                     graph.graph_id.clone(),
                     vec!["assistant".to_string(), "task_graph".to_string()],
                     None,
@@ -121,7 +140,10 @@ impl AssistantKernel {
                 )
                 .await?;
         }
-        self.graphs.write().await.insert(graph.graph_id.clone(), graph.clone());
+        self.graphs
+            .write()
+            .await
+            .insert(graph.graph_id.clone(), graph.clone());
         Ok(graph)
     }
 
@@ -132,7 +154,10 @@ impl AssistantKernel {
             .ok_or_else(|| AiCoreError::NotFound(format!("task graph not found: {}", graph_id)))?;
 
         if graph.status == TaskGraphStatus::Completed {
-            return Err(AiCoreError::InvalidInput(format!("task graph {} already completed", graph_id)));
+            return Err(AiCoreError::InvalidInput(format!(
+                "task graph {} already completed",
+                graph_id
+            )));
         }
 
         graph.status = TaskGraphStatus::Cancelled;
@@ -149,10 +174,14 @@ impl AssistantKernel {
 
     async fn validate_graph(&self, graph: &TaskGraph) -> Result<()> {
         if graph.graph_id.trim().is_empty() {
-            return Err(AiCoreError::InvalidInput("task graph id cannot be empty".to_string()));
+            return Err(AiCoreError::InvalidInput(
+                "task graph id cannot be empty".to_string(),
+            ));
         }
         if graph.nodes.is_empty() {
-            return Err(AiCoreError::InvalidInput("task graph must contain at least one node".to_string()));
+            return Err(AiCoreError::InvalidInput(
+                "task graph must contain at least one node".to_string(),
+            ));
         }
 
         for node in &graph.nodes {
@@ -189,7 +218,8 @@ impl AssistantKernel {
 
         let mut queue: VecDeque<String> = in_degree
             .iter()
-            .filter(|&(_node_id, degree)| *degree == 0).map(|(node_id, _degree)| node_id.clone())
+            .filter(|&(_node_id, degree)| *degree == 0)
+            .map(|(node_id, _degree)| node_id.clone())
             .collect();
         let mut order = Vec::with_capacity(graph.nodes.len());
 
@@ -207,7 +237,9 @@ impl AssistantKernel {
         }
 
         if order.len() != graph.nodes.len() {
-            return Err(AiCoreError::InvalidInput("task graph contains a cycle".to_string()));
+            return Err(AiCoreError::InvalidInput(
+                "task graph contains a cycle".to_string(),
+            ));
         }
         Ok(order)
     }
@@ -226,9 +258,16 @@ mod tests {
     #[tokio::test]
     async fn plans_and_executes_task_graph() {
         let kernel = kernel().await;
-        let graph = kernel.plan("remember this workflow", Priority::High).await.unwrap();
+        let graph = kernel
+            .plan("remember this workflow", Priority::High)
+            .await
+            .unwrap();
         let executed = kernel
-            .execute(&graph.graph_id, Some("user-1".to_string()), Some("session-1".to_string()))
+            .execute(
+                &graph.graph_id,
+                Some("user-1".to_string()),
+                Some("session-1".to_string()),
+            )
             .await
             .unwrap();
 

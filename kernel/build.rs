@@ -69,6 +69,9 @@ fn main() {
 
     // Set version information
     set_version_info();
+
+    // Configure safe Zig FFI library if Zig is available
+    configure_zig();
 }
 
 fn configure_x86_64() {
@@ -135,4 +138,41 @@ fn set_version_info() {
     println!("cargo:rustc-env=POLYMERA_KERNEL_VERSION={}", env!("CARGO_PKG_VERSION"));
     println!("cargo:rustc-env=POLYMERA_KERNEL_NAME=polymera-kernel");
 }
+
+fn configure_zig() {
+    let has_zig = std::process::Command::new("zig")
+        .arg("version")
+        .output()
+        .is_ok();
+
+    if has_zig {
+        println!("cargo:warning=Zig compiler detected. Compiling safe Zig FFI String/Memory library...");
+        
+        let out_dir = env::current_dir().unwrap().join("zig");
+        
+        let status = std::process::Command::new("zig")
+            .arg("build")
+            .current_dir(&out_dir)
+            .status();
+
+        match status {
+            Ok(s) if s.success() => {
+                let zig_out_lib = out_dir.join("zig-out").join("lib");
+                println!("cargo:rustc-link-search=native={}", zig_out_lib.display());
+                println!("cargo:rustc-link-lib=static=polymera_zig");
+                println!("cargo:rustc-cfg=feature_polymera_zig");
+                println!("cargo:warning=Successfully linked safe Zig FFI library (libpolymera_zig.a / polymera_zig.lib)");
+            }
+            Ok(s) => {
+                println!("cargo:warning=Zig build failed with exit status {}. Falling back to default C implementation.", s);
+            }
+            Err(e) => {
+                println!("cargo:warning=Failed to execute zig build: {}. Falling back to default C implementation.", e);
+            }
+        }
+    } else {
+        println!("cargo:warning=Zig compiler ('zig') not found in PATH. Falling back to default C implementation.");
+    }
+}
+
 

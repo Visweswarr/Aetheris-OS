@@ -1,0 +1,310 @@
+name: Matrix Testing - CPU/SMP/Memory Performance
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'kernel/**'
+      - '.github/workflows/matrix-testing.yml'
+      - 'scripts/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'kernel/**'
+      - '.github/workflows/matrix-testing.yml'
+      - 'scripts/**'
+  workflow_dispatch: # Allow manual triggering
+  schedule:
+    - cron: '0 2 * * 0' # Weekly on Sundays at 2 AM UTC
+
+jobs:
+  matrix-testing:
+    name: Matrix Testing - ${{ matrix.cpu }}-${{ matrix.smp }}-${{ matrix.memory }}MB
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false # Continue testing other combinations if one fails
+      matrix:
+        # CPU models to test
+        cpu:
+          - qemu32
+          - qemu64
+          - qemu64,+apic
+        # SMP configurations (cores)
+        smp:
+          - 2
+          - 4
+        # Memory sizes in MB
+        memory:
+          - 256
+          - 512
+          - 1024
+        # Exclude invalid combinations
+        exclude:
+          # qemu32 doesn't support SMP > 2
+          - cpu: qemu32
+            smp: 4
+            memory: 256
+          - cpu: qemu32
+            smp: 4
+            memory: 512
+          - cpu: qemu32
+            smp: 4
+            memory: 1024
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y qemu-system-x86-64 python3 python3-pip jq
+        pip3 install --user matplotlib numpy pandas
+        
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        target: x86_64-unknown-none
+        override: true
+        components: rust-src
+        
+    - name: Build kernel for testing
+      run: |
+        cd kernel
+        cargo build --target x86_64-unknown-none --release
+        
+    - name: Create test configuration
+      run: |
+        # Create test configuration file
+        echo "{" > test_config.json
+        echo "  \"cpu_model\": \"${{ matrix.cpu }}\"," >> test_config.json
+        echo "  \"smp_cores\": ${{ matrix.smp }}," >> test_config.json
+        echo "  \"memory_mb\": ${{ matrix.memory }}," >> test_config.json
+        echo "  \"test_duration_ms\": 30000," >> test_config.json
+        echo "  \"matrix_id\": \"${{ matrix.cpu }}-${{ matrix.smp }}-${{ matrix.memory }}MB\"" >> test_config.json
+        echo "}" >> test_config.json
+        
+        echo "Test configuration:"
+        cat test_config.json
+        
+    - name: Run matrix test with performance collection
+      run: |
+        cd kernel
+        
+        # Run test with specific configuration
+        timeout 35s qemu-system-x86_64 \
+          -kernel target/x86_64-unknown-none/release/polymera-os-kernel \
+          -nographic \
+          -no-reboot \
+          -serial file:../qemu_output_${{ matrix.cpu }}_${{ matrix.smp }}_${{ matrix.memory }}.log \
+          -m ${{ matrix.memory }}M \
+          -smp ${{ matrix.smp }} \
+          -cpu ${{ matrix.cpu }} \
+          -machine q35 \
+          -drive if=none,id=boot,format=raw,file=/dev/zero,readonly=on \
+          -device ahci,id=ahci \
+          -device ide-hd,drive=boot,bus=ahci.0 \
+          -append "matrix_test=true" \
+          || true
+        
+        echo "Test completed for ${{ matrix.cpu }}-${{ matrix.smp }}-${{ matrix.memory }}MB"
+        
+    - name: Extract performance metrics
+      run: |
+        echo "Extracting performance metrics for ${{ matrix.cpu }}-${{ matrix.smp }}-${{ matrix.memory }}MB..."
+        
+        # Parse QEMU output for IPC metrics
+        python3 scripts/extract_matrix_metrics.py \
+          qemu_output_${{ matrix.cpu }}_${{ matrix.smp }}_${{ matrix.memory }}.log \
+          ${{ matrix.cpu }} \
+          ${{ matrix.smp }} \
+          ${{ matrix.memory }} \
+          > matrix_metrics_${{ matrix.cpu }}_${{ matrix.smp }}_${{ matrix.memory }}.json
+        
+        echo "Metrics extracted:"
+        cat matrix_metrics_${{ matrix.cpu }}_${{ matrix.smp }}_${{ matrix.memory }}.json
+        
+    - name: Upload QEMU output
+      uses: actions/upload-artifact@v4
+      with:
+        name: qemu-output-${{ matrix.cpu }}-${{ matrix.smp }}-${{ matrix.memory }}MB
+        path: qemu_output_${{ matrix.cpu }}_${{ matrix.smp }}_${{ matrix.memory }}.log
+        retention-days: 7
+        
+    - name: Upload performance metrics
+      uses: actions/upload-artifact@v4
+      with:
+        name: matrix-metrics-${{ matrix.cpu }}-${{ matrix.smp }}-${{ matrix.memory }}MB
+        path: matrix_metrics_${{ matrix.cpu }}_${{ matrix.smp }}_${{ matrix.memory }}.json
+        retention-days: 30
+
+  performance-analysis:
+    name: Performance Analysis and Regression Detection
+    runs-on: ubuntu-latest
+    needs: matrix-testing
+    if: always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download all matrix metrics
+      uses: actions/download-artifact@v4
+      with:
+        pattern: matrix-metrics-*
+        path: matrix_metrics/
+        
+    - name: Install analysis dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3 python3-pip jq
+        pip3 install --user matplotlib numpy pandas
+        
+    - name: Analyze performance matrix
+      run: |
+        echo "Analyzing performance across matrix configurations..."
+        
+        # Run comprehensive performance analysis
+        python3 scripts/analyze_matrix_performance.py matrix_metrics/ > analysis_report.json
+        
+        echo "Analysis completed:"
+        cat analysis_report.json
+        
+    - name: Detect performance regressions
+      run: |
+        echo "Checking for performance regressions..."
+        
+        # Check for regressions > 20%
+        python3 scripts/check_performance_regressions.py analysis_report.json 20.0
+        
+        echo "Regression check completed"
+        
+    - name: Generate performance matrix report
+      run: |
+        echo "Generating performance matrix report..."
+        
+        # Create comprehensive report
+        python3 scripts/generate_matrix_report.py analysis_report.json > matrix_report.md
+        
+        echo "Matrix report generated:"
+        cat matrix_report.md
+        
+    - name: Upload analysis artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: matrix-analysis-results
+        path: |
+          analysis_report.json
+          matrix_report.md
+        retention-days: 90
+        
+    - name: Comment on PR with results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          
+          // Read analysis report
+          let analysis = {};
+          try {
+            analysis = JSON.parse(fs.readFileSync('analysis_report.json', 'utf8'));
+          } catch (error) {
+            console.log('Could not read analysis report');
+            return;
+          }
+          
+          // Check for regressions
+          const hasRegressions = analysis.regressions && analysis.regressions.length > 0;
+          const regressionCount = hasRegressions ? analysis.regressions.length : 0;
+          
+          // Get summary statistics
+          const totalTests = analysis.summary?.total_tests || 0;
+          const passedTests = analysis.summary?.passed_tests || 0;
+          const failedTests = analysis.summary?.failed_tests || 0;
+          
+          const result = hasRegressions ? '❌ FAILED' : '✅ PASSED';
+          const icon = hasRegressions ? '❌' : '✅';
+          
+          let comment = "## " + icon + " Matrix Testing Results\n\n" +
+            "**Overall Result**: " + result + "\n\n" +
+            "### Test Matrix Summary\n" +
+            "- **Total Configurations**: " + totalTests + "\n" +
+            "- **Passed Tests**: " + passedTests + "\n" +
+            "- **Failed Tests**: " + failedTests + "\n" +
+            "- **Performance Regressions**: " + regressionCount + "\n\n" +
+            "### Matrix Configuration Coverage\n" +
+            "- **CPU Models**: qemu32, qemu64, qemu64+apic\n" +
+            "- **SMP Cores**: 2, 4 cores\n" +
+            "- **Memory Sizes**: 256MB, 512MB, 1024MB\n\n";
+
+          if (hasRegressions) {
+            comment += "🚨 **Performance Regressions Detected**: " + regressionCount + " configurations show >20% performance degradation\n\n" +
+              "<details>\n" +
+              "<summary>Regression Details</summary>\n\n" +
+              "```\n" +
+              analysis.regressions.slice(0, 5).map(r => 
+                r.configuration + ": " + r.metric + " regression " + r.degradation.toFixed(1) + "%"
+              ).join('\n') +
+              "\n```\n\n" +
+              "</details>\n\n" +
+              "⚠️ **Action Required**: Investigate performance regressions before merging.";
+          } else {
+            comment += "🎉 **All Matrix Tests Passed**: No performance regressions detected across all configurations.\n\n" +
+              "✅ **Performance Validation**: IPC p50/p95 metrics within acceptable bounds across CPU/SMP/memory matrix.";
+          }
+
+          comment += "\n\n<details>\n" +
+            "<summary>📊 View Detailed Analysis</summary>\n\n" +
+            "```\n" +
+            JSON.stringify(analysis.summary || {}, null, 2) +
+            "\n```\n\n" +
+            "</details>\n\n" +
+            "---\n" +
+            "*This test validates kernel performance across different CPU models, SMP configurations, and memory sizes. Performance regressions >20% are flagged as failures.*";
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+  performance-baseline-update:
+    name: Update Performance Baselines
+    runs-on: ubuntu-latest
+    needs: [matrix-testing, performance-analysis]
+    if: github.ref == 'refs/heads/main' && success()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download analysis results
+      uses: actions/download-artifact@v4
+      with:
+        name: matrix-analysis-results
+        path: .
+        
+    - name: Update performance baselines
+      run: |
+        echo "Updating performance baselines for main branch..."
+        
+        # Update baseline files with new performance data
+        python3 scripts/update_performance_baselines.py analysis_report.json
+        
+        echo "Performance baselines updated"
+        
+    - name: Commit baseline updates
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        git add -A
+        git commit -m "Update performance baselines from matrix testing" || echo "No changes to commit"
+        
+    - name: Push baseline updates
+      run: |
+        git push origin main || echo "No changes to push"

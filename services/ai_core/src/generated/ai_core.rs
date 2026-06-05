@@ -1,8 +1,8 @@
 //! Auto-generated stub for protobuf types
 //! This file is generated when protoc is not available
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// AI Core Message wrapper
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

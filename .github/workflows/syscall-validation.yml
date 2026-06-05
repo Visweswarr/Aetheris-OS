@@ -1,0 +1,257 @@
+name: System Call Validation
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'kernel/src/syscall/**'
+      - 'docs/abi/SYSCALLS.md'
+      - 'scripts/generate_syscall_headers.py'
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'kernel/src/syscall/**'
+      - 'docs/abi/SYSCALLS.md'
+      - 'scripts/generate_syscall_headers.py'
+
+jobs:
+  syscall-validation:
+    name: System Call Interface Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Generate syscall headers
+        run: |
+          echo "🔧 Generating system call headers..."
+          python3 scripts/generate_syscall_headers.py .
+          
+          if [ $? -ne 0 ]; then
+            echo "❌ Header generation failed"
+            exit 1
+          fi
+          
+          echo "✅ Headers generated successfully"
+      
+      - name: Check for generated files
+        run: |
+          echo "🔍 Checking generated files..."
+          
+          # Check if all required files were generated
+          REQUIRED_FILES=(
+            "kernel/src/syscall/generated.rs"
+            "userland-stubs/include/polymera/syscalls.h"
+            "kernel/src/syscall/generated.asm"
+            "syscall_generation_summary.txt"
+          )
+          
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "❌ Required file not generated: $file"
+              exit 1
+            fi
+            echo "✅ Found: $file"
+          done
+      
+      - name: Validate Rust header syntax
+        run: |
+          echo "🔍 Validating Rust header syntax..."
+          
+          # Check if rustc is available
+          if command -v rustc &> /dev/null; then
+            if rustc --edition 2021 --crate-type lib --target x86_64-unknown-none --emit=metadata -o /dev/null kernel/src/syscall/generated.rs 2>/dev/null; then
+              echo "✅ Rust header syntax is valid"
+            else
+              echo "❌ Rust header syntax validation failed"
+              exit 1
+            fi
+          else
+            echo "⚠️  rustc not available, skipping Rust syntax validation"
+          fi
+      
+      - name: Validate C header syntax
+        run: |
+          echo "🔍 Validating C header syntax..."
+          
+          # Check if gcc is available
+          if command -v gcc &> /dev/null; then
+            if gcc -fsyntax-only -std=c99 userland-stubs/include/polymera/syscalls.h 2>/dev/null; then
+              echo "✅ C header syntax is valid"
+            else
+              echo "❌ C header syntax validation failed"
+              exit 1
+            fi
+          else
+            echo "⚠️  gcc not available, skipping C syntax validation"
+          fi
+      
+      - name: Check for syscall handler changes
+        id: check_changes
+        run: |
+          echo "🔍 Checking for syscall handler changes..."
+          
+          # Check if any syscall handlers were modified
+          SYSCALL_HANDLER_CHANGES=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }} | grep -E 'kernel/src/syscall/.*\.rs$' | grep -v 'generated.rs' || true)
+          
+          if [ -n "$SYSCALL_HANDLER_CHANGES" ]; then
+            echo "⚠️  Syscall handlers were modified:"
+            echo "$SYSCALL_HANDLER_CHANGES"
+            
+            # Check if SYSCALLS.md was also modified
+            SYSCALLS_MD_CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }} | grep 'docs/abi/SYSCALLS.md' || true)
+            
+            if [ -z "$SYSCALLS_MD_CHANGED" ]; then
+              echo "❌ SYSCALLS.md was not updated but syscall handlers were modified"
+              echo "This violates the rule that syscall handler changes require SYSCALLS.md updates"
+              exit 1
+            else
+              echo "✅ SYSCALLS.md was updated along with syscall handlers"
+            fi
+          else
+            echo "✅ No syscall handler changes detected"
+          fi
+      
+      - name: Validate header consistency
+        run: |
+          echo "🔍 Validating header consistency..."
+          
+          # Check if generated headers are consistent with current SYSCALLS.md
+          # by regenerating them and comparing
+          
+          # Save current generated files
+          cp kernel/src/syscall/generated.rs kernel/src/syscall/generated.rs.bak
+          cp userland-stubs/include/polymera/syscalls.h userland-stubs/include/polymera/syscalls.h.bak
+          cp kernel/src/syscall/generated.asm kernel/src/syscall/generated.asm.bak
+          
+          # Regenerate headers
+          python3 scripts/generate_syscall_headers.py .
+          
+          # Compare files
+          if ! diff kernel/src/syscall/generated.rs kernel/src/syscall/generated.rs.bak > /dev/null; then
+            echo "❌ Rust header inconsistency detected"
+            echo "Generated headers are not consistent with current SYSCALLS.md"
+            exit 1
+          fi
+          
+          if ! diff userland-stubs/include/polymera/syscalls.h userland-stubs/include/polymera/syscalls.h.bak > /dev/null; then
+            echo "❌ C header inconsistency detected"
+            echo "Generated headers are not consistent with current SYSCALLS.md"
+            exit 1
+          fi
+          
+          if ! diff kernel/src/syscall/generated.asm kernel/src/syscall/generated.asm.bak > /dev/null; then
+            echo "❌ Assembly constants inconsistency detected"
+            echo "Generated headers are not consistent with current SYSCALLS.md"
+            exit 1
+          fi
+          
+          echo "✅ Header consistency validated"
+      
+      - name: Check for drift
+        run: |
+          echo "🔍 Checking for kernel/user stub drift..."
+          
+          # Parse generated Rust header to extract syscall numbers
+          RUST_SYSCALLS=$(grep -E 'pub const SYS_[A-Z_]+: i64 = [0-9]+;' kernel/src/syscall/generated.rs | sort)
+          
+          # Parse generated C header to extract syscall numbers
+          C_SYSCALLS=$(grep -E '#define SYS_[A-Z_]+ [0-9]+' userland-stubs/include/polymera/syscalls.h | sort)
+          
+          # Parse generated assembly constants to extract syscall numbers
+          ASM_SYSCALLS=$(grep -E 'SYS_[A-Z_]+ equ [0-9]+' kernel/src/syscall/generated.asm | sort)
+          
+          # Convert to comparable format
+          RUST_NUMBERS=$(echo "$RUST_SYSCALLS" | sed 's/.*= \([0-9]*\);/\1/' | sort -n)
+          C_NUMBERS=$(echo "$C_SYSCALLS" | sed 's/.* \([0-9]*\)/\1/' | sort -n)
+          ASM_NUMBERS=$(echo "$ASM_SYSCALLS" | sed 's/.*equ \([0-9]*\)/\1/' | sort -n)
+          
+          # Check if all three have the same syscall numbers
+          if [ "$RUST_NUMBERS" != "$C_NUMBERS" ] || [ "$RUST_NUMBERS" != "$ASM_NUMBERS" ]; then
+            echo "❌ Syscall number drift detected between generated headers"
+            echo "Rust numbers: $RUST_NUMBERS"
+            echo "C numbers: $C_NUMBERS"
+            echo "Assembly numbers: $ASM_NUMBERS"
+            exit 1
+          fi
+          
+          echo "✅ No drift detected between generated headers"
+      
+      - name: Upload generated artifacts
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: syscall-headers
+          path: |
+            kernel/src/syscall/generated.rs
+            userland-stubs/include/polymera/syscalls.h
+            kernel/src/syscall/generated.asm
+            syscall_generation_summary.txt
+          retention-days: 30
+      
+      - name: Comment PR on validation failure
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ❌ System Call Validation Failed
+            
+            The system call validation has failed, blocking this merge.
+            
+            **Required Actions:**
+            - Review the validation output above
+            - Ensure SYSCALLS.md is updated when syscall handlers change
+            - Verify that all generated headers are consistent
+            - Check for kernel/user stub drift
+            - Re-run the validation
+            
+            **Validation Rules:**
+            - Changes to syscall handlers must include SYSCALLS.md updates
+            - Generated headers must be consistent with SYSCALLS.md
+            - No drift allowed between kernel and user space headers
+            - All generated artifacts must be valid and syntactically correct
+            
+            **Generated Artifacts:** Available in the workflow artifacts
+            
+            **Contact:** @polymera-os-team for assistance`
+            })
+      
+      - name: Comment PR on validation success
+        if: success() && github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ✅ System Call Validation Passed
+            
+            The system call validation has passed successfully.
+            
+            **Validation Results:**
+            - ✅ Generated headers are consistent with SYSCALLS.md
+            - ✅ No drift between kernel and user space headers
+            - ✅ All generated artifacts are syntactically valid
+            - ✅ Syscall handler changes properly documented
+            
+            **Generated Artifacts:**
+            - Rust header for kernel use
+            - C header for user space use
+            - Assembly constants for syscall numbers
+            - Generation summary and validation report
+            
+            **Ready for merge:** This PR meets all syscall validation requirements`
+            })

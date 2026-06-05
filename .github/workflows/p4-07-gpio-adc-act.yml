@@ -1,0 +1,627 @@
+name: P4-07 GPIO/ADC/Actuator Services
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'services/devices/**'
+      - 'c/libc_aetheris/devices_*.h'
+      - 'c/libc_aetheris/devices_*.c'
+      - 'go/tooling/devctl/gpio.go'
+      - 'go/tooling/devctl/adc.go'
+      - 'go/tooling/devctl/actuator.go'
+      - 'tooling/ts/gpio_bridge.ts'
+      - 'tooling/ts/adc_bridge.ts'
+      - 'tooling/ts/actuator_bridge.ts'
+      - 'tooling/python/gpio_adc_actuator_validator.py'
+      - 'docs/phase-4/P4-07-A3-DEVICE-GPIO-ADC-ACT.md'
+      - '.github/workflows/p4-07-gpio-adc-act.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'services/devices/**'
+      - 'c/libc_aetheris/devices_*.h'
+      - 'c/libc_aetheris/devices_*.c'
+      - 'go/tooling/devctl/gpio.go'
+      - 'go/tooling/devctl/adc.go'
+      - 'go/tooling/devctl/actuator.go'
+      - 'tooling/ts/gpio_bridge.ts'
+      - 'tooling/ts/adc_bridge.ts'
+      - 'tooling/ts/actuator_bridge.ts'
+      - 'tooling/python/gpio_adc_actuator_validator.py'
+      - 'docs/phase-4/P4-07-A3-DEVICE-GPIO-ADC-ACT.md'
+      - '.github/workflows/p4-07-gpio-adc-act.yml'
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM UTC
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUST_LOG: info
+
+jobs:
+  # Rust Core Services
+  rust-device-services:
+    name: Rust Device Services
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust-version: [stable, beta, nightly]
+        target: [x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ matrix.rust-version }}
+        target: ${{ matrix.target }}
+        override: true
+        components: rustfmt, clippy
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ matrix.rust-version }}-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Check Rust formatting
+      run: |
+        cd services/devices
+        cargo fmt --all -- --check
+    
+    - name: Run Rust clippy
+      run: |
+        cd services/devices
+        cargo clippy --all-targets --all-features -- -D warnings
+    
+    - name: Build Rust services
+      run: |
+        cd services/devices
+        cargo build --release --target ${{ matrix.target }}
+    
+    - name: Run Rust unit tests
+      run: |
+        cd services/devices
+        cargo test --release --target ${{ matrix.target }}
+    
+    - name: Run Rust integration tests
+      run: |
+        cd services/devices
+        cargo test --release --target ${{ matrix.target }} --test integration_tests
+    
+    - name: Generate Rust documentation
+      run: |
+        cd services/devices
+        cargo doc --no-deps --target ${{ matrix.target }}
+    
+    - name: Upload Rust test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: rust-test-results-${{ matrix.target }}-${{ matrix.rust-version }}
+        path: |
+          services/devices/target/${{ matrix.target }}/test-results/
+          services/devices/target/${{ matrix.target }}/doc/
+
+  # C FFI
+  c-ffi:
+    name: C FFI
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
+        target: [x86_64-linux-gnu, aarch64-linux-gnu]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential ${{ matrix.compiler }}
+        if [ "${{ matrix.compiler }}" = "clang" ]; then
+          sudo apt-get install -y clang-tools
+        fi
+    
+    - name: Build C FFI
+      run: |
+        cd c/libc_aetheris
+        make clean
+        make CC=${{ matrix.compiler }} TARGET=${{ matrix.target }}
+    
+    - name: Run C FFI tests
+      run: |
+        cd c/libc_aetheris
+        make test CC=${{ matrix.compiler }} TARGET=${{ matrix.target }}
+    
+    - name: Run C FFI static analysis
+      if: matrix.compiler == 'clang'
+      run: |
+        cd c/libc_aetheris
+        scan-build make CC=clang TARGET=${{ matrix.target }}
+    
+    - name: Upload C FFI artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: c-ffi-${{ matrix.target }}-${{ matrix.compiler }}
+        path: |
+          c/libc_aetheris/build/
+          c/libc_aetheris/test-results/
+
+  # Go CLI
+  go-cli:
+    name: Go CLI
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.21', '1.22', '1.23']
+        target: [linux/amd64, linux/arm64, windows/amd64, darwin/amd64]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ matrix.go-version }}
+    
+    - name: Cache Go dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+    
+    - name: Check Go formatting
+      run: |
+        cd go/tooling/devctl
+        go fmt ./...
+    
+    - name: Run Go vet
+      run: |
+        cd go/tooling/devctl
+        go vet ./...
+    
+    - name: Run Go static analysis
+      run: |
+        cd go/tooling/devctl
+        go install honnef.co/go/tools/cmd/staticcheck@latest
+        staticcheck ./...
+    
+    - name: Build Go CLI
+      run: |
+        cd go/tooling/devctl
+        GOOS=$(echo ${{ matrix.target }} | cut -d'/' -f1) GOARCH=$(echo ${{ matrix.target }} | cut -d'/' -f2) go build -o devctl .
+    
+    - name: Run Go tests
+      run: |
+        cd go/tooling/devctl
+        go test -v ./...
+    
+    - name: Run Go CLI tests
+      run: |
+        cd go/tooling/devctl
+        ./devctl --help
+        ./devctl gpio --help
+        ./devctl adc --help
+        ./devctl actuator --help
+    
+    - name: Upload Go CLI artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: go-cli-${{ matrix.target }}-${{ matrix.go-version }}
+        path: go/tooling/devctl/devctl
+
+  # TypeScript Bridge
+  ts-bridge:
+    name: TypeScript Bridge
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ['18', '20', '21']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: |
+        cd tooling/ts
+        npm install
+    
+    - name: Check TypeScript formatting
+      run: |
+        cd tooling/ts
+        npm run format:check
+    
+    - name: Run TypeScript linting
+      run: |
+        cd tooling/ts
+        npm run lint
+    
+    - name: Run TypeScript type checking
+      run: |
+        cd tooling/ts
+        npm run type-check
+    
+    - name: Build TypeScript bridge
+      run: |
+        cd tooling/ts
+        npm run build
+    
+    - name: Run TypeScript tests
+      run: |
+        cd tooling/ts
+        npm test
+    
+    - name: Run TypeScript bridge tests
+      run: |
+        cd tooling/ts
+        npm run test:bridge
+    
+    - name: Upload TypeScript artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: ts-bridge-${{ matrix.node-version }}
+        path: |
+          tooling/ts/dist/
+          tooling/ts/coverage/
+
+  # Python Validator
+  python-validator:
+    name: Python Validator
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+    
+    - name: Install Python dependencies
+      run: |
+        cd tooling/python
+        pip install -r requirements.txt
+    
+    - name: Check Python formatting
+      run: |
+        cd tooling/python
+        black --check .
+        isort --check-only .
+    
+    - name: Run Python linting
+      run: |
+        cd tooling/python
+        flake8 .
+        pylint gpio_adc_actuator_validator.py
+    
+    - name: Run Python type checking
+      run: |
+        cd tooling/python
+        mypy gpio_adc_actuator_validator.py
+    
+    - name: Run Python tests
+      run: |
+        cd tooling/python
+        pytest -v gpio_adc_actuator_validator.py
+    
+    - name: Run Python validator
+      run: |
+        cd tooling/python
+        python -m gpio_adc_actuator_validator --verbose
+    
+    - name: Upload Python test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: python-validator-${{ matrix.python-version }}
+        path: |
+          tooling/python/test-results/
+          tooling/python/coverage/
+
+  # Integration Tests
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [rust-device-services, c-ffi, go-cli, ts-bridge, python-validator]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential python3-pip nodejs npm
+    
+    - name: Build all components
+      run: |
+        # Build Rust services
+        cd services/devices
+        cargo build --release
+        
+        # Build C FFI
+        cd ../../c/libc_aetheris
+        make clean && make
+        
+        # Build Go CLI
+        cd ../../go/tooling/devctl
+        go build -o devctl .
+        
+        # Build TypeScript bridge
+        cd ../../tooling/ts
+        npm install && npm run build
+    
+    - name: Start device service
+      run: |
+        cd services/devices
+        ./target/release/device-service &
+        sleep 5
+    
+    - name: Run integration tests
+      run: |
+        # Test C FFI integration
+        cd c/libc_aetheris
+        make test-integration
+        
+        # Test Go CLI integration
+        cd ../../go/tooling/devctl
+        ./devctl gpio configure --pin 2 --mode output
+        ./devctl gpio write 2 true
+        ./devctl gpio read 2
+        
+        # Test TypeScript bridge integration
+        cd ../../tooling/ts
+        npm run test:integration
+        
+        # Test Python validator integration
+        cd ../python
+        python -m gpio_adc_actuator_validator --base-url http://localhost:8080
+    
+    - name: Upload integration test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: integration-test-results
+        path: |
+          test-results/
+          coverage/
+
+  # Performance Tests
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: [rust-device-services]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential
+    
+    - name: Build Rust services
+      run: |
+        cd services/devices
+        cargo build --release
+    
+    - name: Run performance tests
+      run: |
+        cd services/devices
+        cargo test --release --test performance_tests
+    
+    - name: Run benchmark tests
+      run: |
+        cd services/devices
+        cargo bench
+    
+    - name: Upload performance results
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-results
+        path: |
+          services/devices/target/criterion/
+          services/devices/bench-results/
+
+  # Security Tests
+  security-tests:
+    name: Security Tests
+    runs-on: ubuntu-latest
+    needs: [rust-device-services, c-ffi, go-cli, ts-bridge, python-validator]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential python3-pip nodejs npm
+    
+    - name: Run Rust security audit
+      run: |
+        cd services/devices
+        cargo audit
+    
+    - name: Run C FFI security scan
+      run: |
+        cd c/libc_aetheris
+        cppcheck --enable=all --inconclusive --std=c99 .
+    
+    - name: Run Go security scan
+      run: |
+        cd go/tooling/devctl
+        go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+        gosec ./...
+    
+    - name: Run TypeScript security scan
+      run: |
+        cd tooling/ts
+        npm audit
+    
+    - name: Run Python security scan
+      run: |
+        cd tooling/python
+        pip install safety
+        safety check
+    
+    - name: Upload security results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-results
+        path: |
+          security-reports/
+          audit-results/
+
+  # Documentation
+  documentation:
+    name: Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential python3-pip nodejs npm
+    
+    - name: Build Rust documentation
+      run: |
+        cd services/devices
+        cargo doc --no-deps
+    
+    - name: Build TypeScript documentation
+      run: |
+        cd tooling/ts
+        npm install
+        npm run docs
+    
+    - name: Build Python documentation
+      run: |
+        cd tooling/python
+        pip install sphinx
+        sphinx-build -b html docs docs/_build/html
+    
+    - name: Validate documentation links
+      run: |
+        cd docs
+        python3 -m http.server 8000 &
+        sleep 2
+        python3 scripts/test-links.sh
+    
+    - name: Upload documentation
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation
+        path: |
+          services/devices/target/doc/
+          tooling/ts/docs/
+          tooling/python/docs/_build/html/
+
+  # Summary
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [rust-device-services, c-ffi, go-cli, ts-bridge, python-validator, integration-tests, performance-tests, security-tests, documentation]
+    if: always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Generate summary report
+      run: |
+        echo "# P4-07 GPIO/ADC/Actuator Services Test Summary" > summary.md
+        echo "" >> summary.md
+        echo "## Test Results" >> summary.md
+        echo "" >> summary.md
+        echo "| Component | Status |" >> summary.md
+        echo "|-----------|--------|" >> summary.md
+        echo "| Rust Services | ${{ needs.rust-device-services.result }} |" >> summary.md
+        echo "| C FFI | ${{ needs.c-ffi.result }} |" >> summary.md
+        echo "| Go CLI | ${{ needs.go-cli.result }} |" >> summary.md
+        echo "| TypeScript Bridge | ${{ needs.ts-bridge.result }} |" >> summary.md
+        echo "| Python Validator | ${{ needs.python-validator.result }} |" >> summary.md
+        echo "| Integration Tests | ${{ needs.integration-tests.result }} |" >> summary.md
+        echo "| Performance Tests | ${{ needs.performance-tests.result }} |" >> summary.md
+        echo "| Security Tests | ${{ needs.security-tests.result }} |" >> summary.md
+        echo "| Documentation | ${{ needs.documentation.result }} |" >> summary.md
+        echo "" >> summary.md
+        echo "## Overall Status" >> summary.md
+        if [ "${{ needs.rust-device-services.result }}" = "success" ] && [ "${{ needs.c-ffi.result }}" = "success" ] && [ "${{ needs.go-cli.result }}" = "success" ] && [ "${{ needs.ts-bridge.result }}" = "success" ] && [ "${{ needs.python-validator.result }}" = "success" ] && [ "${{ needs.integration-tests.result }}" = "success" ] && [ "${{ needs.performance-tests.result }}" = "success" ] && [ "${{ needs.security-tests.result }}" = "success" ] && [ "${{ needs.documentation.result }}" = "success" ]; then
+          echo "✅ All tests passed!" >> summary.md
+        else
+          echo "❌ Some tests failed!" >> summary.md
+        fi
+    
+    - name: Upload summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-summary
+        path: summary.md
+    
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const summary = fs.readFileSync('summary.md', 'utf8');
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: summary
+          });

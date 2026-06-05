@@ -1,0 +1,47 @@
+[package]
+name = "contracts"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_cbor = "0.11"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+thiserror = "1.0"
+blake3 = "1.0"
+hex = "0.4"
+base64 = "0.21"
+secp256k1 = { version = "0.28", features = ["rand", "recovery"] }
+ed25519-dalek = { version = "2.0", features = ["rand_core"] }
+libc = "0.2"
+
+# WASM runtime dependencies
+wasmtime = { version = "15.0", features = ["cranelift"] }
+wasmtime-wasi = "15.0"
+
+# Internal dependencies
+polymera-crypto = { path = "../../crypto", features = ["full"] }
+ngfs = { path = "../ngfs" }
+dao = { path = "../dao" }
+chain = { package = "polymera-chain", path = "../chain" }
+
+# Web3 dependencies
+web3 = "0.19"
+ethereum-types = "0.14"
+rlp = "0.5"
+
+# Database dependencies
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = "0.5"
+
+[[bench]]
+name = "contract_execution"
+path = "benches/contract_execution.rs"
+harness = false

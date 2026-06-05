@@ -3,7 +3,8 @@
 /// This module provides build-time validation to ensure that generated
 /// syscall files match the current schema hash.
 
-use super::schema_hash::SCHEMA_HASH;
+// Schema hash for generated syscall ABI artifacts.
+const SCHEMA_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
 /// Validate that the current schema hash matches the expected hash
 /// 

@@ -1,0 +1,12 @@
+[package]
+name = "log-summarizer-component"
+version = "0.1.0"
+edition = "2021"
+description = "WIT-compliant wasm component implementing polymera:ai/summarizer"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = { version = "0.34", features = ["macros"] }
+

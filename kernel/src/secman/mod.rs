@@ -10,6 +10,10 @@ pub mod keys;
 pub mod api;
 pub mod policy;
 pub mod audit_codes;
+pub mod cap_v2;
+pub mod cap_store;
+pub mod cap_flags;
+pub mod did;
 #[cfg(feature = "dev-keyvault")]
 pub mod dev_keyvault;
 

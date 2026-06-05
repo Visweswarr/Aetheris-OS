@@ -1,0 +1,313 @@
+name: P5-15 AI Core Service Golden Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'services/ai_core/**'
+      - 'scripts/golden/**'
+      - 'artifacts/ai_core/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'services/ai_core/**'
+      - 'scripts/golden/**'
+      - 'artifacts/ai_core/**'
+  workflow_dispatch:
+    inputs:
+      rebaseline:
+        description: 'Rebaseline golden tests'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  AETHERIS_DETERMINISTIC: true
+  AETHERIS_SEED: 42
+  RUST_BACKTRACE: 1
+
+jobs:
+  golden-tests:
+    name: AI Core Golden Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+          override: true
+      
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev
+      
+      - name: Build AI Core Service
+        run: |
+          cd services/ai_core
+          cargo build --release
+          cd ../..
+      
+      - name: Start AI Core Service
+        run: |
+          cd services/ai_core
+          cargo run --bin ai_core &
+          AI_CORE_PID=$!
+          echo "AI_CORE_PID=$AI_CORE_PID" >> $GITHUB_ENV
+          
+          # Wait for service to start
+          sleep 10
+          
+          # Check if service is running
+          if ! kill -0 $AI_CORE_PID 2>/dev/null; then
+            echo "❌ AI Core Service failed to start"
+            exit 1
+          fi
+          
+          echo "✅ AI Core Service started (PID: $AI_CORE_PID)"
+        env:
+          AETHERIS_DETERMINISTIC: true
+          AETHERIS_SEED: 42
+      
+      - name: Run Golden Tests
+        if: ${{ !inputs.rebaseline }}
+        run: |
+          echo "🧪 Running AI Core Service Golden Tests..."
+          make golden-ai-core
+        env:
+          AETHERIS_DETERMINISTIC: true
+          AETHERIS_SEED: 42
+      
+      - name: Rebaseline Golden Tests
+        if: ${{ inputs.rebaseline }}
+        run: |
+          echo "🔄 Rebaselining AI Core Service Golden Tests..."
+          bash scripts/ai-core-rebaseline.sh
+        env:
+          AETHERIS_DETERMINISTIC: true
+          AETHERIS_SEED: 42
+      
+      - name: Verify Golden Test Results
+        if: ${{ !inputs.rebaseline }}
+        run: |
+          echo "🔍 Verifying golden test results..."
+          
+          if [ -f "artifacts/ai_core/golden_report.json" ]; then
+            echo "✅ Golden test report generated"
+            
+            # Check if all tests passed
+            TOTAL_TESTS=$(jq '.stats.total_tests' artifacts/ai_core/golden_report.json)
+            PASSED_TESTS=$(jq '.stats.passed_tests' artifacts/ai_core/golden_report.json)
+            FAILED_TESTS=$(jq '.stats.failed_tests' artifacts/ai_core/golden_report.json)
+            SUCCESS_RATE=$(jq '.stats.success_rate' artifacts/ai_core/golden_report.json)
+            
+            echo "📊 Test Results:"
+            echo "  Total Tests: $TOTAL_TESTS"
+            echo "  Passed: $PASSED_TESTS"
+            echo "  Failed: $FAILED_TESTS"
+            echo "  Success Rate: $SUCCESS_RATE%"
+            
+            if [ "$FAILED_TESTS" -gt 0 ]; then
+              echo "❌ Some golden tests failed:"
+              jq -r '.results[] | select(.passed == false) | "  - \(.prompt_id): \(.error_message // "Unknown error")"' artifacts/ai_core/golden_report.json
+              exit 1
+            else
+              echo "✅ All golden tests passed!"
+            fi
+          else
+            echo "❌ Golden test report not found"
+            exit 1
+          fi
+      
+      - name: Upload Golden Test Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-core-golden-results
+          path: |
+            artifacts/ai_core/golden.json
+            artifacts/ai_core/golden_report.json
+            scripts/golden/ai_core_config.json
+          retention-days: 30
+      
+      - name: Stop AI Core Service
+        if: always()
+        run: |
+          if [ -n "$AI_CORE_PID" ]; then
+            echo "🛑 Stopping AI Core Service (PID: $AI_CORE_PID)..."
+            kill $AI_CORE_PID 2>/dev/null || true
+            wait $AI_CORE_PID 2>/dev/null || true
+            echo "✅ AI Core Service stopped"
+          fi
+
+  deterministic-verification:
+    name: Deterministic Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: golden-tests
+    if: ${{ !inputs.rebaseline }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      
+      - name: Download Golden Test Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-core-golden-results
+          path: artifacts/ai_core/
+      
+      - name: Build AI Core Service
+        run: |
+          cd services/ai_core
+          cargo build --release
+          cd ../..
+      
+      - name: Run Deterministic Verification
+        run: |
+          echo "🔄 Running deterministic verification (3 iterations)..."
+          
+          # Run golden tests 3 times with the same seed
+          for i in {1..3}; do
+            echo "Iteration $i:"
+            
+            # Start AI Core Service
+            cd services/ai_core
+            cargo run --bin ai_core &
+            AI_CORE_PID=$!
+            cd ../..
+            
+            # Wait for service to start
+            sleep 10
+            
+            # Run golden tests
+            make golden-ai-core
+            
+            # Save results
+            cp artifacts/ai_core/golden_report.json "artifacts/ai_core/golden_report_$i.json"
+            
+            # Stop service
+            kill $AI_CORE_PID 2>/dev/null || true
+            wait $AI_CORE_PID 2>/dev/null || true
+            
+            sleep 2
+          done
+          
+          # Compare results
+          echo "🔍 Comparing deterministic results..."
+          
+          # Check if all iterations produced identical results
+          if [ -f "artifacts/ai_core/golden_report_1.json" ] && \
+             [ -f "artifacts/ai_core/golden_report_2.json" ] && \
+             [ -f "artifacts/ai_core/golden_report_3.json" ]; then
+            
+            # Compare response hashes
+            for i in {1..3}; do
+              echo "Iteration $i response hashes:"
+              jq -r '.results[] | "\(.prompt_id): \(.actual_response_hash)"' "artifacts/ai_core/golden_report_$i.json"
+            done
+            
+            # Check if all hashes are identical
+            HASH1=$(jq -r '.results[] | .actual_response_hash' artifacts/ai_core/golden_report_1.json | sort | tr '\n' ' ')
+            HASH2=$(jq -r '.results[] | .actual_response_hash' artifacts/ai_core/golden_report_2.json | sort | tr '\n' ' ')
+            HASH3=$(jq -r '.results[] | .actual_response_hash' artifacts/ai_core/golden_report_3.json | sort | tr '\n' ' ')
+            
+            if [ "$HASH1" = "$HASH2" ] && [ "$HASH2" = "$HASH3" ]; then
+              echo "✅ Deterministic verification passed - all iterations produced identical results"
+            else
+              echo "❌ Deterministic verification failed - results differ between iterations"
+              echo "Iteration 1: $HASH1"
+              echo "Iteration 2: $HASH2"
+              echo "Iteration 3: $HASH3"
+              exit 1
+            fi
+          else
+            echo "❌ Deterministic verification failed - missing report files"
+            exit 1
+          fi
+        env:
+          AETHERIS_DETERMINISTIC: true
+          AETHERIS_SEED: 42
+      
+      - name: Upload Deterministic Verification Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-core-deterministic-verification
+          path: |
+            artifacts/ai_core/golden_report_*.json
+          retention-days: 30
+
+  golden-test-summary:
+    name: Golden Test Summary
+    runs-on: ubuntu-latest
+    needs: [golden-tests, deterministic-verification]
+    if: always() && ${{ !inputs.rebaseline }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download Golden Test Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-core-golden-results
+          path: artifacts/ai_core/
+      
+      - name: Generate Summary
+        run: |
+          echo "📊 AI Core Service Golden Test Summary"
+          echo "======================================"
+          
+          if [ -f "artifacts/ai_core/golden_report.json" ]; then
+            TOTAL_TESTS=$(jq '.stats.total_tests' artifacts/ai_core/golden_report.json)
+            PASSED_TESTS=$(jq '.stats.passed_tests' artifacts/ai_core/golden_report.json)
+            FAILED_TESTS=$(jq '.stats.failed_tests' artifacts/ai_core/golden_report.json)
+            SUCCESS_RATE=$(jq '.stats.success_rate' artifacts/ai_core/golden_report.json)
+            AVG_TIME=$(jq '.stats.avg_processing_time_ms' artifacts/ai_core/golden_report.json)
+            
+            echo "✅ Golden Tests: $PASSED_TESTS/$TOTAL_TESTS passed ($SUCCESS_RATE%)"
+            echo "⏱️  Average Processing Time: ${AVG_TIME}ms"
+            
+            if [ "$FAILED_TESTS" -gt 0 ]; then
+              echo "❌ Failed Tests:"
+              jq -r '.results[] | select(.passed == false) | "  - \(.prompt_id): \(.error_message // "Unknown error")"' artifacts/ai_core/golden_report.json
+            fi
+          else
+            echo "❌ Golden test report not found"
+          fi
+          
+          echo ""
+          echo "🔍 Deterministic Verification:"
+          if [ "${{ needs.deterministic-verification.result }}" = "success" ]; then
+            echo "✅ All iterations produced identical results"
+          else
+            echo "❌ Deterministic verification failed"
+          fi
+          
+          echo ""
+          echo "📁 Artifacts:"
+          echo "  - Golden Report: artifacts/ai_core/golden_report.json"
+          echo "  - Golden Config: scripts/golden/ai_core_config.json"
+          echo "  - Expected Outputs: artifacts/ai_core/golden.json"

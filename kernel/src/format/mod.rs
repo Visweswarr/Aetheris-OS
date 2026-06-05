@@ -7,6 +7,10 @@
 //! - Enhanced Display trait implementations
 
 use core::fmt::{self, Write, Display};
+use alloc::string::ToString;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 /// Hexdump configuration
 pub struct HexdumpConfig {
@@ -153,11 +157,21 @@ impl ExtendedFormatting for u128 {
     }
 }
 
-// Implement Display for u128 to enable "{}" formatting
-impl Display for u128 {
+/// Newtype wrapper for u128 to enable custom Display formatting
+/// (Cannot implement Display for u128 directly due to orphan rules)
+#[derive(Debug, Clone, Copy)]
+pub struct U128Display(pub u128);
+
+impl Display for U128Display {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Use hex format for u128 by default
-        write!(f, "0x{:032x}", self)
+        write!(f, "0x{:032x}", self.0)
+    }
+}
+
+impl From<u128> for U128Display {
+    fn from(value: u128) -> Self {
+        Self(value)
     }
 }
 
@@ -201,6 +215,13 @@ impl Display for CapabilityFormatter {
 /// Format a capability token for display
 pub fn format_capability(value: u128) -> CapabilityFormatter {
     CapabilityFormatter::new(value)
+}
+
+/// Format a capability token for display (verbose)
+pub fn format_capability_verbose(value: u128) -> CapabilityFormatter {
+    let mut f = CapabilityFormatter::new(value);
+    f.verbose = true;
+    f
 }
 
 /// Test format stability
@@ -250,7 +271,7 @@ pub fn print_format_examples() {
     
     crate::kprintln!("Hexdump Examples:");
     let test_data = b"Polymera OS Kernel - Secure by Design";
-    crate::kprint_hex(test_data);
+    kprint_hex(test_data);
     
     crate::kprintln!("==========================");
     crate::kprintln!("");

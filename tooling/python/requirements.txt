@@ -1,0 +1,27 @@
+# XR Validator Requirements
+# Core dependencies
+cbor2>=5.4.6
+blake3>=0.3.3
+asyncio-mqtt>=0.13.0
+
+# Testing and validation
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+
+# Data handling
+pydantic>=2.0.0
+dataclasses-json>=0.6.0
+
+# Logging and monitoring
+structlog>=23.1.0
+rich>=13.0.0
+
+# Optional: gRPC support (if needed for real implementation)
+# grpcio>=1.57.0
+# grpcio-tools>=1.57.0
+# protobuf>=4.24.0
+
+# Optional: Performance monitoring
+# psutil>=5.9.0
+# memory-profiler>=0.61.0

@@ -131,7 +131,7 @@ impl SimulationEngine {
     }
 
     /// Parse path specification
-    fn parse_path(&self, path: &str) -> Option<(u32, &str)> {
+    fn parse_path<'a>(&self, path: &'a str) -> Option<(u32, &'a str)> {
         // Simple path parsing for "actions[N].field" format
         if path.starts_with("actions[") {
             if let Some(end_bracket) = path.find(']') {

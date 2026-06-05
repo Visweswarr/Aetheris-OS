@@ -20,8 +20,9 @@ pub enum Modality {
     Json,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, Default,
+)]
 pub enum Priority {
     Low = 0,
     #[default]
@@ -29,7 +30,6 @@ pub enum Priority {
     High = 2,
     Urgent = 3,
 }
-
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FusionPayload {
@@ -159,7 +159,10 @@ pub struct VerificationResult {
 
 impl VerificationResult {
     pub fn is_allowed(&self) -> bool {
-        self.hash_verified && self.signature_verified && self.policy_allowed && self.errors.is_empty()
+        self.hash_verified
+            && self.signature_verified
+            && self.policy_allowed
+            && self.errors.is_empty()
     }
 }
 
@@ -353,6 +356,9 @@ mod tests {
             seed: Some(42),
         };
 
-        assert_eq!(stable_hash(&request).unwrap(), stable_hash(&request).unwrap());
+        assert_eq!(
+            stable_hash(&request).unwrap(),
+            stable_hash(&request).unwrap()
+        );
     }
 }

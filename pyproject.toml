@@ -22,6 +22,9 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
+[project.scripts]
+polymera-shell = "bindings.python.polymera_shell:main"
+
 [tool.black]
 line-length = 88
 target-version = ['py311']

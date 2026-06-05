@@ -214,7 +214,7 @@ impl FuzzingEngine {
     }
 
     /// Run fuzzing campaign
-    pub fn run_campaign<F>(&mut self, target_function: F) -> FuzzingResult
+    pub fn run_campaign<F>(&mut self, mut target_function: F) -> FuzzingResult
     where
         F: FnMut(&[u8]) -> Result<(), String>,
     {

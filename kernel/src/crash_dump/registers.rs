@@ -1,7 +1,9 @@
-#![no_std]
-
 use core::fmt;
+use core::arch::asm;
+use alloc::string::ToString;
 use alloc::string::String;
+use alloc::format;
+use alloc::vec::Vec;
 
 /// x86_64 register state
 #[repr(C)]
@@ -80,39 +82,41 @@ impl RegisterState {
     pub fn capture() -> Self {
         let mut state = Self::new();
         
-        // Capture general purpose registers
         unsafe {
-            asm!(
-                "mov {}, rax", out(reg) state.rax,
-                "mov {}, rbx", out(reg) state.rbx,
-                "mov {}, rcx", out(reg) state.rcx,
-                "mov {}, rdx", out(reg) state.rdx,
-                "mov {}, rsi", out(reg) state.rsi,
-                "mov {}, rdi", out(reg) state.rdi,
-                "mov {}, rbp", out(reg) state.rbp,
-                "mov {}, rsp", out(reg) state.rsp,
-                "mov {}, r8", out(reg) state.r8,
-                "mov {}, r9", out(reg) state.r9,
-                "mov {}, r10", out(reg) state.r10,
-                "mov {}, r11", out(reg) state.r11,
-                "mov {}, r12", out(reg) state.r12,
-                "mov {}, r13", out(reg) state.r13,
-                "mov {}, r14", out(reg) state.r14,
-                "mov {}, r15", out(reg) state.r15,
-                "lea {}, [rip]", out(reg) state.rip,
-                "pushfq; pop {}", out(reg) state.rflags,
-                "mov {}, cs", out(reg) state.cs,
-                "mov {}, ds", out(reg) state.ds,
-                "mov {}, es", out(reg) state.es,
-                "mov {}, fs", out(reg) state.fs,
-                "mov {}, gs", out(reg) state.gs,
-                "mov {}, ss", out(reg) state.ss,
-                "mov {}, cr0", out(reg) state.cr0,
-                "mov {}, cr2", out(reg) state.cr2,
-                "mov {}, cr3", out(reg) state.cr3,
-                "mov {}, cr4", out(reg) state.cr4,
-                "mov {}, cr8", out(reg) state.cr8,
-            );
+            asm!("mov {}, rax", out(reg) state.rax);
+            asm!("mov {}, rbx", out(reg) state.rbx);
+            asm!("mov {}, rcx", out(reg) state.rcx);
+            asm!("mov {}, rdx", out(reg) state.rdx);
+            asm!("mov {}, rsi", out(reg) state.rsi);
+            asm!("mov {}, rdi", out(reg) state.rdi);
+            asm!("mov {}, rbp", out(reg) state.rbp);
+            asm!("mov {}, rsp", out(reg) state.rsp);
+            asm!("mov {}, r8", out(reg) state.r8);
+            asm!("mov {}, r9", out(reg) state.r9);
+            asm!("mov {}, r10", out(reg) state.r10);
+            asm!("mov {}, r11", out(reg) state.r11);
+            asm!("mov {}, r12", out(reg) state.r12);
+            asm!("mov {}, r13", out(reg) state.r13);
+            asm!("mov {}, r14", out(reg) state.r14);
+            asm!("mov {}, r15", out(reg) state.r15);
+            asm!("lea {}, [rip]", out(reg) state.rip);
+            
+            let rflags: u64;
+            asm!("pushfq; pop {}", out(reg) rflags);
+            state.rflags = rflags;
+            
+            let cs: u64; asm!("mov {}, cs", out(reg) cs); state.cs = cs as u16;
+            let ds: u64; asm!("mov {}, ds", out(reg) ds); state.ds = ds as u16;
+            let es: u64; asm!("mov {}, es", out(reg) es); state.es = es as u16;
+            let fs: u64; asm!("mov {}, fs", out(reg) fs); state.fs = fs as u16;
+            let gs: u64; asm!("mov {}, gs", out(reg) gs); state.gs = gs as u16;
+            let ss: u64; asm!("mov {}, ss", out(reg) ss); state.ss = ss as u16;
+            
+            asm!("mov {}, cr0", out(reg) state.cr0);
+            asm!("mov {}, cr2", out(reg) state.cr2);
+            asm!("mov {}, cr3", out(reg) state.cr3);
+            asm!("mov {}, cr4", out(reg) state.cr4);
+            asm!("mov {}, cr8", out(reg) state.cr8);
         }
         
         state

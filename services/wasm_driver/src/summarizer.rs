@@ -28,6 +28,17 @@ pub struct LogSummary {
     pub summary: String,
 }
 
+wasmtime::component::bindgen!({
+    inline: r#"
+        package polymera:ai;
+
+        world summarizer {
+            export summarize: func(text: string) -> string;
+        }
+    "#,
+    async: true,
+});
+
 #[derive(Debug, Default)]
 pub struct SummarizerHost;
 
@@ -36,23 +47,59 @@ impl SummarizerHost {
         Self
     }
 
-    pub fn summarize(&self, request: LogSummaryRequest) -> LogSummary {
-        let component_loaded = request
-            .component_path
-            .as_deref()
-            .map(|path| {
-                Host::new()
-                    .and_then(|host| host.load_component(path).map(|_| ()))
-                    .is_ok()
-            })
-            .unwrap_or(false);
+    /// Attempt to load the compiled wasm component from the well-known path.
+    /// Returns `Some(path)` if a component binary was found, `None` otherwise.
+    fn try_load_component() -> Option<PathBuf> {
+        // Well-known paths where the compiled component might live.
+        let candidates = [
+            PathBuf::from("services/wasm_components/log_summarizer/target/wasm32-wasi/release/log_summarizer_component.wasm"),
+            PathBuf::from("services/wasm_components/log_summarizer/target/wasm32-wasip1/release/log_summarizer_component.wasm"),
+            PathBuf::from("services/wasm_components/log_summarizer/target/wasm32-unknown-unknown/release/log_summarizer_component.wasm"),
+            PathBuf::from("dist/drivers/log_summarizer.wasm"),
+        ];
+        for candidate in &candidates {
+            if candidate.exists() {
+                eprintln!("[summarizer] found wasm component: {}", candidate.display());
+                return Some(candidate.clone());
+            }
+        }
+        None
+    }
 
+    async fn execute_wasm_summarizer(&self, path: &std::path::Path, text: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let host = Host::new()?;
+        let component = host.load_component(path)?;
+        let (mut store, instance) = host.instantiate(&component).await?;
+        let bindings = Summarizer::new(&mut store, &instance)?;
+        let res = bindings.call_summarize(&mut store, text).await?;
+        Ok(res)
+    }
+
+    pub async fn summarize(&self, request: LogSummaryRequest) -> LogSummary {
+        // Phase 1A.2: Try the real wasm component first.
+        let component_path = request
+            .component_path
+            .clone()
+            .or_else(Self::try_load_component);
+
+        if let Some(path) = component_path {
+            match self.execute_wasm_summarizer(&path, &request.text).await {
+                Ok(wasm_summary) => {
+                    eprintln!("[summarizer] running via wasm component");
+                    let mut summary = deterministic_summary(&request.text, request.source_path.clone());
+                    summary.summary = wasm_summary;
+                    summary.mode = "wasm-component".to_string();
+                    return summary;
+                }
+                Err(e) => {
+                    eprintln!("[summarizer] failed to execute wasm component: {e}. Falling back to deterministic fallback.");
+                }
+            }
+        }
+
+        eprintln!("[summarizer] running via deterministic fallback");
         let mut summary = deterministic_summary(&request.text, request.source_path.clone());
-        summary.mode = if component_loaded {
-            "wasm-component-loaded-deterministic-fallback".to_string()
-        } else {
-            "deterministic-local-fallback".to_string()
-        };
+        summary.mode = "deterministic-local-fallback".to_string();
         summary
     }
 }

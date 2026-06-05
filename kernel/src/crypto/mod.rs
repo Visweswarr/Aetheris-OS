@@ -32,4 +32,18 @@ pub enum CryptoError {
     InvalidParameter,
 }
 
+impl core::fmt::Display for CryptoError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            CryptoError::InvalidKey => write!(f, "Invalid key"),
+            CryptoError::InvalidSignature => write!(f, "Invalid signature"),
+            CryptoError::VerificationFailed => write!(f, "Verification failed"),
+            CryptoError::EncryptionFailed => write!(f, "Encryption failed"),
+            CryptoError::DecryptionFailed => write!(f, "Decryption failed"),
+            CryptoError::KeyGenerationFailed => write!(f, "Key generation failed"),
+            CryptoError::InvalidParameter => write!(f, "Invalid parameter"),
+        }
+    }
+}
+
 pub type CryptoResult<T> = Result<T, CryptoError>;

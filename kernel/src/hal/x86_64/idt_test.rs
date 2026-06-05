@@ -89,7 +89,8 @@ pub fn test_general_protection_fault() {
     unsafe {
         // Try to load CR0 register (privileged instruction)
         // Note: This might not trigger GPF in kernel mode, but serves as an example
-        core::arch::asm!("mov %cr0, %rax" : : : "rax" : "volatile");
+        let _cr0: u64;
+        core::arch::asm!("mov {}, cr0", out(reg) _cr0, options(nomem, nostack));
     }
     
     kprintln!("GPF test completed (this may not trigger in kernel mode)");

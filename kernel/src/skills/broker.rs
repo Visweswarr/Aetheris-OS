@@ -66,7 +66,7 @@ pub struct CapabilityBroker {
 }
 
 impl CapabilityBroker {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             next_session_id: AtomicU64::new(1),
             active_sessions: Mutex::new(Vec::new()),

@@ -1,0 +1,8 @@
+# Placeholder for test_audio_1.wav
+# This is a placeholder file representing a 2-second audio file
+# Content: "Hello world, this is a test" (English, 16kHz, mono)
+# Expected SHA256: c3d4e5f6789012345678901234567890abcdef1234567890abcdef1234567890
+# 
+# In a real implementation, this would be a binary WAV file
+# For testing purposes, this placeholder allows the golden test to run
+# and verify the test infrastructure without requiring actual audio files

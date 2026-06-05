@@ -1,5 +1,7 @@
-﻿use alloc::vec::Vec;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 use alloc::string::String;
+use alloc::vec;
 use core::sync::atomic::{AtomicU64, Ordering};
 use spin::Mutex;
 use crate::lazy_static;
@@ -217,6 +219,121 @@ pub fn eval_policy(input: &PolicyInputV1) -> PolicyEvalResult {
 pub fn is_policy_available() -> bool {
     let engine = POLICY_ENGINE.lock();
     engine.is_loaded()
+}
+
+#[cfg(feature = "policy_caps_v2")]
+pub mod caps {
+    use super::*;
+    use coset::{CoseSign1, iana::Algorithm};
+    use ed25519_dalek::{Verifier as _, VerifyingKey};
+    use lru::LruCache;
+    use spin::Mutex;
+    use serde::Deserialize;
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+    #[derive(Debug, Clone, Deserialize)]
+    pub struct CapClaims {
+        pub iss: alloc::string::String,
+        pub sub: alloc::string::String,
+        pub aud: alloc::string::String,
+        pub iat: u64,
+        pub nbf: u64,
+        pub exp: u64,
+        pub jti: alloc::vec::Vec<u8>,
+        pub scopes: alloc::vec::Vec<alloc::string::String>,
+        #[serde(default)]
+        pub ctx: Option<serde_cbor::Value>,
+    }
+
+    #[derive(Debug)]
+    pub enum CapError { Invalid(&'static str), Expired, NotYetValid, Audience, Replay }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct Issuer { jwks_path: alloc::string::String, audience: alloc::string::String, clock_skew_s: i64 }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct Jwks { keys: alloc::vec::Vec<Jwk> }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct Jwk { kty: alloc::string::String, crv: alloc::string::String, kid: Option<alloc::string::String>, x: alloc::string::String }
+
+    pub struct CapVerifier {
+        jwks_path: alloc::string::String,
+        audience: alloc::string::String,
+        skew: i64,
+        reload_every_s: u64,
+        last_reload: core::sync::atomic::AtomicU64,
+        nonce_cache: Mutex<LruCache<alloc::vec::Vec<u8>, u64>>, // jti -> ts90k
+        keys: Mutex<alloc::vec::Vec<(Option<alloc::string::String>, VerifyingKey)>>,
+    }
+
+    impl CapVerifier {
+        pub fn from_env() -> Self {
+            let issuer_path = core::option_env!("AETHERIS_ISSUER").unwrap_or("policy/captoken_v2/dev/issuer.json");
+            let issuer_json = crate::fs::read_to_string(issuer_path).unwrap_or_else(|_| "{".to_string());
+            let iss: Issuer = serde_json::from_str(&issuer_json).unwrap_or(Issuer{jwks_path:"policy/captoken_v2/dev/jwks.json".into(), audience:"aetheris-kernel".into(), clock_skew_s:120});
+            let v = Self {
+                jwks_path: iss.jwks_path,
+                audience: iss.audience,
+                skew: iss.clock_skew_s,
+                reload_every_s: 60,
+                last_reload: core::sync::atomic::AtomicU64::new(0),
+                nonce_cache: Mutex::new(LruCache::new(core::num::NonZeroUsize::new(100_000).unwrap())),
+                keys: Mutex::new(alloc::vec::Vec::new()),
+            };
+            v.reload_jwks();
+            v
+        }
+        fn reload_jwks(&self) {
+            if let Ok(data) = crate::fs::read_to_string(&self.jwks_path) {
+                if let Ok(jwks) = serde_json::from_str::<Jwks>(&data) {
+                    let mut keys = self.keys.lock();
+                    keys.clear();
+                    for k in jwks.keys {
+                        if k.kty == "OKP" && k.crv == "Ed25519" {
+                            if let Ok(x) = URL_SAFE_NO_PAD.decode(k.x.as_bytes()) {
+                                if let Ok(vk) = VerifyingKey::from_bytes(&x.try_into().unwrap_or([0u8;32])) {
+                                    keys.push((k.kid, vk));
+                                }
+                            }
+                        }
+                    }
+                    self.last_reload.store(crate::time::now_secs(), core::sync::atomic::Ordering::SeqCst);
+                }
+            }
+        }
+        pub fn verify(&self, token_bytes: &[u8]) -> Result<CapClaims, CapError> {
+            let now = crate::time::now_secs();
+            if now - self.last_reload.load(core::sync::atomic::Ordering::SeqCst) >= self.reload_every_s { self.reload_jwks(); }
+            let cose = CoseSign1::from_slice(token_bytes).map_err(|_| CapError::Invalid("cose"))?;
+            let alg = cose.protected.header.alg.as_ref().ok_or(CapError::Invalid("alg"))?;
+            if *alg != Algorithm::EdDSA { return Err(CapError::Invalid("alg")); }
+            let kid = cose.protected.header.kid.as_ref().map(|b| alloc::string::String::from_utf8_lossy(b).to_string());
+            let keys = self.keys.lock();
+            let mut ok = false;
+            for (k, vk) in keys.iter() {
+                if kid.as_ref().map_or(true, |kk| k.as_ref() == Some(kk)) {
+                    if cose.verify_signature(vk).is_ok() { ok = true; break; }
+                }
+            }
+            if !ok { return Err(CapError::Invalid("sig")); }
+            let payload = cose.payload.as_ref().ok_or(CapError::Invalid("payload"))?;
+            let claims: CapClaims = ciborium::de::from_reader(payload.as_slice()).map_err(|_| CapError::Invalid("claims"))?;
+            if claims.aud != self.audience { return Err(CapError::Audience); }
+            let now_i = now as i64;
+            if now_i + self.skew < claims.nbf as i64 { return Err(CapError::NotYetValid); }
+            if now_i - self.skew > claims.exp as i64 { return Err(CapError::Expired); }
+            {
+                let mut lru = self.nonce_cache.lock();
+                if lru.contains(&claims.jti) { return Err(CapError::Replay); }
+                lru.put(claims.jti.clone(), crate::time::get_time_90khz());
+            }
+            Ok(claims)
+        }
+        pub fn require(&self, scopes: &[alloc::string::String], need: &str) -> Result<(), CapError> {
+            if scopes.iter().any(|s| s == need) { Ok(()) } else { Err(CapError::Invalid("scope")) }
+        }
+    }
 }
 
 #[cfg(test)]

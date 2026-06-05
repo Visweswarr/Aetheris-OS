@@ -6,6 +6,7 @@
 use super::types::{MessageId, ProcessId, MessageType, MessagePriority, MessageFlags};
 use crate::security::cap_v2::CapTokenV2;
 use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// MAC tag size for message authentication (16 bytes)
 pub const MAC_TAG_SIZE: usize = 16;

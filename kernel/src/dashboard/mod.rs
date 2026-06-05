@@ -4,10 +4,12 @@
 //! in an ASCII box format, including version, target, tick counter,
 //! runqueue size, and IPC counters.
 
-use crate::log::{klog, Level, tags};
+use crate::{klog, format};
+use crate::log::{Level, tags};
+use crate::ipc::IpcStats;
 use crate::sched::runqueue::RunQueue;
-use crate::ipc::stats::IpcStats;
 use crate::hal::x86_64::X64Hal;
+use alloc::string::{String, ToString};
 
 /// Dashboard configuration
 pub struct DashboardConfig {
@@ -63,7 +65,7 @@ impl Default for SystemInfo {
     fn default() -> Self {
         Self {
             version: env!("CARGO_PKG_VERSION").to_string(),
-            target: env!("TARGET").to_string(),
+            target: crate::TARGET_ARCH.to_string(),
             tick_count: 0,
             runqueue_size: 0,
             ipc_stats: IpcStats::default(),
@@ -131,13 +133,14 @@ pub fn print_dashboard_with_config(config: &DashboardConfig) {
     // Print IPC information
     println_dashboard_section("IPC STATISTICS", &format!("Messages Sent: {}", info.ipc_stats.messages_sent));
     println_dashboard_section("", &format!("Messages Received: {}", info.ipc_stats.messages_received));
-    println_dashboard_section("", &format!("Channels Created: {}", info.ipc_stats.channels_created));
+    println_dashboard_section("", &format!("Channels Created: {}", info.ipc_stats.active_channels));
     println_dashboard_section("", &format!("Active Channels: {}", info.ipc_stats.active_channels));
     
     if config.show_performance {
+        let trace_stats = crate::trace::get_system_stats();
         // Print performance metrics
-        println_dashboard_section("PERFORMANCE", &format!("IPC Latency (avg): {} μs", info.ipc_stats.avg_latency_us));
-        println_dashboard_section("", &format!("Context Switches: {}", info.ipc_stats.context_switches));
+        println_dashboard_section("PERFORMANCE", &format!("IPC Latency (avg): {} μs", trace_stats.ipc_latency_mean_us));
+        println_dashboard_section("", &format!("Context Switches: {}", trace_stats.ctx_switches));
     }
     
     if config.show_memory {
@@ -150,9 +153,9 @@ pub fn print_dashboard_with_config(config: &DashboardConfig) {
     
     if config.detailed {
         // Print detailed information
-        println_dashboard_section("DETAILED INFO", &format!("Build Date: {}", env!("VERGEN_BUILD_TIMESTAMP")));
-        println_dashboard_section("", &format!("Git Commit: {}", env!("VERGEN_GIT_SHA_SHORT")));
-        println_dashboard_section("", &format!("Rust Version: {}", env!("VERGEN_RUSTC_SEMVER")));
+        println_dashboard_section("DETAILED INFO", &format!("Build Date: {}", option_env!("VERGEN_BUILD_TIMESTAMP").unwrap_or("Unknown")));
+        println_dashboard_section("", &format!("Git Commit: {}", option_env!("VERGEN_GIT_SHA_SHORT").unwrap_or("Unknown")));
+        println_dashboard_section("", &format!("Rust Version: {}", option_env!("VERGEN_RUSTC_SEMVER").unwrap_or("Unknown")));
     }
     
     // Print footer

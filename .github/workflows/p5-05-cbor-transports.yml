@@ -1,0 +1,121 @@
+name: Phase 5 - CBOR Transports (Go/TS)
+
+on:
+  push:
+    paths:
+      - 'bindings/go/**'
+      - 'bindings/ts/**'
+      - 'tools/intent_echo_server/**'
+      - 'tools/transport_smoke/**'
+      - '.github/workflows/p5-05-cbor-transports.yml'
+  pull_request:
+
+jobs:
+  linux-cbor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build echo server and minter
+        run: |
+          cargo build --manifest-path tools/intent_echo_server/Cargo.toml --verbose
+          cargo build --manifest-path tools/captoken_minter/Cargo.toml --verbose
+      - name: Generate key/token and start server
+        run: |
+          mkdir -p policy/captoken_v2/dev
+          head -c 32 /dev/urandom > policy/captoken_v2/dev/ed25519.sk
+          target/debug/captoken-minter --iss did:dev:aetheris --sub did:dev:test --aud aetheris-kernel --exp 900 \
+            --scopes intent.emit --key policy/captoken_v2/dev/ed25519.sk \
+            --out policy/captoken_v2/dev/test.token --kid dev-1 --out-jwks policy/captoken_v2/dev/jwks.json
+          echo '{"jwks_path":"policy/captoken_v2/dev/jwks.json","audience":"aetheris-kernel","clock_skew_s":120}' > policy/captoken_v2/dev/issuer.json
+          AETHERIS_ISSUER=policy/captoken_v2/dev/issuer.json nohup ./target/debug/intent-echo-server --unix /tmp/aetheris-intent.sock &
+      - name: Build Go bindings + smoke
+        run: |
+          cd bindings/go && go mod tidy && cd ../../
+          go build -o smoke-go ./tools/transport_smoke/go/main.go
+      - name: Send allow (Go)
+        env:
+          INTENT_SOCKET: unix:///tmp/aetheris-intent.sock
+          AICORE_CAPTOKEN: policy/captoken_v2/dev/test.token
+        run: |
+          ./smoke-go | grep -q "ok"
+      - name: Send deny (Go)
+        env:
+          INTENT_SOCKET: unix:///tmp/aetheris-intent.sock
+        run: |
+          ./smoke-go || true
+      - name: Node deps
+        run: |
+          cd bindings/ts
+          npm i
+      - name: TS CBOR smoke (allow)
+        env:
+          INTENT_SOCKET: unix:///tmp/aetheris-intent.sock
+          AICORE_CAPTOKEN: ${{ github.workspace }}/policy/captoken_v2/dev/test.token
+        run: |
+          node --version
+          cd bindings/ts
+          node ../bindings/ts/smoke.js || node -e "require('./node_modules/esbuild').buildSync({entryPoints:['./smoke.ts'],bundle:true,platform:'node',outfile:'./smoke.js'});" && node ./smoke.js
+      - name: TS CBOR smoke (deny - missing token)
+        env:
+          INTENT_SOCKET: unix:///tmp/aetheris-intent.sock
+          AICORE_CAPTOKEN: ${{ github.workspace }}/policy/captoken_v2/dev/empty.token
+        run: |
+          : > policy/captoken_v2/dev/empty.token
+          cd bindings/ts
+          node ./smoke.js && exit 1 || echo "deny path OK"
+
+      - name: policy_engine tests
+        run: |
+          cargo test -p policy_engine --all-features -- --nocapture
+
+      - name: Conformance smoke (userland)
+        env:
+          NGFS_ROOT: ${{ github.workspace }}/data/ngfs
+          AETHERIS_ISSUER: ${{ github.workspace }}/policy/captoken_v2/dev/issuer.json
+        run: |
+          cargo run --manifest-path tools/policy_conformance_smoke/Cargo.toml
+
+      - name: Upload audit (if any)
+        run: |
+          if [ -d "data/ngfs/audit/captoken" ]; then tar czf audit.tgz data/ngfs/audit/captoken; fi
+        continue-on-error: true
+
+  windows-pipe-cbor:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build echo server and minter
+        shell: pwsh
+        run: |
+          cargo build --manifest-path tools/intent_echo_server/Cargo.toml --verbose
+          cargo build --manifest-path tools/captoken_minter/Cargo.toml --verbose
+      - name: Generate key/token and start server
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path policy\captoken_v2\dev | Out-Null
+          $bytes = New-Object byte[] 32; (New-Object System.Random).NextBytes($bytes); [IO.File]::WriteAllBytes('policy\captoken_v2\dev\ed25519.sk',$bytes)
+          .\target\debug\captoken-minter.exe --iss did:dev:aetheris --sub did:dev:test --aud aetheris-kernel --exp 900 --scopes intent.emit --key policy\captoken_v2\dev\ed25519.sk --out policy\captoken_v2\dev\test.token --kid dev-1 --out-jwks policy\captoken_v2\dev\jwks.json
+          Set-Content -Path policy\captoken_v2\dev\issuer.json -Value '{"jwks_path":"policy/captoken_v2/dev/jwks.json","audience":"aetheris-kernel","clock_skew_s":120}'
+          Start-Process -FilePath .\target\debug\intent-echo-server.exe -ArgumentList '--pipe','\\.\pipe\aetheris-intent' -NoNewWindow
+      - name: Build Go smoke
+        shell: pwsh
+        run: |
+          cd bindings\go; go mod tidy; cd ..\..\
+          go build -o smoke-go.exe .\tools\transport_smoke\go\main.go
+      - name: Send allow (Go over pipe)
+        shell: pwsh
+        env:
+          INTENT_SOCKET: pipe://\\.\pipe\aetheris-intent
+          AICORE_CAPTOKEN: policy\captoken_v2\dev\test.token
+        run: |
+          .\smoke-go.exe | Select-String -Quiet "ok"

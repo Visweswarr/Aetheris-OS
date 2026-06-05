@@ -1,0 +1,10 @@
+[package]
+name = "compositor-service"
+version = "0.1.0"
+edition = "2021"
+description = "Compositor Service for Polymera OS - Scene Graph and Rendering"
+
+[dependencies]
+
+[features]
+default = []

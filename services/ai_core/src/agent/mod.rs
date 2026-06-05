@@ -1,9 +1,12 @@
 //! Agentic Task Planner Module
 
-pub mod planner;
 pub mod executor;
+pub mod planner;
 pub mod policy;
 
-pub use planner::{TaskPlanner, TaskPlan, TaskStep};
-pub use executor::{StepExecutor, StepState, StepExecutionContext, TaskExecutionState};
-pub use policy::{PolicyEnforcer, PolicyCheckResult};
+pub use executor::{
+    PersistedTaskState, StepExecutionContext, StepExecutor, StepState, SuspendInterrupt,
+    TaskExecutionState,
+};
+pub use planner::{TaskPlan, TaskPlanner, TaskStep};
+pub use policy::{HitlDecision, ModifiedDecision, PolicyCheckResult, PolicyEnforcer};

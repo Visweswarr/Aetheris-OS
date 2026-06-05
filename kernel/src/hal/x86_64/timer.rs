@@ -1,19 +1,15 @@
 use crate::{kprintln, klog};
 use lazy_static::lazy_static;
 use spin::Mutex;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use x86_64::structures::idt::InterruptStackFrame;
 use x86_64::instructions::port::Port;
 
-use core::sync::atomic::{AtomicU8, Ordering};
-use alloc::string::String;
-
 use crate::hal::HalError;
-use crate::time::{Duration, Instant};
-use crate::sync::Mutex;
+use crate::time::Duration;
 
-use super::apic::{ApicTimer, ApicTimerConfig, ApicTimerMode};
-use super::hpet::{HpetTimer, HpetTimerConfig, HpetTimerMode};
+use super::apic::{ApicTimer, ApicTimerConfig};
+use super::hpet::{HpetTimer, HpetTimerConfig};
 
 /// Timer frequency in Hz (1000 Hz = 1ms per tick)
 const TIMER_FREQUENCY: u32 = 1000;
@@ -277,8 +273,22 @@ impl TimerSelector {
     /// Get jitter statistics for the active timer
     pub fn get_jitter_stats(&self) -> Option<JitterStats> {
         match self.get_timer_kind()? {
-            TimerKind::APIC => self.apic_timer.lock().as_ref().map(|apic| apic.get_jitter_stats()),
-            TimerKind::HPET => self.hpet_timer.lock().as_ref().map(|hpet| hpet.get_jitter_stats()),
+            TimerKind::APIC => self.apic_timer.lock().as_ref().map(|apic| {
+                let stats = apic.get_jitter_stats();
+                JitterStats {
+                    mean_us: stats.mean_us,
+                    p95_us: stats.p95_us,
+                    total_samples: stats.total_samples,
+                }
+            }),
+            TimerKind::HPET => self.hpet_timer.lock().as_ref().map(|hpet| {
+                let stats = hpet.get_jitter_stats();
+                JitterStats {
+                    mean_us: stats.mean_us,
+                    p95_us: stats.p95_us,
+                    total_samples: stats.total_samples,
+                }
+            }),
         }
     }
 }

@@ -55,7 +55,7 @@
                 <div class="metric-icon">⚙️</div>
                 <div class="metric-body">
                     <div class="metric-value" id="metric-processes">0</div>
-                    <div class="metric-label">Active Processes</div>
+                    <div class="metric-label">Active Processes <span class="real-metric">Real</span></div>
                 </div>
                 <div class="metric-sparkline" id="spark-processes"></div>
             </div>
@@ -63,7 +63,7 @@
                 <div class="metric-icon">📡</div>
                 <div class="metric-body">
                     <div class="metric-value" id="metric-syscalls">0</div>
-                    <div class="metric-label">AI Runtime Executions <span class="real-metric">Real</span></div>
+                    <div class="metric-label">Kernel Syscalls <span class="real-metric">Real</span></div>
                 </div>
                 <div class="metric-sparkline" id="spark-syscalls"></div>
             </div>
@@ -71,7 +71,7 @@
                 <div class="metric-icon">💬</div>
                 <div class="metric-body">
                     <div class="metric-value" id="metric-ipc">0</div>
-                    <div class="metric-label">AI Local Tokens <span class="real-metric">Real</span></div>
+                    <div class="metric-label">Kernel IPC <span class="real-metric">Real</span></div>
                 </div>
                 <div class="metric-sparkline" id="spark-ipc"></div>
             </div>
@@ -79,7 +79,7 @@
                 <div class="metric-icon">🧠</div>
                 <div class="metric-body">
                     <div class="metric-value" id="metric-memory">0 MB</div>
-                    <div class="metric-label">AI Backend Latency <span class="real-metric">Real</span></div>
+                    <div class="metric-label">Context Switches <span class="real-metric">Real</span></div>
                 </div>
                 <div class="metric-sparkline" id="spark-memory"></div>
             </div>
@@ -87,7 +87,7 @@
                 <div class="metric-icon">🔐</div>
                 <div class="metric-body">
                     <div class="metric-value" id="metric-crypto">0</div>
-                    <div class="metric-label">AI Model Attempts <span class="real-metric">Real</span></div>
+                    <div class="metric-label">Security Checks <span class="real-metric">Real</span></div>
                 </div>
                 <div class="metric-sparkline" id="spark-crypto"></div>
             </div>
@@ -95,7 +95,7 @@
                 <div class="metric-icon">AI</div>
                 <div class="metric-body">
                     <div class="metric-value" id="metric-ticks">0</div>
-                    <div class="metric-label">AI HEG Plans <span class="real-metric">Real</span></div>
+                    <div class="metric-label">Kernel Ticks <span class="real-metric">Real</span></div>
                 </div>
                 <div class="metric-sparkline" id="spark-ticks"></div>
             </div>
@@ -351,6 +351,7 @@
         </div>
     </div>
 
+    <script src="kernel_metrics.js"></script>
     <script src="ai_metrics.js"></script>
     <script src="app.js"></script>
 </body>

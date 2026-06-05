@@ -30,4 +30,7 @@ pub mod starvation_detector; // Added for starvation detection
 pub mod kassert_macro; // Added for kassert macro
 pub mod fault_injection; // Added for fault injection hooks
 pub mod elf_parser; // Added for ELF header parser
+pub mod memory_compression_property; // Property test for memory compression trigger (Property 1)
+pub mod huge_page_promotion_property; // Property test for huge page promotion (Property 2)
+pub mod capability_enforced_access_property; // Property test for capability-enforced memory access (Property 3)
 

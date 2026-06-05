@@ -42,6 +42,10 @@ impl InsecureKyberSecretKey {
     pub fn new(data: Vec<u8>, parameter_set: KyberParameterSet) -> Self {
         Self { data, parameter_set }
     }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.data
+    }
 }
 
 #[deprecated(note = "Renamed to InsecureKyberSecretKey — this type provides no real crypto")]

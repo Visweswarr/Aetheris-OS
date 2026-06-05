@@ -1,0 +1,596 @@
+name: Nightly Long Soak (2h) with Chaos Injection
+
+on:
+  schedule:
+    # Run every night at 2 AM UTC (10 PM EST, 7 PM PST)
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+    inputs:
+      soak_duration:
+        description: 'Soak duration in hours (default: 2)'
+        required: false
+        default: '2'
+        type: string
+      chaos_level:
+        description: 'Chaos injection level (low, medium, high)'
+        required: false
+        default: 'medium'
+        type: choice
+        options:
+          - low
+          - medium
+          - high
+      config_filter:
+        description: 'Configuration filter (all, apic, hpet, mixed)'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - apic
+          - hpet
+          - mixed
+
+env:
+  SOAK_DURATION_HOURS: ${{ github.event.inputs.soak_duration || '2' }}
+  CHAOS_LEVEL: ${{ github.event.inputs.chaos_level || 'medium' }}
+  CONFIG_FILTER: ${{ github.event.inputs.config_filter || 'all' }}
+  RUST_BACKTRACE: 1
+  RUST_LOG: info
+
+jobs:
+  # Nightly soak test across representative configurations
+  nightly-soak:
+    name: "Nightly Soak - Chaos Injection - 2h"
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          # Representative 8-config matrix covering key combinations
+          - name: "APIC+HPET, Jitter On, Auth On, Cap Policy Closed"
+            config_id: "nightly_apic_hpet_jitter_auth_closed"
+            apic: true
+            hpet: true
+            jitter: true
+            auth: true
+            cap_policy: "closed"
+            chaos_jitter: true
+            chaos_key_rotation: true
+            chaos_drop_n: 5
+            chaos_fault_injection: true
+            priority: "normal"
+            
+          - name: "APIC Only, Jitter On, Auth On, Cap Policy Closed"
+            config_id: "nightly_apic_only_jitter_auth_closed"
+            apic: true
+            hpet: false
+            jitter: true
+            auth: true
+            cap_policy: "closed"
+            chaos_jitter: true
+            chaos_key_rotation: true
+            chaos_drop_n: 3
+            chaos_fault_injection: true
+            priority: "normal"
+            
+          - name: "HPET Only, Jitter On, Auth On, Cap Policy Closed"
+            config_id: "nightly_hpet_only_jitter_auth_closed"
+            apic: false
+            hpet: true
+            jitter: true
+            auth: true
+            cap_policy: "closed"
+            chaos_jitter: true
+            chaos_key_rotation: true
+            chaos_drop_n: 3
+            chaos_fault_injection: true
+            priority: "normal"
+            
+          - name: "No APIC/HPET, Jitter On, Auth On, Cap Policy Closed"
+            config_id: "nightly_no_timer_jitter_auth_closed"
+            apic: false
+            hpet: false
+            jitter: true
+            auth: true
+            cap_policy: "closed"
+            chaos_jitter: true
+            chaos_key_rotation: true
+            chaos_drop_n: 2
+            chaos_fault_injection: true
+            priority: "low"
+            
+          - name: "APIC+HPET, Jitter Off, Auth On, Cap Policy Closed"
+            config_id: "nightly_apic_hpet_no_jitter_auth_closed"
+            apic: true
+            hpet: true
+            jitter: false
+            auth: true
+            cap_policy: "closed"
+            chaos_jitter: false
+            chaos_key_rotation: true
+            chaos_drop_n: 4
+            chaos_fault_injection: true
+            priority: "normal"
+            
+          - name: "APIC Only, Jitter Off, Auth Off, Cap Policy Open"
+            config_id: "nightly_apic_only_no_jitter_no_auth_open"
+            apic: true
+            hpet: false
+            jitter: false
+            auth: false
+            cap_policy: "open"
+            chaos_jitter: false
+            chaos_key_rotation: false
+            chaos_drop_n: 1
+            chaos_fault_injection: false
+            priority: "low"
+            
+          - name: "HPET Only, Jitter On, Auth Off, Cap Policy Open"
+            config_id: "nightly_hpet_only_jitter_no_auth_open"
+            apic: false
+            hpet: true
+            jitter: true
+            auth: false
+            cap_policy: "open"
+            chaos_jitter: true
+            chaos_key_rotation: false
+            chaos_drop_n: 2
+            chaos_fault_injection: true
+            priority: "low"
+            
+          - name: "Mixed Config, Jitter On, Auth On, Cap Policy Mixed"
+            config_id: "nightly_mixed_jitter_auth_mixed"
+            apic: true
+            hpet: true
+            jitter: true
+            auth: true
+            cap_policy: "closed"
+            chaos_jitter: true
+            chaos_key_rotation: true
+            chaos_drop_n: 6
+            chaos_fault_injection: true
+            priority: "high"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-nightly-soak-${{ matrix.config.config_id }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-nightly-soak-${{ matrix.config.config_id }}-
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils jq htop iotop
+
+      - name: Configure kernel for nightly soak
+        run: |
+          echo "Configuring kernel for nightly soak configuration: ${{ matrix.config.name }}"
+          
+          cd kernel
+          
+          # Create nightly soak configuration
+          cat > .config.nightly << EOF
+          # Nightly soak configuration: ${{ matrix.config.config_id }}
+          # Generated: $(date -u)
+          
+          # Timer configuration
+          CONFIG_APIC_TIMER=${{ matrix.config.apic }}
+          CONFIG_HPET_FALLBACK=${{ matrix.config.hpet }}
+          CONFIG_JITTER_INJECTION=${{ matrix.config.jitter }}
+          
+          # Security configuration
+          CONFIG_IPC_AUTH=${{ matrix.config.auth }}
+          CONFIG_CAP_POLICY_$([ "${{ matrix.config.cap_policy }}" = "closed" ] && echo "CLOSED" || echo "OPEN")=y
+          
+          # Chaos injection configuration
+          CONFIG_CHAOS_JITTER_INJECTION=${{ matrix.config.chaos_jitter }}
+          CONFIG_CHAOS_KEY_ROTATION=${{ matrix.config.chaos_key_rotation }}
+          CONFIG_CHAOS_FAULT_INJECTION=${{ matrix.config.chaos_fault_injection }}
+          CONFIG_CHAOS_DROP_N=${{ matrix.config.chaos_drop_n }}
+          
+          # Priority configuration
+          CONFIG_PRIORITY_LEVEL="${{ matrix.config.priority }}"
+          
+          # Debug and monitoring
+          CONFIG_DEBUG_SOAK=y
+          CONFIG_PERF_MONITORING=y
+          CONFIG_CHAOS_MONITORING=y
+          EOF
+          
+          echo "Nightly configuration saved to kernel/.config.nightly"
+          cat .config.nightly
+
+      - name: Build kernel for nightly soak
+        run: |
+          cd kernel
+          
+          # Apply nightly configuration
+          if [ -f .config.nightly ]; then
+            echo "Applying nightly configuration..."
+            cp .config.nightly .config
+          fi
+          
+          # Build with specific features
+          echo "Building kernel with features: APIC=${{ matrix.config.apic }}, HPET=${{ matrix.config.hpet }}, Jitter=${{ matrix.config.jitter }}, Auth=${{ matrix.config.auth }}, Cap Policy=${{ matrix.config.cap_policy }}"
+          
+          cargo build --release --features "${{ matrix.config.apic && 'apic_timer' || '' }} ${{ matrix.config.hpet && 'hpet_fallback' || '' }} ${{ matrix.config.jitter && 'jitter_injection' || '' }} ${{ matrix.config.auth && 'ipc_auth' || '' }} $([ "${{ matrix.config.cap_policy }}" = "closed" ] && echo 'cap_policy_closed' || echo 'cap_policy_open') chaos_injection nightly_soak"
+          
+          echo "Kernel built successfully for nightly soak"
+
+      - name: Setup soak test environment
+        run: |
+          echo "Setting up soak test environment..."
+          
+          # Create soak test directories
+          mkdir -p soak_results/${{ matrix.config.config_id }}
+          mkdir -p soak_logs/${{ matrix.config.config_id }}
+          mkdir -p soak_artifacts/${{ matrix.config.config_id }}
+          
+          # Set chaos environment variables
+          export CHAOS_JITTER_INJECTION=${{ matrix.config.chaos_jitter }}
+          export CHAOS_KEY_ROTATION=${{ matrix.config.chaos_key_rotation }}
+          export CHAOS_FAULT_INJECTION=${{ matrix.config.chaos_fault_injection }}
+          export CHAOS_DROP_N=${{ matrix.config.chaos_drop_n }}
+          export CHAOS_PRIORITY=${{ matrix.config.priority }}
+          
+          echo "Chaos configuration:"
+          echo "  Jitter Injection: $CHAOS_JITTER_INJECTION"
+          echo "  Key Rotation: $CHAOS_KEY_ROTATION"
+          echo "  Fault Injection: $CHAOS_FAULT_INJECTION"
+          echo "  Drop N: $CHAOS_DROP_N"
+          echo "  Priority: $CHAOS_PRIORITY"
+
+      - name: Run nightly soak test
+        id: soak_test
+        run: |
+          echo "Starting nightly soak test for configuration: ${{ matrix.config.name }}"
+          echo "Duration: ${{ env.SOAK_DURATION_HOURS }} hours"
+          echo "Config ID: ${{ matrix.config.config_id }}"
+          
+          cd tests
+          
+          # Calculate soak duration in seconds (2 hours = 7200 seconds)
+          SOAK_DURATION_SECONDS=7200
+          
+          # Run soak test with chaos injection
+          timeout $SOAK_DURATION_SECONDS cargo test --release --test soak_p2 -- \
+            --config-id "${{ matrix.config.config_id }}" \
+            --soak-duration $SOAK_DURATION_SECONDS \
+            --chaos-jitter ${{ matrix.config.chaos_jitter }} \
+            --chaos-key-rotation ${{ matrix.config.chaos_key_rotation }} \
+            --chaos-fault-injection ${{ matrix.config.chaos_fault_injection }} \
+            --chaos-drop-n ${{ matrix.config.chaos_drop_n }} \
+            --chaos-priority "${{ matrix.config.priority }}" \
+            --output-dir "../soak_results/${{ matrix.config.config_id }}" \
+            --log-dir "../soak_logs/${{ matrix.config.config_id }}" \
+            --artifact-dir "../soak_artifacts/${{ matrix.config.config_id }}" \
+            --nightly-mode \
+            --chaos-level "${{ env.CHAOS_LEVEL }}" \
+            --generate-summary
+          
+          SOAK_EXIT_CODE=$?
+          
+          echo "Soak test completed with exit code: $SOAK_EXIT_CODE"
+          
+          # Set output for workflow
+          if [ $SOAK_EXIT_CODE -eq 0 ]; then
+            echo "soak_status=pass" >> $GITHUB_OUTPUT
+            echo "soak_result=SUCCESS" >> $GITHUB_OUTPUT
+          else
+            echo "soak_status=fail" >> $GITHUB_OUTPUT
+            echo "soak_result=FAILURE" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "soak_exit_code=$SOAK_EXIT_CODE" >> $GITHUB_OUTPUT
+
+      - name: Collect soak results
+        if: always()
+        run: |
+          echo "Collecting soak test results..."
+          
+          cd soak_results/${{ matrix.config.config_id }}
+          
+          # Check if summary file exists
+          if [ -f soak_summary.json ]; then
+            echo "Soak summary found:"
+            cat soak_summary.json | jq '.'
+            
+            # Extract key metrics
+            TOTAL_TESTS=$(jq -r '.total_tests // 0' soak_summary.json)
+            PASSED_TESTS=$(jq -r '.passed_tests // 0' soak_summary.json)
+            FAILED_TESTS=$(jq -r '.failed_tests // 0' soak_summary.json)
+            CHAOS_EVENTS=$(jq -r '.chaos_events // 0' soak_summary.json)
+            PERFORMANCE_SCORE=$(jq -r '.performance_score // 0' soak_summary.json)
+            
+            echo "Results Summary:"
+            echo "  Total Tests: $TOTAL_TESTS"
+            echo "  Passed: $PASSED_TESTS"
+            echo "  Failed: $FAILED_TESTS"
+            echo "  Chaos Events: $CHAOS_EVENTS"
+            echo "  Performance Score: $PERFORMANCE_SCORE"
+            
+            # Set outputs for workflow
+            echo "total_tests=$TOTAL_TESTS" >> $GITHUB_OUTPUT
+            echo "passed_tests=$PASSED_TESTS" >> $GITHUB_OUTPUT
+            echo "failed_tests=$FAILED_TESTS" >> $GITHUB_OUTPUT
+            echo "chaos_events=$CHAOS_EVENTS" >> $GITHUB_OUTPUT
+            echo "performance_score=$PERFORMANCE_SCORE" >> $GITHUB_OUTPUT
+          else
+            echo "No soak summary found"
+            echo "total_tests=0" >> $GITHUB_OUTPUT
+            echo "passed_tests=0" >> $GITHUB_OUTPUT
+            echo "failed_tests=0" >> $GITHUB_OUTPUT
+            echo "chaos_events=0" >> $GITHUB_OUTPUT
+            echo "performance_score=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload soak artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: nightly-soak-${{ matrix.config.config_id }}-${{ github.run_number }}
+          path: |
+            soak_results/${{ matrix.config.config_id }}/
+            soak_logs/${{ matrix.config.config_id }}/
+            soak_artifacts/${{ matrix.config.config_id }}/
+            kernel/.config.nightly
+          retention-days: 30
+
+      - name: Generate soak summary
+        if: always()
+        run: |
+          echo "Generating soak test summary..."
+          
+          # Create summary JSON
+          cat > soak_summary_${{ matrix.config.config_id }}.json << EOF
+          {
+            "config_id": "${{ matrix.config.config_id }}",
+            "config_name": "${{ matrix.config.name }}",
+            "run_id": "${{ github.run_number }}",
+            "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "soak_duration_hours": ${{ env.SOAK_DURATION_HOURS }},
+            "chaos_level": "${{ env.CHAOS_LEVEL }}",
+            "config": {
+              "apic": ${{ matrix.config.apic }},
+              "hpet": ${{ matrix.config.hpet }},
+              "jitter": ${{ matrix.config.jitter }},
+              "auth": ${{ matrix.config.auth }},
+              "cap_policy": "${{ matrix.config.cap_policy }}",
+              "chaos_jitter": ${{ matrix.config.chaos_jitter }},
+              "chaos_key_rotation": ${{ matrix.config.chaos_key_rotation }},
+              "chaos_fault_injection": ${{ matrix.config.chaos_fault_injection }},
+              "chaos_drop_n": ${{ matrix.config.chaos_drop_n }},
+              "priority": "${{ matrix.config.priority }}"
+            },
+            "results": {
+              "status": "${{ steps.soak_test.outputs.soak_status }}",
+              "result": "${{ steps.soak_test.outputs.soak_result }}",
+              "exit_code": ${{ steps.soak_test.outputs.soak_exit_code }},
+              "total_tests": ${{ steps.collect_soak_results.outputs.total_tests }},
+              "passed_tests": ${{ steps.collect_soak_results.outputs.passed_tests }},
+              "failed_tests": ${{ steps.collect_soak_results.outputs.failed_tests }},
+              "chaos_events": ${{ steps.collect_soak_results.outputs.chaos_events }},
+              "performance_score": ${{ steps.collect_soak_results.outputs.performance_score }}
+            },
+            "artifacts": {
+              "results_dir": "soak_results/${{ matrix.config.config_id }}",
+              "logs_dir": "soak_logs/${{ matrix.config.config_id }}",
+              "artifacts_dir": "soak_artifacts/${{ matrix.config.config_id }}",
+              "kernel_config": "kernel/.config.nightly"
+            }
+          }
+          EOF
+          
+          echo "Soak summary generated: soak_summary_${{ matrix.config.config_id }}.json"
+
+  # Nightly summary and trend analysis
+  nightly-summary:
+    name: "Nightly Soak Summary & Trends"
+    runs-on: ubuntu-latest
+    needs: nightly-soak
+    if: always()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download soak artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: nightly-soak-*-${{ github.run_number }}
+
+      - name: Generate nightly trend report
+        run: |
+          echo "Generating nightly soak trend report..."
+          
+          # Create trend analysis
+          cat > nightly_trend_report.json << EOF
+          {
+            "nightly_run": {
+              "run_id": "${{ github.run_number }}",
+              "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "soak_duration_hours": ${{ env.SOAK_DURATION_HOURS }},
+              "chaos_level": "${{ env.CHAOS_LEVEL }}",
+              "config_filter": "${{ env.CONFIG_FILTER }}"
+            },
+            "matrix_summary": {
+              "total_configs": 8,
+              "successful_configs": 0,
+              "failed_configs": 0,
+              "overall_success_rate": 0.0
+            },
+            "configurations": [],
+            "trends": {
+              "performance_trends": {},
+              "stability_trends": {},
+              "chaos_impact": {}
+            },
+            "recommendations": []
+          }
+          EOF
+          
+          echo "Nightly trend report initialized"
+
+      - name: Analyze soak results
+        run: |
+          echo "Analyzing soak test results..."
+          
+          # Find all soak summary files
+          find . -name "soak_summary_*.json" -type f | while read -r summary_file; do
+            echo "Processing: $summary_file"
+            
+            # Extract config ID
+            CONFIG_ID=$(basename "$summary_file" .json | sed 's/soak_summary_//')
+            
+            # Read summary data
+            SUMMARY_DATA=$(cat "$summary_file")
+            
+            # Update trend report
+            jq --arg config_id "$CONFIG_ID" --argjson summary "$SUMMARY_DATA" '
+              .configurations += [$summary] |
+              .matrix_summary.total_configs = (.configurations | length) |
+              .matrix_summary.successful_configs = (.configurations | map(select(.results.status == "pass")) | length) |
+              .matrix_summary.failed_configs = (.configurations | map(select(.results.status == "fail")) | length) |
+              .matrix_summary.overall_success_rate = (.matrix_summary.successful_configs / .matrix_summary.total_configs)
+            ' nightly_trend_report.json > nightly_trend_report_temp.json
+            mv nightly_trend_report_temp.json nightly_trend_report.json
+            
+            echo "Updated trend report for config: $CONFIG_ID"
+          done
+          
+          # Calculate overall statistics
+          TOTAL_CONFIGS=$(jq -r '.matrix_summary.total_configs' nightly_trend_report.json)
+          SUCCESSFUL_CONFIGS=$(jq -r '.matrix_summary.successful_configs' nightly_trend_report.json)
+          FAILED_CONFIGS=$(jq -r '.matrix_summary.failed_configs' nightly_trend_report.json)
+          SUCCESS_RATE=$(jq -r '.matrix_summary.overall_success_rate' nightly_trend_report.json)
+          
+          echo "Nightly Soak Summary:"
+          echo "  Total Configurations: $TOTAL_CONFIGS"
+          echo "  Successful: $SUCCESSFUL_CONFIGS"
+          echo "  Failed: $FAILED_CONFIGS"
+          echo "  Success Rate: $(echo "$SUCCESS_RATE * 100" | bc -l | cut -c1-5)%"
+
+      - name: Generate recommendations
+        run: |
+          echo "Generating recommendations based on soak results..."
+          
+          # Analyze results and generate recommendations
+          SUCCESS_RATE=$(jq -r '.matrix_summary.overall_success_rate' nightly_trend_report.json)
+          
+          if (( $(echo "$SUCCESS_RATE < 0.75" | bc -l) )); then
+            RECOMMENDATION="Critical: Low success rate indicates stability issues. Review failed configurations and investigate root causes."
+            PRIORITY="high"
+          elif (( $(echo "$SUCCESS_RATE < 0.90" | bc -l) )); then
+            RECOMMENDATION="Warning: Moderate success rate suggests some stability concerns. Monitor failing configurations closely."
+            PRIORITY="medium"
+          else
+            RECOMMENDATION="Good: High success rate indicates stable system. Continue monitoring for any degradation."
+            PRIORITY="low"
+          fi
+          
+          # Add recommendation to trend report
+          jq --arg recommendation "$RECOMMENDATION" --arg priority "$PRIORITY" '
+            .recommendations += [{
+              "priority": $priority,
+              "message": $recommendation,
+              "timestamp": now | strftime("%Y-%m-%dT%H:%M:%SZ")
+            }]
+          ' nightly_trend_report.json > nightly_trend_report_temp.json
+          mv nightly_trend_report_temp.json nightly_trend_report.json
+          
+          echo "Recommendation added: $RECOMMENDATION"
+
+      - name: Upload nightly trend report
+        uses: actions/upload-artifact@v3
+        with:
+          name: nightly-trend-report-${{ github.run_number }}
+          path: |
+            nightly_trend_report.json
+            soak_summary_*.json
+          retention-days: 90
+
+      - name: Print nightly summary
+        run: |
+          echo "## 🌙 Nightly Soak Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Read trend report
+          if [ -f nightly_trend_report.json ]; then
+            TOTAL_CONFIGS=$(jq -r '.matrix_summary.total_configs' nightly_trend_report.json)
+            SUCCESSFUL_CONFIGS=$(jq -r '.matrix_summary.successful_configs' nightly_trend_report.json)
+            FAILED_CONFIGS=$(jq -r '.matrix_summary.failed_configs' nightly_trend_report.json)
+            SUCCESS_RATE=$(jq -r '.matrix_summary.overall_success_rate' nightly_trend_report.json)
+            
+            echo "### 📊 Overall Results" >> $GITHUB_STEP_SUMMARY
+            echo "- **Total Configurations**: $TOTAL_CONFIGS" >> $GITHUB_STEP_SUMMARY
+            echo "- **Successful**: $SUCCESSFUL_CONFIGS" >> $GITHUB_STEP_SUMMARY
+            echo "- **Failed**: $FAILED_CONFIGS" >> $GITHUB_STEP_SUMMARY
+            echo "- **Success Rate**: $(echo "$SUCCESS_RATE * 100" | bc -l | cut -c1-5)%" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Configuration details
+            echo "### 🔧 Configuration Details" >> $GITHUB_STEP_SUMMARY
+            jq -r '.configurations[] | "- **\(.config_name)**: \(.results.status) (\(.results.passed_tests)/\(.results.total_tests) tests, \(.results.chaos_events) chaos events)"' nightly_trend_report.json >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Recommendations
+            echo "### 💡 Recommendations" >> $GITHUB_STEP_SUMMARY
+            jq -r '.recommendations[] | "- **\(.priority | ascii_upcase)**: \(.message)"' nightly_trend_report.json >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Overall status
+            if (( $(echo "$SUCCESS_RATE >= 0.90" | bc -l) )); then
+              echo "## ✅ Status: NIGHTLY SOAK PASSED" >> $GITHUB_STEP_SUMMARY
+              echo "All configurations passed with high success rate. System stability is good." >> $GITHUB_STEP_SUMMARY
+            elif (( $(echo "$SUCCESS_RATE >= 0.75" | bc -l) )); then
+              echo "## ⚠️ Status: NIGHTLY SOAK PARTIAL SUCCESS" >> $GITHUB_STEP_SUMMARY
+              echo "Most configurations passed, but some failures detected. Monitor closely." >> $GITHUB_STEP_SUMMARY
+            else
+              echo "## ❌ Status: NIGHTLY SOAK FAILED" >> $GITHUB_STEP_SUMMARY
+              echo "Multiple configuration failures detected. Immediate investigation required." >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "### ❌ Error: Trend report not found" >> $GITHUB_STEP_SUMMARY
+            echo "Unable to generate nightly summary due to missing trend report." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Create nightly release tag
+        if: success()
+        run: |
+          echo "Creating nightly release tag..."
+          
+          # Create tag name
+          TAG_NAME="nightly-soak-$(date -u +%Y%m%d-%H%M%S)"
+          
+          # Create and push tag
+          git tag "$TAG_NAME"
+          git push origin "$TAG_NAME"
+          
+          echo "Nightly release tag created: $TAG_NAME"
+          
+          # Set output
+          echo "nightly_tag=$TAG_NAME" >> $GITHUB_OUTPUT

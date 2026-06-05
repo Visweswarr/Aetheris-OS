@@ -1,28 +1,29 @@
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 fn main() {
     let proto_dir = Path::new("proto");
     let proto_file = proto_dir.join("ai_core.proto");
-    
+
     // Use OUT_DIR for generated files
     let out_dir = std::env::var("OUT_DIR").unwrap_or_else(|_| "src/generated".to_string());
     let out_path = Path::new(&out_dir);
-    
+
     // Ensure output directory exists
     fs::create_dir_all(out_path).ok();
-    
+
     // Check if proto file exists
     if !proto_file.exists() {
-        eprintln!("Warning: Proto file not found: {:?}, creating stub", proto_file);
+        eprintln!(
+            "Warning: Proto file not found: {:?}, creating stub",
+            proto_file
+        );
         create_stub_generated_file(out_path);
         return;
     }
-    
+
     // Try to compile protobuf, but don't fail if protoc is not available
-    match prost_build::Config::new()
-        .compile_protos(&[&proto_file], &[proto_dir])
-    {
+    match prost_build::Config::new().compile_protos(&[&proto_file], &[proto_dir]) {
         Ok(_) => {
             println!("cargo:rerun-if-changed=proto/ai_core.proto");
         }
@@ -124,7 +125,7 @@ pub enum ServiceState {
     Error = 4,
 }
 "#;
-    
+
     let stub_file = out_dir.join("aetheris.ai_core.rs");
     if let Err(e) = fs::write(&stub_file, stub_content) {
         eprintln!("Warning: Failed to write stub file: {}", e);

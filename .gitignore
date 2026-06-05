@@ -219,6 +219,17 @@ bazel-*
 # !package-lock.json
 # !yarn.lock
 
+# Repo-local polyglot toolchains. Bootstrap scripts install here instead of
+# mutating the developer's global machine.
+.polymera-tools/
+
+# CI workflows and deliberately pinned standalone crate locks.
+!.github/**/*.yml
+!.github/**/*.yaml
+!services/wasm_driver/Cargo.lock
+!services/supervisor/Cargo.lock
+!runtime/examples/hello_component/Cargo.lock
+
 # Generated files
 *.generated.*
 *.gen.*
@@ -323,3 +334,5 @@ Thumbs.db
 !.eslintrc.js
 !.prettierrc
 !.commitlintrc.js
+
+.fake

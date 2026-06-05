@@ -3,6 +3,8 @@
 //! This module provides functionality for executing programs,
 //! including ELF file parsing and program loading.
 
+use crate::kprintln;
+
 pub mod elf;
 pub mod header;
 pub mod loader;
@@ -17,15 +19,15 @@ pub fn test_exec() -> Result<(), &'static str> {
         .map_err(|_| "Failed to parse valid ELF64 header")?;
     
     // Verify header properties
-    if header.get_class()? != elf::ElfClass::Elf64 {
+    if header.get_class().map_err(|_| "Failed to get class")? != elf::ElfClass::Elf64 {
         return Err("Invalid ELF class");
     }
     
-    if header.get_file_type()? != elf::ElfType::Executable {
+    if header.get_file_type().map_err(|_| "Failed to get file type")? != elf::ElfType::Executable {
         return Err("Invalid file type");
     }
     
-    if header.get_machine()? != elf::ElfMachine::X86_64 {
+    if header.get_machine().map_err(|_| "Failed to get machine")? != elf::ElfMachine::X86_64 {
         return Err("Invalid machine architecture");
     }
     

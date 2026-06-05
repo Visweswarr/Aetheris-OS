@@ -1,0 +1,17 @@
+{
+  "inputs": {
+    "test_audio_1.wav": "365c34a35adc66d1e65aa446211896d0edd5d53c7a09c261cd86eadc580558b2",
+    "test_audio_2.wav": "f4176a5e5fc898fe53b87901ca239541b21673acd7555b62e04e2a5e541637a2",
+    "test_image_1.jpg": "75740b9b975927f71bfcd64dcf2b07cc70b6364575c6734b32d24f57a1454c90",
+    "test_image_2.jpg": "c0b685e1f3b4a58ea242cd7b25b6e30df3a4213c1528e9ed9a7568b317ca1929"
+  },
+  "meta": {
+    "note": "Run `python tooling/python/ai_golden_test.py --rebaseline` to set these for your current seeds. Commit this file."
+  },
+  "outputs": {
+    "test_audio_1.wav": "365c34a35adc66d1e65aa446211896d0edd5d53c7a09c261cd86eadc580558b2",
+    "test_audio_2.wav": "f4176a5e5fc898fe53b87901ca239541b21673acd7555b62e04e2a5e541637a2",
+    "test_image_1.jpg": "75740b9b975927f71bfcd64dcf2b07cc70b6364575c6734b32d24f57a1454c90",
+    "test_image_2.jpg": "c0b685e1f3b4a58ea242cd7b25b6e30df3a4213c1528e9ed9a7568b317ca1929"
+  }
+}

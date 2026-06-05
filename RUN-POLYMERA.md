@@ -5,8 +5,9 @@ This is the operator entrypoint for the currently verified slice.
 ## Current Truth
 
 - Kernel build: `cargo check` is green.
-- QEMU boot: `PASS` for the Limine UEFI FAT path when a Polymera serial marker is captured.
-- Runtime after marker: not green yet. The current kernel reaches `_start()` and prints the Polymera banner, then panics during early memory allocation.
+- QEMU boot: `PASS` for the Limine UEFI FAT path when `POLYMERA_MAIN_LOOP_READY` is captured.
+- Runtime after marker: Boot MVP is green. The kernel gets through early MM initialization and enters the kernel main loop without a captured panic.
+- Kernel telemetry: `dashboard_bridge --once --require-real` reads the QEMU serial log and writes real v1 kernel counters to the dashboard.
 - Phase 4 AI demo: runnable on the host through `services/ai_core`.
 - Phase 6 runtime-control demo: runnable on the host through `services/ai_core`.
 
@@ -53,10 +54,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File C:\polymera-os\scripts\qemu-
 Expected current result:
 
 - `C:\polymera-os\BOOT-GREEN.md` records `PASS`
-- matched marker: `POLYMERA`
+- matched marker: `POLYMERA_MAIN_LOOP_READY`
 - serial log: `C:\polymera-os\build_out\qemu-serial.log`
 
 The smoke test uses QEMU EDK2 firmware and boots `build_out\iso` as a UEFI FAT artifact through Limine. Direct `-kernel` is diagnostic only unless PVH metadata is added later.
+
+## Bridge Kernel Metrics To The Dashboard
+
+After a passing QEMU smoke run:
+
+```powershell
+cargo run --manifest-path C:\polymera-os\services\dashboard_bridge\Cargo.toml -- --once --require-real
+```
+
+Expected current result:
+
+- `C:\polymera-os\ui\dashboard\kernel_metrics.js` has `source: "qemu-serial"`
+- real fields include `kernel_ticks`, `kernel_active_processes`, `kernel_syscalls_total`, `kernel_ipc_total`, `kernel_context_switches_total`, and `kernel_security_checks_total`
+
+This is a serial-log bridge only. It does not claim shared memory, a kernel socket, or AI Core inside the kernel.
 
 ## Phase 4 Demo
 
@@ -104,14 +120,8 @@ Open:
 C:\polymera-os\ui\dashboard\index.html
 ```
 
-The global dashboard is still simulated. Only cards backed by `ui\dashboard\ai_metrics.js` should be treated as real.
+The global dashboard is still simulated. Only cards backed by `ui\dashboard\kernel_metrics.js` or `ui\dashboard\ai_metrics.js` should be treated as real.
 
 ## Known Next Fix
 
-The kernel now boots far enough to print the banner. The next boot-hardening target is the early memory allocation panic:
-
-```text
-Memory allocation failed for layout: Layout { size: 32, align: 8 }
-```
-
-Fixing that should be the next kernel task before expanding higher-level OS claims.
+The next boot-hardening target is no longer the early heap panic or the first kernel metric. The next kernel task is a controlled shutdown/operator shell marker after the main loop is proven.

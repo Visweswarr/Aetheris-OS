@@ -1,0 +1,546 @@
+name: P4-06-A3 XR Advanced Features
+
+on:
+  push:
+    branches: [main, develop]
+    paths: 
+      - 'services/xr/**'
+      - 'ui/xr/**'
+      - 'tooling/**'
+      - 'docs/phase-4/P4-06-A3-XR-ADVANCED.md'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'services/xr/**'
+      - 'ui/xr/**'
+      - 'tooling/**'
+      - 'docs/phase-4/P4-06-A3-XR-ADVANCED.md'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test-rust:
+    name: Test Rust XR Services
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust-version: [stable, beta]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust-version }}
+          override: true
+          components: rustfmt, clippy
+          
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Cache cargo index
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Cache cargo build
+        uses: actions/cache@v3
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+          
+      - name: Check formatting
+        run: |
+          cd services/xr
+          cargo fmt --all -- --check
+          
+      - name: Run clippy
+        run: |
+          cd services/xr
+          cargo clippy --all-targets --all-features -- -D warnings
+          
+      - name: Run tests
+        run: |
+          cd services/xr
+          cargo test --verbose
+          
+      - name: Run integration tests
+        run: |
+          cd services/xr
+          cargo test --test integration_tests --verbose
+          
+      - name: Test XR device management
+        run: |
+          cd services/xr
+          cargo test test_xr_device_lifecycle --verbose
+          
+      - name: Test multi-user sessions
+        run: |
+          cd services/xr
+          cargo test test_multi_user_sync --verbose
+          
+      - name: Test physics determinism
+        run: |
+          cd services/xr
+          cargo test test_physics_determinism --verbose
+
+  test-cpp:
+    name: Test C++ Godot XR Module
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git
+          
+      - name: Download Godot
+        run: |
+          wget -q https://downloads.tuxfamily.org/godotengine/4.2/Godot_v4.2-stable_linux.x86_64.zip
+          unzip Godot_v4.2-stable_linux.x86_64.zip
+          sudo mv Godot_v4.2-stable_linux.x86_64 /usr/local/bin/godot
+          
+      - name: Build XR module
+        run: |
+          cd ui/xr/godot_modules/aetheris
+          mkdir -p build
+          cd build
+          cmake ..
+          make -j$(nproc)
+          
+      - name: Test XR module
+        run: |
+          cd ui/xr/godot_modules/aetheris
+          # Run basic compilation tests
+          g++ -std=c++17 -I. -I../../include -c src/aetheris_xr.cpp -o test_compile.o
+          rm test_compile.o
+
+  test-typescript:
+    name: Test TypeScript XR Bridge
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: tooling/ts/package-lock.json
+          
+      - name: Install dependencies
+        run: |
+          cd tooling/ts
+          npm ci
+          
+      - name: Run TypeScript compiler
+        run: |
+          cd tooling/ts
+          npx tsc --noEmit
+          
+      - name: Run ESLint
+        run: |
+          cd tooling/ts
+          npx eslint xr_bridge.ts --fix
+          
+      - name: Run tests
+        run: |
+          cd tooling/ts
+          npm test
+          
+      - name: Test XR bridge functionality
+        run: |
+          cd tooling/ts
+          node -e "
+            const { XRBridge } = require('./xr_bridge.js');
+            const bridge = new XRBridge('localhost:50051');
+            console.log('XR Bridge loaded successfully');
+          "
+
+  test-go:
+    name: Test Go XR CLI
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+          
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('go/tooling/xrctl/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+            
+      - name: Install dependencies
+        run: |
+          cd go/tooling/xrctl
+          go mod download
+          
+      - name: Run go vet
+        run: |
+          cd go/tooling/xrctl
+          go vet ./...
+          
+      - name: Run go fmt
+        run: |
+          cd go/tooling/xrctl
+          go fmt ./...
+          
+      - name: Run tests
+        run: |
+          cd go/tooling/xrctl
+          go test -v ./...
+          
+      - name: Build CLI
+        run: |
+          cd go/tooling/xrctl
+          go build -o xrctl .
+          
+      - name: Test CLI help
+        run: |
+          cd go/tooling/xrctl
+          ./xrctl --help
+          ./xrctl xr --help
+          ./xrctl multi-user --help
+          ./xrctl physics --help
+
+  test-python:
+    name: Test Python XR Validator
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9, 3.10, 3.11]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('tooling/python/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+            
+      - name: Install dependencies
+        run: |
+          cd tooling/python
+          pip install -r requirements.txt
+          
+      - name: Run flake8
+        run: |
+          cd tooling/python
+          pip install flake8
+          flake8 xr_validator.py --max-line-length=120
+          
+      - name: Run black
+        run: |
+          cd tooling/python
+          pip install black
+          black --check xr_validator.py
+          
+      - name: Run mypy
+        run: |
+          cd tooling/python
+          pip install mypy
+          mypy xr_validator.py --ignore-missing-imports
+          
+      - name: Run XR validator tests
+        run: |
+          cd tooling/python
+          python xr_validator.py --verbose --output test_results.json
+          
+      - name: Test XR device management
+        run: |
+          cd tooling/python
+          python -c "
+          import asyncio
+          from xr_validator import XRValidator, XRValidatorTests
+          
+          async def test():
+              validator = XRValidator()
+              await validator.connect()
+              test_suite = XRValidatorTests(validator)
+              await test_suite.test_xr_device_management()
+              await validator.disconnect()
+              print('XR device management test passed')
+          
+          asyncio.run(test())
+          "
+          
+      - name: Test multi-user sessions
+        run: |
+          cd tooling/python
+          python -c "
+          import asyncio
+          from xr_validator import XRValidator, XRValidatorTests
+          
+          async def test():
+              validator = XRValidator()
+              await validator.connect()
+              test_suite = XRValidatorTests(validator)
+              await test_suite.test_multi_user_sessions()
+              await validator.disconnect()
+              print('Multi-user sessions test passed')
+          
+          asyncio.run(test())
+          "
+          
+      - name: Test physics interactions
+        run: |
+          cd tooling/python
+          python -c "
+          import asyncio
+          from xr_validator import XRValidator, XRValidatorTests
+          
+          async def test():
+              validator = XRValidator()
+              await validator.connect()
+              test_suite = XRValidatorTests(validator)
+              await test_suite.test_physics_interactions()
+              await validator.disconnect()
+              print('Physics interactions test passed')
+          
+          asyncio.run(test())
+          "
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [test-rust, test-cpp, test-typescript, test-go, test-python]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+          
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          # Rust
+          cd services/xr
+          cargo build --release
+          
+          # TypeScript
+          cd tooling/ts
+          npm ci
+          
+          # Go
+          cd go/tooling/xrctl
+          go build -o xrctl .
+          
+          # Python
+          cd tooling/python
+          pip install -r requirements.txt
+          
+      - name: Start XR service
+        run: |
+          cd services/xr
+          cargo run --release &
+          sleep 10
+          
+      - name: Run integration tests
+        run: |
+          # Test TypeScript bridge
+          cd tooling/ts
+          node -e "
+            const { XRBridge } = require('./xr_bridge.js');
+            const bridge = new XRBridge('localhost:50051');
+            console.log('TypeScript bridge connected');
+          "
+          
+          # Test Go CLI
+          cd go/tooling/xrctl
+          ./xrctl xr start oculus_quest_2 --xr-session-id test_session
+          
+          # Test Python validator
+          cd tooling/python
+          python xr_validator.py --verbose
+          
+      - name: Test polyglot API parity
+        run: |
+          echo "Testing API parity across all languages..."
+          
+          # Test XR device operations
+          cd go/tooling/xrctl
+          ./xrctl xr start oculus_quest_2 --xr-session-id test_session
+          
+          # Test multi-user operations
+          ./xrctl multi-user join test_room --display-name "Test User"
+          
+          # Test physics operations
+          ./xrctl physics grab test_object --grab-point "0,1,0"
+          
+          echo "Polyglot API parity test completed"
+
+  performance-test:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: [test-rust]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          
+      - name: Install dependencies
+        run: |
+          cd services/xr
+          cargo build --release
+          
+      - name: Run performance benchmarks
+        run: |
+          cd services/xr
+          cargo test --release test_performance -- --nocapture
+          
+      - name: Test latency requirements
+        run: |
+          cd services/xr
+          cargo test --release test_latency_requirements -- --nocapture
+          
+      - name: Test determinism
+        run: |
+          cd services/xr
+          cargo test --release test_determinism -- --nocapture
+
+  security-test:
+    name: Security Tests
+    runs-on: ubuntu-latest
+    needs: [test-rust]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          
+      - name: Install dependencies
+        run: |
+          cd services/xr
+          cargo build --release
+          
+      - name: Run security tests
+        run: |
+          cd services/xr
+          cargo test --release test_security -- --nocapture
+          
+      - name: Test capability enforcement
+        run: |
+          cd services/xr
+          cargo test --release test_capability_enforcement -- --nocapture
+          
+      - name: Test session replay prevention
+        run: |
+          cd services/xr
+          cargo test --release test_session_replay_prevention -- --nocapture
+
+  build-docs:
+    name: Build Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: |
+          npm install -g markdownlint-cli
+          
+      - name: Lint documentation
+        run: |
+          markdownlint docs/phase-4/P4-06-A3-XR-ADVANCED.md
+          
+      - name: Validate documentation structure
+        run: |
+          # Check that all required sections are present
+          grep -q "## Overview" docs/phase-4/P4-06-A3-XR-ADVANCED.md
+          grep -q "## Architecture" docs/phase-4/P4-06-A3-XR-ADVANCED.md
+          grep -q "## API Reference" docs/phase-4/P4-06-A3-XR-ADVANCED.md
+          grep -q "## Security Considerations" docs/phase-4/P4-06-A3-XR-ADVANCED.md
+          grep -q "## Performance Requirements" docs/phase-4/P4-06-A3-XR-ADVANCED.md
+          grep -q "## Testing" docs/phase-4/P4-06-A3-XR-ADVANCED.md
+          echo "Documentation structure validation passed"
+
+  notify:
+    name: Notify Results
+    runs-on: ubuntu-latest
+    needs: [test-rust, test-cpp, test-typescript, test-go, test-python, integration-test, performance-test, security-test, build-docs]
+    if: always()
+    
+    steps:
+      - name: Notify success
+        if: ${{ needs.test-rust.result == 'success' && needs.test-cpp.result == 'success' && needs.test-typescript.result == 'success' && needs.test-go.result == 'success' && needs.test-python.result == 'success' && needs.integration-test.result == 'success' && needs.performance-test.result == 'success' && needs.security-test.result == 'success' && needs.build-docs.result == 'success' }}
+        run: |
+          echo "✅ P4-06-A3 XR Advanced Features: All tests passed!"
+          echo "🚀 Ready for deployment"
+          
+      - name: Notify failure
+        if: ${{ needs.test-rust.result == 'failure' || needs.test-cpp.result == 'failure' || needs.test-typescript.result == 'failure' || needs.test-go.result == 'failure' || needs.test-python.result == 'failure' || needs.integration-test.result == 'failure' || needs.performance-test.result == 'failure' || needs.security-test.result == 'failure' || needs.build-docs.result == 'failure' }}
+        run: |
+          echo "❌ P4-06-A3 XR Advanced Features: Some tests failed!"
+          echo "🔍 Check the logs for details"
+          exit 1

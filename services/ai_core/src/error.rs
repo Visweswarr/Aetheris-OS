@@ -1,11 +1,11 @@
 //! Error handling module for AI Core Service
 
-use std::collections::HashMap;
-use std::io;
-use std::time::{Duration, Instant};
-use std::sync::OnceLock;
-use std::fmt;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fmt;
+use std::io;
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 /// Result type alias for AI Core Service
 pub type Result<T> = std::result::Result<T, AiCoreError>;
@@ -13,19 +13,46 @@ pub type Result<T> = std::result::Result<T, AiCoreError>;
 /// AI Core Service error types
 #[derive(Debug, Clone)]
 pub enum AiCoreError {
-    ConfigError(String), Config(String), ModelError(String), ToolError(String),
-    ToolNotFound(String), ToolNotInitialized(String), CapabilityError(String),
-    CapDenied(String), CapabilityDenied(String), ProtocolError(String),
-    SerializationError(String), IoError(String), NetworkError(String),
-    TimeoutError(String), AuthError(String), AuthorizationError(String),
-    RateLimitError(String), ResourceError(String), InternalError(String),
-    ValidationError(String), NotFoundError(String), NotFound(String),
-    AlreadyExistsError(String), InvalidArgumentError(String), InvalidInput(String),
-    UnsupportedOperationError(String), NotSupported(String), NotImplemented(String),
-    ServiceUnavailableError(String), ExternalServiceError(String), ToolTimeout(String),
-    ModelTimeout(String), MemoryAllocationError(String), CircuitBreakerOpen(String),
-    QuotaExceeded(String), DependencyUnavailable(String), ConfigValidationError(String),
-    FeatureNotAvailable(String), DataCorruptionError(String), ConcurrentAccessError(String),
+    ConfigError(String),
+    Config(String),
+    ModelError(String),
+    ToolError(String),
+    ToolNotFound(String),
+    ToolNotInitialized(String),
+    CapabilityError(String),
+    CapDenied(String),
+    CapabilityDenied(String),
+    ProtocolError(String),
+    SerializationError(String),
+    IoError(String),
+    NetworkError(String),
+    TimeoutError(String),
+    AuthError(String),
+    AuthorizationError(String),
+    RateLimitError(String),
+    ResourceError(String),
+    InternalError(String),
+    ValidationError(String),
+    NotFoundError(String),
+    NotFound(String),
+    AlreadyExistsError(String),
+    InvalidArgumentError(String),
+    InvalidInput(String),
+    UnsupportedOperationError(String),
+    NotSupported(String),
+    NotImplemented(String),
+    ServiceUnavailableError(String),
+    ExternalServiceError(String),
+    ToolTimeout(String),
+    ModelTimeout(String),
+    MemoryAllocationError(String),
+    CircuitBreakerOpen(String),
+    QuotaExceeded(String),
+    DependencyUnavailable(String),
+    ConfigValidationError(String),
+    FeatureNotAvailable(String),
+    DataCorruptionError(String),
+    ConcurrentAccessError(String),
 }
 
 impl fmt::Display for AiCoreError {
@@ -51,8 +78,12 @@ impl fmt::Display for AiCoreError {
             Self::ValidationError(s) => write!(f, "Validation error: {}", s),
             Self::NotFoundError(s) | Self::NotFound(s) => write!(f, "Not found: {}", s),
             Self::AlreadyExistsError(s) => write!(f, "Already exists: {}", s),
-            Self::InvalidArgumentError(s) | Self::InvalidInput(s) => write!(f, "Invalid argument: {}", s),
-            Self::UnsupportedOperationError(s) | Self::NotSupported(s) | Self::NotImplemented(s) => write!(f, "Not supported: {}", s),
+            Self::InvalidArgumentError(s) | Self::InvalidInput(s) => {
+                write!(f, "Invalid argument: {}", s)
+            }
+            Self::UnsupportedOperationError(s)
+            | Self::NotSupported(s)
+            | Self::NotImplemented(s) => write!(f, "Not supported: {}", s),
             Self::ServiceUnavailableError(s) => write!(f, "Service unavailable: {}", s),
             Self::ExternalServiceError(s) => write!(f, "External service error: {}", s),
             Self::ToolTimeout(s) => write!(f, "Tool timeout: {}", s),
@@ -72,39 +103,102 @@ impl fmt::Display for AiCoreError {
 impl std::error::Error for AiCoreError {}
 
 impl AiCoreError {
-    pub fn config(msg: &str) -> Self { Self::ConfigError(msg.to_string()) }
-    pub fn model(msg: &str) -> Self { Self::ModelError(msg.to_string()) }
-    pub fn tool(msg: &str) -> Self { Self::ToolError(msg.to_string()) }
-    pub fn capability(msg: &str) -> Self { Self::CapabilityError(msg.to_string()) }
-    pub fn cap_denied(msg: &str) -> Self { Self::CapDenied(msg.to_string()) }
-    pub fn protocol(msg: &str) -> Self { Self::ProtocolError(msg.to_string()) }
-    pub fn serialization(msg: &str) -> Self { Self::SerializationError(msg.to_string()) }
-    pub fn io(msg: &str) -> Self { Self::IoError(msg.to_string()) }
-    pub fn network(msg: &str) -> Self { Self::NetworkError(msg.to_string()) }
-    pub fn timeout(msg: &str) -> Self { Self::TimeoutError(msg.to_string()) }
-    pub fn auth(msg: &str) -> Self { Self::AuthError(msg.to_string()) }
-    pub fn authorization(msg: &str) -> Self { Self::AuthorizationError(msg.to_string()) }
-    pub fn rate_limit(msg: &str) -> Self { Self::RateLimitError(msg.to_string()) }
-    pub fn resource(msg: &str) -> Self { Self::ResourceError(msg.to_string()) }
-    pub fn internal(msg: &str) -> Self { Self::InternalError(msg.to_string()) }
-    pub fn validation(msg: &str) -> Self { Self::ValidationError(msg.to_string()) }
-    pub fn not_found(msg: &str) -> Self { Self::NotFoundError(msg.to_string()) }
-    pub fn already_exists(msg: &str) -> Self { Self::AlreadyExistsError(msg.to_string()) }
-    pub fn invalid_argument(msg: &str) -> Self { Self::InvalidArgumentError(msg.to_string()) }
-    pub fn unsupported_operation(msg: &str) -> Self { Self::UnsupportedOperationError(msg.to_string()) }
-    pub fn service_unavailable(msg: &str) -> Self { Self::ServiceUnavailableError(msg.to_string()) }
-    pub fn external_service(msg: &str) -> Self { Self::ExternalServiceError(msg.to_string()) }
-    pub fn tool_timeout(msg: &str) -> Self { Self::ToolTimeout(msg.to_string()) }
-    pub fn model_timeout(msg: &str) -> Self { Self::ModelTimeout(msg.to_string()) }
-    pub fn memory_allocation(msg: &str) -> Self { Self::MemoryAllocationError(msg.to_string()) }
-    pub fn circuit_breaker_open(msg: &str) -> Self { Self::CircuitBreakerOpen(msg.to_string()) }
-    pub fn quota_exceeded(msg: &str) -> Self { Self::QuotaExceeded(msg.to_string()) }
-    pub fn dependency_unavailable(msg: &str) -> Self { Self::DependencyUnavailable(msg.to_string()) }
-    pub fn config_validation(msg: &str) -> Self { Self::ConfigValidationError(msg.to_string()) }
-    pub fn feature_not_available(msg: &str) -> Self { Self::FeatureNotAvailable(msg.to_string()) }
-    pub fn data_corruption(msg: &str) -> Self { Self::DataCorruptionError(msg.to_string()) }
-    pub fn concurrent_access(msg: &str) -> Self { Self::ConcurrentAccessError(msg.to_string()) }
-
+    pub fn config(msg: &str) -> Self {
+        Self::ConfigError(msg.to_string())
+    }
+    pub fn model(msg: &str) -> Self {
+        Self::ModelError(msg.to_string())
+    }
+    pub fn tool(msg: &str) -> Self {
+        Self::ToolError(msg.to_string())
+    }
+    pub fn capability(msg: &str) -> Self {
+        Self::CapabilityError(msg.to_string())
+    }
+    pub fn cap_denied(msg: &str) -> Self {
+        Self::CapDenied(msg.to_string())
+    }
+    pub fn protocol(msg: &str) -> Self {
+        Self::ProtocolError(msg.to_string())
+    }
+    pub fn serialization(msg: &str) -> Self {
+        Self::SerializationError(msg.to_string())
+    }
+    pub fn io(msg: &str) -> Self {
+        Self::IoError(msg.to_string())
+    }
+    pub fn network(msg: &str) -> Self {
+        Self::NetworkError(msg.to_string())
+    }
+    pub fn timeout(msg: &str) -> Self {
+        Self::TimeoutError(msg.to_string())
+    }
+    pub fn auth(msg: &str) -> Self {
+        Self::AuthError(msg.to_string())
+    }
+    pub fn authorization(msg: &str) -> Self {
+        Self::AuthorizationError(msg.to_string())
+    }
+    pub fn rate_limit(msg: &str) -> Self {
+        Self::RateLimitError(msg.to_string())
+    }
+    pub fn resource(msg: &str) -> Self {
+        Self::ResourceError(msg.to_string())
+    }
+    pub fn internal(msg: &str) -> Self {
+        Self::InternalError(msg.to_string())
+    }
+    pub fn validation(msg: &str) -> Self {
+        Self::ValidationError(msg.to_string())
+    }
+    pub fn not_found(msg: &str) -> Self {
+        Self::NotFoundError(msg.to_string())
+    }
+    pub fn already_exists(msg: &str) -> Self {
+        Self::AlreadyExistsError(msg.to_string())
+    }
+    pub fn invalid_argument(msg: &str) -> Self {
+        Self::InvalidArgumentError(msg.to_string())
+    }
+    pub fn unsupported_operation(msg: &str) -> Self {
+        Self::UnsupportedOperationError(msg.to_string())
+    }
+    pub fn service_unavailable(msg: &str) -> Self {
+        Self::ServiceUnavailableError(msg.to_string())
+    }
+    pub fn external_service(msg: &str) -> Self {
+        Self::ExternalServiceError(msg.to_string())
+    }
+    pub fn tool_timeout(msg: &str) -> Self {
+        Self::ToolTimeout(msg.to_string())
+    }
+    pub fn model_timeout(msg: &str) -> Self {
+        Self::ModelTimeout(msg.to_string())
+    }
+    pub fn memory_allocation(msg: &str) -> Self {
+        Self::MemoryAllocationError(msg.to_string())
+    }
+    pub fn circuit_breaker_open(msg: &str) -> Self {
+        Self::CircuitBreakerOpen(msg.to_string())
+    }
+    pub fn quota_exceeded(msg: &str) -> Self {
+        Self::QuotaExceeded(msg.to_string())
+    }
+    pub fn dependency_unavailable(msg: &str) -> Self {
+        Self::DependencyUnavailable(msg.to_string())
+    }
+    pub fn config_validation(msg: &str) -> Self {
+        Self::ConfigValidationError(msg.to_string())
+    }
+    pub fn feature_not_available(msg: &str) -> Self {
+        Self::FeatureNotAvailable(msg.to_string())
+    }
+    pub fn data_corruption(msg: &str) -> Self {
+        Self::DataCorruptionError(msg.to_string())
+    }
+    pub fn concurrent_access(msg: &str) -> Self {
+        Self::ConcurrentAccessError(msg.to_string())
+    }
 
     pub fn error_code(&self) -> u32 {
         match self {
@@ -127,7 +221,9 @@ impl AiCoreError {
             Self::NotFoundError(_) | Self::NotFound(_) => 1017,
             Self::AlreadyExistsError(_) => 1018,
             Self::InvalidArgumentError(_) | Self::InvalidInput(_) => 1019,
-            Self::UnsupportedOperationError(_) | Self::NotSupported(_) | Self::NotImplemented(_) => 1020,
+            Self::UnsupportedOperationError(_)
+            | Self::NotSupported(_)
+            | Self::NotImplemented(_) => 1020,
             Self::ServiceUnavailableError(_) => 1021,
             Self::ExternalServiceError(_) => 1022,
             Self::ToolTimeout(_) => 1023,
@@ -144,97 +240,256 @@ impl AiCoreError {
     }
 
     pub fn is_retryable(&self) -> bool {
-        matches!(self,
-            Self::NetworkError(_) | Self::TimeoutError(_) | Self::ServiceUnavailableError(_) |
-            Self::ExternalServiceError(_) | Self::ToolTimeout(_) | Self::ModelTimeout(_) |
-            Self::CircuitBreakerOpen(_) | Self::DependencyUnavailable(_) | Self::ConcurrentAccessError(_)
+        matches!(
+            self,
+            Self::NetworkError(_)
+                | Self::TimeoutError(_)
+                | Self::ServiceUnavailableError(_)
+                | Self::ExternalServiceError(_)
+                | Self::ToolTimeout(_)
+                | Self::ModelTimeout(_)
+                | Self::CircuitBreakerOpen(_)
+                | Self::DependencyUnavailable(_)
+                | Self::ConcurrentAccessError(_)
         )
+    }
+
+    pub fn is_client_error(&self) -> bool {
+        matches!(
+            self,
+            Self::ConfigError(_)
+                | Self::Config(_)
+                | Self::CapabilityError(_)
+                | Self::CapDenied(_)
+                | Self::CapabilityDenied(_)
+                | Self::AuthError(_)
+                | Self::AuthorizationError(_)
+                | Self::ValidationError(_)
+                | Self::InvalidArgumentError(_)
+                | Self::InvalidInput(_)
+                | Self::NotFoundError(_)
+                | Self::NotFound(_)
+                | Self::UnsupportedOperationError(_)
+                | Self::NotSupported(_)
+                | Self::NotImplemented(_)
+                | Self::QuotaExceeded(_)
+        )
+    }
+
+    pub fn is_server_error(&self) -> bool {
+        !self.is_client_error()
     }
 }
 
 impl From<io::Error> for AiCoreError {
-    fn from(err: io::Error) -> Self { Self::IoError(err.to_string()) }
+    fn from(err: io::Error) -> Self {
+        Self::IoError(err.to_string())
+    }
 }
 
 impl From<serde_json::Error> for AiCoreError {
-    fn from(err: serde_json::Error) -> Self { Self::SerializationError(err.to_string()) }
+    fn from(err: serde_json::Error) -> Self {
+        Self::SerializationError(err.to_string())
+    }
 }
 
 impl From<serde_cbor::Error> for AiCoreError {
-    fn from(err: serde_cbor::Error) -> Self { Self::SerializationError(err.to_string()) }
+    fn from(err: serde_cbor::Error) -> Self {
+        Self::SerializationError(err.to_string())
+    }
 }
 
 impl From<prost::DecodeError> for AiCoreError {
-    fn from(err: prost::DecodeError) -> Self { Self::ProtocolError(err.to_string()) }
+    fn from(err: prost::DecodeError) -> Self {
+        Self::ProtocolError(err.to_string())
+    }
 }
 
 impl From<prost::EncodeError> for AiCoreError {
-    fn from(err: prost::EncodeError) -> Self { Self::ProtocolError(err.to_string()) }
+    fn from(err: prost::EncodeError) -> Self {
+        Self::ProtocolError(err.to_string())
+    }
 }
 
 impl From<tokio::time::error::Elapsed> for AiCoreError {
-    fn from(err: tokio::time::error::Elapsed) -> Self { Self::TimeoutError(err.to_string()) }
+    fn from(err: tokio::time::error::Elapsed) -> Self {
+        Self::TimeoutError(err.to_string())
+    }
 }
 
 impl From<Box<dyn std::error::Error>> for AiCoreError {
-    fn from(err: Box<dyn std::error::Error>) -> Self { Self::InternalError(err.to_string()) }
+    fn from(err: Box<dyn std::error::Error>) -> Self {
+        Self::InternalError(err.to_string())
+    }
 }
 
 impl From<Box<dyn std::error::Error + Send + Sync>> for AiCoreError {
-    fn from(err: Box<dyn std::error::Error + Send + Sync>) -> Self { Self::InternalError(err.to_string()) }
+    fn from(err: Box<dyn std::error::Error + Send + Sync>) -> Self {
+        Self::InternalError(err.to_string())
+    }
 }
 
 /// Retry policy configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct RetryPolicy {
-    pub max_attempts: u32, pub initial_delay_ms: u64, pub max_delay_ms: u64,
-    pub backoff_multiplier: f64, pub jitter_factor: f64, pub seed: Option<u64>,
+    pub max_attempts: u32,
+    pub initial_delay_ms: u64,
+    pub max_delay_ms: u64,
+    pub backoff_multiplier: f64,
+    pub jitter_factor: f64,
+    pub seed: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct RetryPolicyConfig {
+    pub max_attempts: u32,
+    pub initial_delay_ms: u64,
+    pub max_delay_ms: u64,
+    pub backoff_multiplier: f64,
+    pub jitter_factor: f64,
+}
+
+impl From<RetryPolicyConfig> for RetryPolicy {
+    fn from(config: RetryPolicyConfig) -> Self {
+        Self {
+            max_attempts: config.max_attempts,
+            initial_delay_ms: config.initial_delay_ms,
+            max_delay_ms: config.max_delay_ms,
+            backoff_multiplier: config.backoff_multiplier,
+            jitter_factor: config.jitter_factor,
+            seed: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct XorShiftRng {
+    state: u64,
+}
+
+impl XorShiftRng {
+    pub fn new(seed: u64) -> Self {
+        Self {
+            state: if seed == 0 { 0x9e37_79b9_7f4a_7c15 } else { seed },
+        }
+    }
+
+    pub fn next_u64(&mut self) -> u64 {
+        let mut x = self.state;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.state = x;
+        x
+    }
+
+    pub fn next_f64(&mut self) -> f64 {
+        let value = self.next_u64() >> 11;
+        (value as f64) / ((1u64 << 53) as f64)
+    }
 }
 
 impl Default for RetryPolicy {
     fn default() -> Self {
-        Self { max_attempts: 3, initial_delay_ms: 100, max_delay_ms: 5000, backoff_multiplier: 2.0, jitter_factor: 0.1, seed: None }
+        Self {
+            max_attempts: 3,
+            initial_delay_ms: 100,
+            max_delay_ms: 5000,
+            backoff_multiplier: 2.0,
+            jitter_factor: 0.1,
+            seed: None,
+        }
     }
 }
 
 /// Retry attempt information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetryAttempt {
-    pub attempt: u32, pub delay_ms: u64, pub timestamp: u64, pub error: String, pub error_code: u32, pub is_final: bool,
+    pub attempt: u32,
+    pub delay_ms: u64,
+    pub timestamp: u64,
+    pub error: String,
+    pub error_code: u32,
+    pub is_final: bool,
 }
 
 /// Retry context for tracking retry state
 #[derive(Debug, Clone)]
 pub struct RetryContext {
-    policy: RetryPolicy, attempt: u32, start_time: Instant, last_error: Option<AiCoreError>, attempts: Vec<RetryAttempt>,
+    policy: RetryPolicy,
+    attempt: u32,
+    start_time: Instant,
+    last_error: Option<AiCoreError>,
+    attempts: Vec<RetryAttempt>,
 }
 
 impl RetryContext {
     pub fn new(policy: RetryPolicy) -> Self {
-        Self { policy, attempt: 0, start_time: Instant::now(), last_error: None, attempts: Vec::new() }
+        Self {
+            policy,
+            attempt: 0,
+            start_time: Instant::now(),
+            last_error: None,
+            attempts: Vec::new(),
+        }
     }
-    pub fn should_retry(&self, error: &AiCoreError) -> bool { self.attempt < self.policy.max_attempts && error.is_retryable() }
+    pub fn should_retry(&self, error: &AiCoreError) -> bool {
+        self.attempt < self.policy.max_attempts && error.is_retryable()
+    }
     pub fn next_delay(&self) -> Duration {
-        if self.attempt == 0 { return Duration::from_millis(0); }
-        let base_delay = self.policy.initial_delay_ms as f64 * self.policy.backoff_multiplier.powi((self.attempt - 1) as i32);
-        Duration::from_millis(base_delay.min(self.policy.max_delay_ms as f64) as u64)
+        if self.attempt == 0 {
+            return Duration::from_millis(0);
+        }
+        let base_delay = self.policy.initial_delay_ms as f64
+            * self
+                .policy
+                .backoff_multiplier
+                .powi((self.attempt - 1) as i32);
+        let mut delay = base_delay.min(self.policy.max_delay_ms as f64);
+        if self.policy.jitter_factor > 0.0 {
+            let seed = self.policy.seed.unwrap_or(0x5eed);
+            let mut rng = XorShiftRng::new(seed ^ self.attempt as u64);
+            let jitter = (rng.next_f64() * 2.0 - 1.0) * self.policy.jitter_factor;
+            delay *= 1.0 + jitter;
+        }
+        Duration::from_millis(delay.max(0.0).min(self.policy.max_delay_ms as f64) as u64)
     }
     pub fn record_attempt(&mut self, error: AiCoreError) {
         self.attempt += 1;
         self.last_error = Some(error.clone());
-        let delay = if self.attempt == 1 { 0 } else { self.next_delay().as_millis() as u64 };
+        let delay = if self.attempt == 1 {
+            0
+        } else {
+            self.next_delay().as_millis() as u64
+        };
         self.attempts.push(RetryAttempt {
-            attempt: self.attempt, delay_ms: delay,
-            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
-            error: error.to_string(), error_code: error.error_code(), is_final: self.attempt >= self.policy.max_attempts,
+            attempt: self.attempt,
+            delay_ms: delay,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            error: error.to_string(),
+            error_code: error.error_code(),
+            is_final: self.attempt >= self.policy.max_attempts,
         });
     }
-    pub fn total_duration(&self) -> Duration { self.start_time.elapsed() }
-    pub fn attempts(&self) -> &[RetryAttempt] { &self.attempts }
-    pub fn last_error(&self) -> Option<&AiCoreError> { self.last_error.as_ref() }
-    pub fn is_exhausted(&self) -> bool { self.attempt >= self.policy.max_attempts }
+    pub fn total_duration(&self) -> Duration {
+        self.start_time.elapsed()
+    }
+    pub fn attempts(&self) -> &[RetryAttempt] {
+        &self.attempts
+    }
+    pub fn attempt(&self) -> u32 {
+        self.attempt
+    }
+    pub fn last_error(&self) -> Option<&AiCoreError> {
+        self.last_error.as_ref()
+    }
+    pub fn is_exhausted(&self) -> bool {
+        self.attempt >= self.policy.max_attempts
+    }
 }
-
 
 /// Error audit logger
 pub struct ErrorAuditLogger {
@@ -243,43 +498,81 @@ pub struct ErrorAuditLogger {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorAuditEntry {
-    pub error_code: u32, pub error_message: String, pub error_type: String, pub timestamp: u64,
-    pub session_id: Option<String>, pub request_id: Option<String>,
-    pub retry_attempts: Vec<RetryAttempt>, pub context: HashMap<String, String>, pub stack_trace: Option<String>,
+    pub error_code: u32,
+    pub error_message: String,
+    pub error_type: String,
+    pub timestamp: u64,
+    pub session_id: Option<String>,
+    pub request_id: Option<String>,
+    pub retry_attempts: Vec<RetryAttempt>,
+    pub context: HashMap<String, String>,
+    pub stack_trace: Option<String>,
 }
 
 impl ErrorAuditLogger {
-    pub fn new() -> Self { Self { entries: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())) } }
+    pub fn new() -> Self {
+        Self {
+            entries: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+        }
+    }
     pub fn log_error(&self, error: &AiCoreError, context: Option<RetryContext>) {
         let entry = ErrorAuditEntry {
-            error_code: error.error_code(), error_message: error.to_string(), error_type: format!("{:?}", error),
-            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
-            session_id: None, request_id: None,
+            error_code: error.error_code(),
+            error_message: error.to_string(),
+            error_type: format!("{:?}", error),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            session_id: None,
+            request_id: None,
             retry_attempts: context.map(|c| c.attempts().to_vec()).unwrap_or_default(),
-            context: HashMap::new(), stack_trace: None,
+            context: HashMap::new(),
+            stack_trace: None,
         };
-        if let Ok(mut entries) = self.entries.lock() { entries.push(entry); }
+        if let Ok(mut entries) = self.entries.lock() {
+            entries.push(entry);
+        }
     }
     pub fn export_cbor(&self) -> std::result::Result<Vec<u8>, serde_cbor::Error> {
         let entries = self.entries.lock().unwrap();
+        if entries.is_empty() {
+            return Ok(Vec::new());
+        }
         serde_cbor::to_vec(&*entries)
     }
-    pub fn clear(&self) { if let Ok(mut entries) = self.entries.lock() { entries.clear(); } }
+    pub fn clear(&self) {
+        if let Ok(mut entries) = self.entries.lock() {
+            entries.clear();
+        }
+    }
 }
 
-impl Default for ErrorAuditLogger { fn default() -> Self { Self::new() } }
+impl Default for ErrorAuditLogger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 static GLOBAL_ERROR_AUDIT_LOGGER: OnceLock<ErrorAuditLogger> = OnceLock::new();
 
-pub fn init_global_error_audit_logger() { let _ = GLOBAL_ERROR_AUDIT_LOGGER.set(ErrorAuditLogger::new()); }
-pub fn get_global_error_audit_logger() -> Option<&'static ErrorAuditLogger> { GLOBAL_ERROR_AUDIT_LOGGER.get() }
+pub fn init_global_error_audit_logger() {
+    let _ = GLOBAL_ERROR_AUDIT_LOGGER.set(ErrorAuditLogger::new());
+}
+pub fn get_global_error_audit_logger() -> Option<&'static ErrorAuditLogger> {
+    GLOBAL_ERROR_AUDIT_LOGGER.get()
+}
 pub fn log_error_audit(error: &AiCoreError, context: Option<RetryContext>) {
-    if let Some(logger) = get_global_error_audit_logger() { logger.log_error(error, context); }
+    if let Some(logger) = get_global_error_audit_logger() {
+        logger.log_error(error, context);
+    }
 }
 
 pub async fn retry_with_backoff<F, T, E>(policy: RetryPolicy, mut operation: F) -> Result<T>
 where
-    F: FnMut() -> std::pin::Pin<Box<dyn std::future::Future<Output = std::result::Result<T, E>> + Send>>,
+    F: FnMut() -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = std::result::Result<T, E>> + Send>,
+    >,
     E: Into<AiCoreError>,
 {
     let mut context = RetryContext::new(policy);
@@ -289,9 +582,13 @@ where
             Err(error) => {
                 let ai_error: AiCoreError = error.into();
                 log_error_audit(&ai_error, Some(context.clone()));
-                if !context.should_retry(&ai_error) { return Err(ai_error); }
+                if !context.should_retry(&ai_error) {
+                    return Err(ai_error);
+                }
                 context.record_attempt(ai_error.clone());
-                if context.is_exhausted() { return Err(ai_error); }
+                if context.is_exhausted() {
+                    return Err(ai_error);
+                }
                 tokio::time::sleep(context.next_delay()).await;
             }
         }
@@ -300,24 +597,125 @@ where
 
 /// Error hint information
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ErrorHint { pub code: String, pub title: String, pub message: String, pub hint: String, pub severity: String, pub retryable: bool, pub user_action: String }
-
-/// Error hints manager
-pub struct ErrorHintsManager { hints: HashMap<u32, ErrorHint> }
-
-impl ErrorHintsManager {
-    pub fn new() -> Self { Self { hints: HashMap::new() } }
-    pub fn get_hint(&self, error_code: u32) -> Option<&ErrorHint> { self.hints.get(&error_code) }
+pub struct ErrorHint {
+    pub code: String,
+    pub title: String,
+    pub message: String,
+    pub hint: String,
+    pub severity: String,
+    pub retryable: bool,
+    pub user_action: String,
 }
 
-impl Default for ErrorHintsManager { fn default() -> Self { Self::new() } }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorCategory {
+    pub codes: Vec<u32>,
+    pub title: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct ErrorHintsYaml {
+    #[serde(default)]
+    errors: HashMap<String, ErrorHint>,
+    #[serde(default)]
+    categories: HashMap<String, ErrorCategory>,
+    #[serde(default)]
+    retry_policies: HashMap<String, RetryPolicyConfig>,
+    #[serde(default)]
+    user_actions: HashMap<String, Vec<String>>,
+}
+
+/// Error hints manager
+pub struct ErrorHintsManager {
+    hints: HashMap<u32, ErrorHint>,
+    categories: HashMap<String, ErrorCategory>,
+    retry_policies: HashMap<String, RetryPolicy>,
+    user_actions: HashMap<String, Vec<String>>,
+}
+
+impl ErrorHintsManager {
+    pub fn new() -> Self {
+        Self {
+            hints: HashMap::new(),
+            categories: HashMap::new(),
+            retry_policies: HashMap::new(),
+            user_actions: HashMap::new(),
+        }
+    }
+
+    pub fn load_from_yaml(path: impl AsRef<std::path::Path>) -> std::result::Result<Self, AiCoreError> {
+        let text = std::fs::read_to_string(path).map_err(AiCoreError::from)?;
+        let config: ErrorHintsYaml =
+            serde_yaml::from_str(&text).map_err(|error| AiCoreError::ConfigError(error.to_string()))?;
+        let hints = config
+            .errors
+            .into_iter()
+            .filter_map(|(code, hint)| code.parse::<u32>().ok().map(|code| (code, hint)))
+            .collect();
+        let retry_policies = config
+            .retry_policies
+            .into_iter()
+            .map(|(name, policy)| (name, policy.into()))
+            .collect();
+        Ok(Self {
+            hints,
+            categories: config.categories,
+            retry_policies,
+            user_actions: config.user_actions,
+        })
+    }
+
+    pub fn get_hint(&self, error_code: u32) -> Option<&ErrorHint> {
+        self.hints.get(&error_code)
+    }
+
+    pub fn get_all_hints(&self) -> &HashMap<u32, ErrorHint> {
+        &self.hints
+    }
+
+    pub fn get_all_categories(&self) -> &HashMap<String, ErrorCategory> {
+        &self.categories
+    }
+
+    pub fn get_category(&self, error_code: u32) -> Option<&ErrorCategory> {
+        self.categories
+            .values()
+            .find(|category| category.codes.contains(&error_code))
+    }
+
+    pub fn get_retry_policy(&self, name: &str) -> Option<&RetryPolicy> {
+        self.retry_policies.get(name)
+    }
+
+    pub fn get_user_actions(&self, name: &str) -> Option<&Vec<String>> {
+        self.user_actions.get(name)
+    }
+}
+
+impl Default for ErrorHintsManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 static GLOBAL_ERROR_HINTS_MANAGER: OnceLock<ErrorHintsManager> = OnceLock::new();
 
-pub fn init_global_error_hints_manager<P: AsRef<std::path::Path>>(_path: P) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let _ = GLOBAL_ERROR_HINTS_MANAGER.set(ErrorHintsManager::new());
+pub fn init_global_error_hints_manager<P: AsRef<std::path::Path>>(
+    path: P,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let manager = ErrorHintsManager::load_from_yaml(path).unwrap_or_else(|_| ErrorHintsManager::new());
+    let _ = GLOBAL_ERROR_HINTS_MANAGER.set(manager);
     Ok(())
 }
-pub fn get_global_error_hints_manager() -> Option<&'static ErrorHintsManager> { GLOBAL_ERROR_HINTS_MANAGER.get() }
-pub fn get_error_hint(error: &AiCoreError) -> Option<&'static ErrorHint> { get_global_error_hints_manager().and_then(|m| m.get_hint(error.error_code())) }
-pub fn get_retry_policy_for_error(_error: &AiCoreError) -> RetryPolicy { RetryPolicy::default() }
+pub fn get_global_error_hints_manager() -> Option<&'static ErrorHintsManager> {
+    GLOBAL_ERROR_HINTS_MANAGER.get()
+}
+pub fn get_error_hint(error: &AiCoreError) -> Option<&'static ErrorHint> {
+    get_global_error_hints_manager().and_then(|m| m.get_hint(error.error_code()))
+}
+pub fn get_retry_policy_for_error(_error: &AiCoreError) -> RetryPolicy {
+    get_global_error_hints_manager()
+        .and_then(|manager| manager.get_retry_policy("default").cloned())
+        .unwrap_or_default()
+}

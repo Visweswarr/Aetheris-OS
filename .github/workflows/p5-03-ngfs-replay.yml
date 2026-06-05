@@ -1,0 +1,96 @@
+name: Phase 5 - NGFS Replay
+
+on:
+  push:
+    paths:
+      - 'services/ai/src/**'
+      - 'go/aicore.go'
+      - '.github/workflows/p5-03-ngfs-replay.yml'
+      - 'docs/phase-5/P5-03-NGFS.md'
+  pull_request:
+
+jobs:
+  linux-determinism:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build crates (phase5)
+        run: |
+          cargo build -p aetheris-ai --features phase5 --verbose
+      - name: Build Go CLI
+        run: |
+          go build -o aicore go/aicore.go
+      - name: Init and record
+        env:
+          NGFS_ROOT: ./data/ngfs
+        run: |
+          ./aicore init
+          ./aicore submit "record goal"
+      - name: Capture snapshot id
+        id: snap
+        run: |
+          id=$(grep -oE 'snapshot_id=([0-9a-f]+)' -h <(echo "$(cat <<EOF
+$(./aicore submit "record goal 2" | tr -d '\r')
+EOF
+) ) | head -n1 | cut -d= -f2)
+          if [ -z "$id" ]; then echo "::error::No snapshot id"; exit 1; fi
+          echo "id=$id" >> $GITHUB_OUTPUT
+      - name: Strict hash equality
+        run: |
+          SNAP=./data/ngfs/snapshots/${{ steps.snap.outputs.id }}.cbor
+          cargo build --manifest-path tools/ngfs_hashcheck/Cargo.toml --verbose
+          ./target/debug/ngfs-hashcheck "$SNAP" "${{ steps.snap.outputs.id }}"
+      - name: Replay and resnapshot
+        env:
+          NGFS_ROOT: ./data/ngfs
+        run: |
+          ./aicore replay --replay ${{ steps.snap.outputs.id }} --ngfs-root ./data/ngfs
+          ./aicore init
+          ./aicore submit "post-replay parity" --ngfs-root ./data/ngfs | tee out.txt
+          id2=$(grep -oE 'snapshot_id=([0-9a-f]+)' out.txt | head -n1 | cut -d= -f2)
+          if [ -z "$id2" ]; then echo "::error::no resnapshot id"; exit 1; fi
+          test "$id2" = "${{ steps.snap.outputs.id }}" || (echo "::error::ids differ $id2 != ${{ steps.snap.outputs.id }}"; exit 2)
+      - name: Archive snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-${{ steps.snap.outputs.id }}
+          path: data/ngfs/snapshots/${{ steps.snap.outputs.id }}.cbor
+
+  macos-build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build crates (phase5)
+        run: |
+          cargo build -p aetheris-ai --features phase5 --verbose
+      - name: Build Go CLI
+        run: |
+          go build -o aicore go/aicore.go
+
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build crates (phase5)
+        shell: pwsh
+        run: |
+          cargo build -p aetheris-ai --features phase5 --verbose
+      - name: Build Go CLI
+        shell: pwsh
+        run: |
+          go build -o aicore go/aicore.go

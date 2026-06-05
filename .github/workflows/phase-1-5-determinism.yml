@@ -1,0 +1,176 @@
+name: Phase 1.5 Determinism Test
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  phase-1-5-determinism:
+    name: Phase 1.5 Determinism Validation
+    runs-on: ubuntu-latest
+    
+    # Block merges on failure
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-unknown-linux-gnu
+          override: true
+          profile: minimal
+      
+      - name: Setup Bazel
+        uses: bazelbuild/setup-bazelisk@v2
+        with:
+          version: latest
+      
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-system-x86_64
+          qemu-system-x86_64 --version
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get install -y build-essential pkg-config libssl-dev
+          cargo install anyhow serde serde_yaml chrono
+      
+      - name: Build kernel in deterministic mode
+        run: |
+          echo "🔨 Building kernel in deterministic mode..."
+          cd kernel
+          cargo build --features deterministic --target x86_64-unknown-none
+          echo "✅ Deterministic kernel built successfully"
+      
+      - name: Build kernel tests in deterministic mode
+        run: |
+          echo "🧪 Building kernel tests in deterministic mode..."
+          cd kernel
+          cargo test --features deterministic --target x86_64-unknown-none --no-run
+          echo "✅ Deterministic kernel tests built successfully"
+      
+      - name: Run deterministic e2e test
+        run: |
+          echo "🧪 Running deterministic e2e test..."
+          cd kernel
+          
+          # Run the determinism test with deterministic feature enabled
+          RUSTFLAGS="--cfg feature_deterministic" cargo test --features deterministic --target x86_64-unknown-none determinism::e2e::run_deterministic_e2e_test
+          
+          echo "✅ Deterministic e2e test completed"
+      
+      - name: Run all determinism tests
+        run: |
+          echo "🧪 Running all determinism tests..."
+          cd kernel
+          
+          # Run all determinism tests
+          RUSTFLAGS="--cfg feature_deterministic" cargo test --features deterministic --target x86_64-unknown-none determinism
+          
+          echo "✅ All determinism tests completed"
+      
+      - name: Verify deterministic behavior
+        run: |
+          echo "🔍 Verifying deterministic behavior..."
+          cd kernel
+          
+          # Run the same test multiple times and verify identical output
+          echo "Running test iteration 1..."
+          RUSTFLAGS="--cfg feature_deterministic" cargo test --features deterministic --target x86_64-unknown-none determinism::e2e::run_deterministic_e2e_test -- --nocapture > test_run_1.log
+          
+          echo "Running test iteration 2..."
+          RUSTFLAGS="--cfg feature_deterministic" cargo test --features deterministic --target x86_64-unknown-none determinism::e2e::run_deterministic_e2e_test -- --nocapture > test_run_2.log
+          
+          # Compare the outputs (excluding timestamps and other non-deterministic elements)
+          echo "Comparing test outputs..."
+          if diff test_run_1.log test_run_2.log > diff_output.log; then
+            echo "✅ Test outputs are identical - determinism verified"
+          else
+            echo "❌ Test outputs differ - determinism verification failed"
+            echo "Differences found:"
+            cat diff_output.log
+            exit 1
+          fi
+      
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: phase1-5-determinism-test-results
+          path: |
+            kernel/test_run_1.log
+            kernel/test_run_2.log
+            kernel/diff_output.log
+          retention-days: 30
+      
+      - name: Comment PR on failure
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ❌ Phase 1.5 Determinism Test Failed
+            
+            The Phase 1.5 determinism test has failed, blocking this merge.
+            
+            **Required Actions:**
+            - Review the determinism test output above
+            - Ensure all timing and RNG sources are properly virtualized in deterministic mode
+            - Verify that the same IPC scenario produces byte-identical logs
+            - Check that system state snapshots are identical across test runs
+            - Re-run the determinism validation
+            
+            **Test Results:** Available in the workflow artifacts
+            
+            **Determinism Requirements:**
+            - All timing sources must use virtualized clocks in deterministic mode
+            - All RNG sources must use deterministic sequences in deterministic mode
+            - IPC histograms must be identical across test runs
+            - System state must be byte-identical across test runs
+            
+            **Contact:** @polymera-os-team for assistance`
+            })
+      
+      - name: Comment PR on success
+        if: success() && github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ✅ Phase 1.5 Determinism Test Passed
+            
+            The Phase 1.5 determinism test has passed successfully.
+            
+            **Determinism Verification:**
+            - ✅ Kernel builds in deterministic mode
+            - ✅ All determinism tests pass
+            - ✅ E2E determinism test passes
+            - ✅ Test outputs are byte-identical across runs
+            - ✅ System state is identical across test runs
+            
+            **Determinism Features:**
+            - Virtualized time sources (tick, wake-to-run, IPC histograms)
+            - Virtualized RNG sources
+            - Deterministic IPC scenarios
+            - Byte-identical log verification
+            
+            **Ready for merge:** This PR meets all determinism requirements`
+            })

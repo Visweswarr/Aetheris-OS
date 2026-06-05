@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 package aetheris.ai_core;
+option go_package = "github.com/aetheris-os/go/tooling/ai_core";
 
 // Core message types for AI Core Service IPC
 message AiCoreMessage {

@@ -5,7 +5,10 @@
 
 use super::table::*;
 use super::validate::validate_syscall;
-use crate::{klog};
+use crate::{klog, kprintln, format};
+
+// Polyglot runtime handlers
+pub mod polyglot;
 
 /// System call dispatcher
 /// 
@@ -66,6 +69,15 @@ pub fn dispatch(num: u64, a0: u64, a1: u64, a2: u64, a3: u64) -> u64 {
         SYS_STATS => handle_stats(a0, a1, a2, a3),
         SYS_DEBUG => handle_debug(a0, a1, a2, a3),
         SYS_GET_FEATURES => handle_get_features(a0, a1, a2, a3),
+        
+        // Polyglot Runtime syscalls
+        SYS_POLYGLOT_CREATE => polyglot::handle_polyglot_create(a0, a1, a2, a3),
+        SYS_POLYGLOT_EXEC => polyglot::handle_polyglot_exec(a0, a1, a2, a3),
+        SYS_POLYGLOT_TERMINATE => polyglot::handle_polyglot_terminate(a0, a1, a2, a3),
+        SYS_POLYGLOT_STATUS => polyglot::handle_polyglot_status(a0, a1, a2, a3),
+        SYS_POLYGLOT_SEND => polyglot::handle_polyglot_send(a0, a1, a2, a3),
+        SYS_POLYGLOT_RECV => polyglot::handle_polyglot_recv(a0, a1, a2, a3),
+        SYS_POLYGLOT_METRICS => polyglot::handle_polyglot_metrics(a0, a1, a2, a3),
         
         _ => {
             klog!(TRACE, "[SYSCALL] Dispatcher missing handler for syscall {}", num);
@@ -164,7 +176,7 @@ fn handle_exec(a0: u64, a1: u64, a2: u64, a3: u64) -> u64 {
           image_ptr, image_len, caps_ptr, caps_count);
     
     // Record exec load audit event
-    crate::secman::audit_codes::audit_exec_load!(current_pid, current_tid, format!("0x{:x}", image_ptr), image_len);
+    crate::audit_exec_load!(current_pid as u32, current_tid as u32, &format!("0x{:x}", image_ptr), image_len);
     
     // TODO: Implement exec functionality
     // This would:
@@ -276,24 +288,6 @@ fn handle_channel_create(a0: u64, a1: u64, a2: u64, _a3: u64) -> u64 {
     klog!(TRACE, "[SYSCALL] Channel creation syscall not yet implemented, returning dummy ID");
     1
 }
-
-/// Handle stats system call (future implementation)
-#[allow(dead_code)]
-fn handle_stats(a0: u64, a1: u64, a2: u64, a3: u64) -> u64 {
-    klog!(TRACE, "[SYSCALL] Handling stats syscall (stub) - type={}, buf=0x{:x}, len={}, flags={}", 
-          a0, a1, a2, a3);
-    
-    // TODO: Implement system statistics gathering
-    // - a0: statistics type (scheduler, memory, IPC, etc.)
-    // - a1: buffer pointer
-    // - a2: buffer length
-    // - a3: flags
-    
-    // For now, return "not implemented"
-    u64::MAX
-}
-
-
 
 /// Handle get task ID system call (future implementation)
 #[allow(dead_code)]
@@ -450,7 +444,7 @@ fn handle_stats(a0: u64, a1: u64, _a2: u64, _a3: u64) -> u64 {
 /// 
 /// # Returns
 /// 0 on success, error code on failure
-fn handle_debug(a0: u64, a1: u64, _a2: u64, _a3: u64) -> u64 {
+fn handle_debug(a0: u64, a1: u64, a2: u64, a3: u64) -> u64 {
     let op_code = a0;
     let arg = a1;
     
@@ -469,8 +463,9 @@ fn handle_debug(a0: u64, a1: u64, _a2: u64, _a3: u64) -> u64 {
         debug_ops::PRINT_TRACES => {
             let count = if arg > 0 && arg <= 100 { arg as usize } else { 10 };
             klog!(INFO, [crate::log::tags::SYSCALL], "sys_debug: PRINT_TRACES requested (count={})", count);
-            crate::trace::print_recent_process_switches(count);
-            crate::trace::print_recent_ipc_traces(count);
+            let _ = count;
+            crate::trace::print_recent_process_switches();
+            crate::trace::print_recent_ipc_traces();
             0
         }
         

@@ -1,0 +1,41 @@
+# Polymera supervisor tree — example configuration.
+#
+# Loaded by polymera-supervisor's config::SupervisorConfig::load(). Mirrors the
+# tree shape illustrated in the roadmap (root → network / storage subtrees).
+
+name = "root"
+strategy = "one-for-one"
+max_restarts = 5
+within_seconds = 60
+
+[[supervisors]]
+name = "network"
+strategy = "one-for-one"
+max_restarts = 5
+within_seconds = 60
+
+    [[supervisors.children]]
+    name = "net_go"
+    command = "services/net_go/net_go"
+    restart = "permanent"
+
+    [[supervisors.children]]
+    name = "polynet_dtn"
+    command = "services/polynet/target/release/polynet-dtn"
+    restart = "permanent"
+
+[[supervisors]]
+name = "storage"
+strategy = "one-for-all"   # if any storage service fails, restart them all
+max_restarts = 3
+within_seconds = 30
+
+    [[supervisors.children]]
+    name = "fs_go"
+    command = "services/fs_go/fs_go"
+    restart = "permanent"
+
+    [[supervisors.children]]
+    name = "ngfs"
+    command = "services/ngfs/target/release/ngfs"
+    restart = "permanent"

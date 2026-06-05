@@ -43,7 +43,7 @@ impl fmt::Display for MemoryPermissions {
 }
 
 /// Memory region types
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MemoryRegionType {
     KernelCode,
     KernelData,

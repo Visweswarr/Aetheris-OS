@@ -1,0 +1,108 @@
+package polymera:ai@0.1.0;
+
+/// Component-facing AI Core contract.
+///
+/// This WIT package is intentionally a facade over
+/// `services/ai_core/proto/ai_core.proto`. Protobuf-over-PolyBus remains the
+/// service-mesh protocol; components use this typed surface at the app/plugin
+/// boundary.
+
+interface planner {
+    record plan-request {
+        goal: string,
+        context: option<string>,
+        constraints: list<string>,
+        user-id: option<string>,
+        session-id: option<string>,
+    }
+
+    record plan-step {
+        step-id: string,
+        description: string,
+        tool-name: string,
+        parameters-json: string,
+        required-capabilities: list<string>,
+        requires-approval: bool,
+        is-destructive: bool,
+        depends-on: list<string>,
+        estimated-time-secs: u64,
+    }
+
+    record task-plan {
+        plan-id: string,
+        original-intent: string,
+        steps: list<plan-step>,
+        total-estimated-time-secs: u64,
+        created-at: string,
+        replay-hash: option<string>,
+    }
+
+    enum plan-error-code {
+        invalid-goal,
+        unknown-tool,
+        invalid-dependency,
+        policy-denied,
+        budget-denied,
+        privacy-denied,
+        ai-core-unavailable,
+        internal-error,
+    }
+
+    record plan-error {
+        code: plan-error-code,
+        message: string,
+    }
+
+    create-plan: func(request: plan-request) -> result<task-plan, plan-error>;
+    inspect-plan: func(plan-id: string) -> result<task-plan, plan-error>;
+    approve-plan: func(plan-id: string, approved-step-ids: list<string>) -> result<bool, plan-error>;
+}
+
+interface tools {
+    use planner.{plan-error};
+
+    record tool-summary {
+        name: string,
+        version: string,
+        description: string,
+        required-capabilities: list<string>,
+        requires-confirmation: bool,
+    }
+
+    record tool-call {
+        tool-name: string,
+        parameters-json: string,
+        cap-token: option<string>,
+        user-id: option<string>,
+        session-id: option<string>,
+    }
+
+    record tool-result {
+        success: bool,
+        result-cbor: list<u8>,
+        error-message: option<string>,
+        execution-time-ms: u64,
+    }
+
+    list-tools: func() -> list<tool-summary>;
+    call-tool: func(call: tool-call) -> result<tool-result, plan-error>;
+}
+
+interface memory {
+    use planner.{plan-error};
+
+    record memory-entry {
+        key: string,
+        value-json: string,
+        privacy-class: string,
+    }
+
+    put: func(entry: memory-entry) -> result<bool, plan-error>;
+    get: func(key: string) -> result<option<memory-entry>, plan-error>;
+}
+
+world ai-core {
+    export planner;
+    export tools;
+    export memory;
+}

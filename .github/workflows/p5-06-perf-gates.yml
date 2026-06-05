@@ -1,0 +1,47 @@
+name: Phase 5 - Perf Gates
+
+on:
+  push:
+    paths:
+      - 'services/ai/**'
+      - 'tools/perf_gate.sh'
+      - '.github/workflows/p5-06-perf-gates.yml'
+  pull_request:
+
+jobs:
+  linux-perf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build aicore (phase5)
+        run: cargo build -p aetheris-ai --features phase5 --verbose
+      - name: Perf gate
+        run: |
+          bash tools/perf_gate.sh
+      - name: Upload Criterion reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-reports
+          path: target/criterion/**
+  windows-perf:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build aicore (phase5)
+        shell: pwsh
+        run: cargo build -p aetheris-ai --features phase5 --verbose
+      - name: Perf gate (best-effort)
+        shell: bash
+        continue-on-error: true
+        run: |
+          bash tools/perf_gate.sh

@@ -515,6 +515,10 @@ pub enum AuditLevel {
     Error,
     /// Critical security events
     Critical,
+    /// Medium severity security events
+    Medium,
+    /// High severity security events
+    High,
 }
 
 impl AuditLevel {
@@ -522,6 +526,8 @@ impl AuditLevel {
     pub const WARNING: Self = AuditLevel::Warning;
     pub const ERROR: Self = AuditLevel::Error;
     pub const CRITICAL: Self = AuditLevel::Critical;
+    pub const MEDIUM: Self = AuditLevel::Medium;
+    pub const HIGH: Self = AuditLevel::High;
 }
 
 /// Audit event type (alias for AuditEntry for compatibility)
@@ -531,6 +537,9 @@ impl AuditEntry {
     pub const CopyFromUserFailure: u16 = 0x1001;
     pub const CopyToUserFailure: u16 = 0x1002;
     pub const SyscallValidationFailure: u16 = 0x1003;
+    pub const PageTableAudit: u16 = 0x1004;
+    pub const StreamReplayAttempt: u16 = 0x1005;
+    pub const StreamMacFailure: u16 = 0x1006;
 }
 
 /// Log an audit event with a code, a severity level, and a human-readable

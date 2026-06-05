@@ -1,8 +1,14 @@
 //! CPU, memory, and power budgeting for on-device AI work.
+//!
+//! ## Refund semantics (Track 2.2)
+//! `release_or_refund(id, success)` refunds the full reservation when a tool
+//! call fails, allowing retry without re-reserving.  On success the reservation
+//! is simply released.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use crate::contracts::{BudgetDecision, BudgetRequest, Priority};
@@ -25,6 +31,89 @@ impl Default for BudgetLimits {
         }
     }
 }
+
+/// Per-task cumulative budget tracking.
+/// Each task accumulates api_calls, tokens, and wall time.
+/// When any limit is reached, `BudgetExhausted` is returned.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskBudget {
+    pub task_id: String,
+    pub api_calls_used: u64,
+    pub api_calls_limit: u64,
+    pub tokens_used: u64,
+    pub tokens_limit: u64,
+    pub wall_time_ms_used: u64,
+    pub wall_time_ms_limit: u64,
+}
+
+impl TaskBudget {
+    pub fn new(task_id: impl Into<String>, api_calls: u64, tokens: u64, wall_time_ms: u64) -> Self {
+        Self {
+            task_id: task_id.into(),
+            api_calls_used: 0,
+            api_calls_limit: api_calls,
+            tokens_used: 0,
+            tokens_limit: tokens,
+            wall_time_ms_used: 0,
+            wall_time_ms_limit: wall_time_ms,
+        }
+    }
+
+    /// Record a step's resource usage and check limits.
+    /// Returns `Err(BudgetExhausted)` if any limit is exceeded.
+    pub fn record_step(
+        &mut self,
+        api_calls: u64,
+        tokens: u64,
+        wall_time_ms: u64,
+    ) -> Result<(), BudgetExhausted> {
+        self.api_calls_used = self.api_calls_used.saturating_add(api_calls);
+        self.tokens_used = self.tokens_used.saturating_add(tokens);
+        self.wall_time_ms_used = self.wall_time_ms_used.saturating_add(wall_time_ms);
+        if self.api_calls_used > self.api_calls_limit {
+            return Err(BudgetExhausted {
+                resource: "api_calls".to_string(),
+                used: self.api_calls_used,
+                limit: self.api_calls_limit,
+            });
+        }
+        if self.tokens_used > self.tokens_limit {
+            return Err(BudgetExhausted {
+                resource: "tokens".to_string(),
+                used: self.tokens_used,
+                limit: self.tokens_limit,
+            });
+        }
+        if self.wall_time_ms_used > self.wall_time_ms_limit {
+            return Err(BudgetExhausted {
+                resource: "wall_time_ms".to_string(),
+                used: self.wall_time_ms_used,
+                limit: self.wall_time_ms_limit,
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Error returned when a per-task budget limit is exceeded.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BudgetExhausted {
+    pub resource: String,
+    pub used: u64,
+    pub limit: u64,
+}
+
+impl std::fmt::Display for BudgetExhausted {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "budget exhausted: {} used {}, limit {}",
+            self.resource, self.used, self.limit
+        )
+    }
+}
+
+impl std::error::Error for BudgetExhausted {}
 
 #[derive(Debug, Clone, Default)]
 pub struct BudgetSnapshot {
@@ -57,13 +146,25 @@ impl BudgetEngine {
         let next_power = snapshot.power_mw.saturating_add(request.power_mw);
 
         let denied_reason = if active.len() >= self.limits.max_concurrent {
-            Some(format!("concurrency limit {} reached", self.limits.max_concurrent))
+            Some(format!(
+                "concurrency limit {} reached",
+                self.limits.max_concurrent
+            ))
         } else if next_cpu > self.limits.max_cpu_percent {
-            Some(format!("cpu budget {}% exceeds limit {}%", next_cpu, self.limits.max_cpu_percent))
+            Some(format!(
+                "cpu budget {}% exceeds limit {}%",
+                next_cpu, self.limits.max_cpu_percent
+            ))
         } else if next_memory > self.limits.max_memory_mb {
-            Some(format!("memory budget {} MB exceeds limit {} MB", next_memory, self.limits.max_memory_mb))
+            Some(format!(
+                "memory budget {} MB exceeds limit {} MB",
+                next_memory, self.limits.max_memory_mb
+            ))
         } else if next_power > self.limits.max_power_mw {
-            Some(format!("power budget {} mW exceeds limit {} mW", next_power, self.limits.max_power_mw))
+            Some(format!(
+                "power budget {} mW exceeds limit {} mW",
+                next_power, self.limits.max_power_mw
+            ))
         } else {
             None
         };
@@ -94,8 +195,20 @@ impl BudgetEngine {
         }
     }
 
+    /// Release a reservation.  When `success` is false the reservation is
+    /// "refunded" — the capacity is returned but a metric is emitted so
+    /// operators can see that work was wasted.
+    pub async fn release_or_refund(&self, request_id: &str, success: bool) -> bool {
+        let removed = self.active.write().await.remove(request_id).is_some();
+        if removed && !success {
+            crate::metrics::record_budget_exhausted();
+        }
+        removed
+    }
+
+    /// Backwards-compatible release (assumes success).
     pub async fn release(&self, request_id: &str) -> bool {
-        self.active.write().await.remove(request_id).is_some()
+        self.release_or_refund(request_id, true).await
     }
 
     pub async fn report(&self) -> BudgetSnapshot {
@@ -121,8 +234,14 @@ impl BudgetEngine {
         }
     }
 
-    fn queue_position<'a>(priority: Priority, active: impl Iterator<Item = &'a BudgetRequest>) -> usize {
-        active.filter(|request| request.priority >= priority).count() + 1
+    fn queue_position<'a>(
+        priority: Priority,
+        active: impl Iterator<Item = &'a BudgetRequest>,
+    ) -> usize {
+        active
+            .filter(|request| request.priority >= priority)
+            .count()
+            + 1
     }
 }
 
@@ -156,7 +275,12 @@ mod tests {
             max_concurrent: 2,
         });
 
-        assert!(engine.reserve(request("a", Priority::Normal, 32)).await.granted);
+        assert!(
+            engine
+                .reserve(request("a", Priority::Normal, 32))
+                .await
+                .granted
+        );
         let denied = engine.reserve(request("b", Priority::High, 40)).await;
         assert!(!denied.granted);
         assert!(denied.reason.contains("memory budget"));

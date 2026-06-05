@@ -1,0 +1,10 @@
+package polymera:hello@0.1.0;
+
+interface greeter {
+    /// Return a greeting for `name`.
+    greet: func(name: string) -> string;
+}
+
+world hello-world {
+    export greeter;
+}

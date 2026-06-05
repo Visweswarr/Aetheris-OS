@@ -1,0 +1,33 @@
+package polymera:telemetry@0.1.0;
+
+/// Component-side telemetry. Hosts collect spans and metrics into the platform's
+/// observability pipeline (Prometheus, OTel, etc).
+interface telemetry {
+    record span {
+        name: string,
+        start-time-nanos: u64,
+        duration-nanos: u64,
+        attributes: list<tuple<string, string>>,
+    }
+
+    record metric-label {
+        key: string,
+        value: string,
+    }
+
+    /// Emit a completed span. The host decides the export pipeline.
+    emit-span: func(span: span);
+
+    /// Emit a counter increment.
+    counter-inc: func(name: string, value: u64, labels: list<metric-label>);
+
+    /// Emit a gauge sample.
+    gauge-set: func(name: string, value: f64, labels: list<metric-label>);
+
+    /// Emit a histogram observation.
+    histogram-observe: func(name: string, value: f64, labels: list<metric-label>);
+}
+
+world telemetry-host {
+    export telemetry;
+}

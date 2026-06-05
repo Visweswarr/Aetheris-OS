@@ -170,7 +170,7 @@ impl ApicTimer {
         }
 
         if total_samples > 0 {
-            let mean_jitter = cumulative_jitter / total_samples;
+            let mean_jitter = cumulative_jitter / (total_samples as u64);
             
             // Calculate p95 (simplified - find 95th percentile)
             let p95_index = (total_samples * 95) / 100;
@@ -399,7 +399,7 @@ impl ApicTimer {
         unsafe {
             // Serialize instruction execution
             _mm_lfence();
-            let tsc = __rdtsc();
+            let tsc = _rdtsc();
             _mm_lfence();
             tsc
         }

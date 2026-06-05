@@ -55,6 +55,8 @@ pub struct IssueOpenerConfig {
     pub auto_open: bool,
     /// Issue creation delay (to avoid spam)
     pub creation_delay_ms: u64,
+    /// Maximum variance percentage threshold
+    pub max_variance_percent: f64,
 }
 
 impl Default for IssueOpenerConfig {
@@ -74,6 +76,7 @@ impl Default for IssueOpenerConfig {
             ],
             auto_open: true,
             creation_delay_ms: 5000, // 5 second delay
+            max_variance_percent: 10.0,
         }
     }
 }

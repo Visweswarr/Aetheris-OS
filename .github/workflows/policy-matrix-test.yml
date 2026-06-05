@@ -1,0 +1,272 @@
+name: Policy Matrix Testing
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      policy_mode:
+        description: 'Policy mode to test'
+        required: false
+        default: 'both'
+        type: choice
+        options:
+        - fail_closed
+        - fail_open
+        - both
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test-fail-closed:
+    name: Test Fail-Closed Mode
+    runs-on: ubuntu-latest
+    if: github.event.inputs.policy_mode != 'fail_open' && github.event.inputs.policy_mode != 'both'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+        
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+          
+    - name: Build kernel
+      run: |
+        cd kernel
+        cargo build --release
+        
+    - name: Run policy tests (fail-closed)
+      run: |
+        cd kernel
+        RUSTFLAGS="-C target-feature=+crt-static" cargo test --release test_policy_tie_in_conformance
+        env: |
+          POLYMERA_POLICY_MODE=fail_closed
+          
+    - name: Upload test artifacts
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: fail-closed-test-results
+        path: |
+          kernel/target/release/deps/
+          kernel/target/release/build/
+        retention-days: 7
+
+  test-fail-open:
+    name: Test Fail-Open Mode
+    runs-on: ubuntu-latest
+    if: github.event.inputs.policy_mode != 'fail_closed' && github.event.inputs.policy_mode != 'both'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+        
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+          
+    - name: Build kernel
+      run: |
+        cd kernel
+        cargo build --release
+        
+    - name: Run policy tests (fail-open)
+      run: |
+        cd kernel
+        RUSTFLAGS="-C target-feature=+crt-static" cargo test --release test_policy_tie_in_conformance
+        env: |
+          POLYMERA_POLICY_MODE=fail_open
+          
+    - name: Upload test artifacts
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: fail-open-test-results
+        path: |
+          kernel/target/release/deps/
+          kernel/target/release/build/
+        retention-days: 7
+
+  test-both-modes:
+    name: Test Both Policy Modes
+    runs-on: ubuntu-latest
+    if: github.event.inputs.policy_mode == 'both' || (github.event.inputs.policy_mode == '' && github.event_name == 'pull_request')
+    
+    strategy:
+      matrix:
+        policy_mode: [fail_closed, fail_open]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+        
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+          
+    - name: Build kernel
+      run: |
+        cd kernel
+        cargo build --release
+        
+    - name: Run policy tests (${{ matrix.policy_mode }})
+      run: |
+        cd kernel
+        RUSTFLAGS="-C target-feature=+crt-static" cargo test --release test_policy_tie_in_conformance
+        env: |
+          POLYMERA_POLICY_MODE=${{ matrix.policy_mode }}
+          
+    - name: Upload test artifacts
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: ${{ matrix.policy_mode }}-test-results
+        path: |
+          kernel/target/release/deps/
+          kernel/target/release/build/
+        retention-days: 7
+
+  policy-compilation:
+    name: Policy Compilation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install OPA
+      run: |
+        curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64
+        chmod +x opa
+        sudo mv opa /usr/local/bin/
+        
+    - name: Compile policy
+      run: |
+        cd policy
+        ./compile.bat
+        
+    - name: Test policy
+      run: |
+        cd policy
+        ./test_policy.bat
+        
+    - name: Upload compiled policy
+      uses: actions/upload-artifact@v3
+      with:
+        name: compiled-policy
+        path: policy/out/
+        retention-days: 30
+
+  summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [test-fail-closed, test-fail-open, test-both-modes, policy-compilation]
+    if: always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Generate summary
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const { data: checks } = await github.rest.checks.listForRef({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            ref: context.sha,
+          });
+          
+          const policyJobs = ['test-fail-closed', 'test-fail-open', 'test-both-modes', 'policy-compilation'];
+          const results = {};
+          
+          for (const job of policyJobs) {
+            const check = checks.check_runs.find(c => c.name === job);
+            if (check) {
+              results[job] = check.conclusion || 'pending';
+            }
+          }
+          
+          const summary = `## Policy Matrix Test Results
+          
+          | Job | Status |
+          |-----|--------|
+          ${Object.entries(results).map(([job, status]) => `| ${job} | ${status} |`).join('\n')}
+          
+          ### Policy Modes Tested
+          - **Fail-Closed Mode**: Strict security requiring both capability and MAC
+          - **Fail-Open Mode**: Development-friendly allowing operations with audit
+          
+          ### Test Coverage
+          - Policy feature toggling
+          - Required features checking  
+          - Policy evaluation matrix
+          - Audit requirements
+          - Error handling
+          - Performance characteristics
+          - Statistics collection
+          - Policy metadata
+          
+          ### Expected Behavior
+          - **Fail-Closed**: Unauthorized IPC attempts always return EPERM and are audited
+          - **Fail-Open**: All operations allowed but incomplete authentication is audited
+          - **CI Matrix**: Both modes tested to ensure correct behavior`;
+          
+          if (context.eventName === 'pull_request') {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: summary,
+            });
+          }
+          
+          console.log(summary);
+

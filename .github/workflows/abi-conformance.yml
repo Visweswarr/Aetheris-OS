@@ -1,0 +1,517 @@
+name: ABI Conformance Testing
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'abi/**'
+      - 'tooling/abi/**'
+      - '.github/workflows/abi-conformance.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'abi/**'
+      - 'tooling/abi/**'
+      - '.github/workflows/abi-conformance.yml'
+  workflow_dispatch:
+    inputs:
+      force_regenerate:
+        description: 'Force regenerate all ABI files'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  abi-generation:
+    name: Generate ABI Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build ABI generator
+        run: |
+          cd tooling/abi
+          cargo build --release
+
+      - name: Generate ABI files
+        run: |
+          cd tooling/abi
+          ./target/release/abi-gen generate --input-dir ../../abi --output-dir ../../generated
+
+      - name: Upload generated files
+        uses: actions/upload-artifact@v3
+        with:
+          name: generated-abi-files
+          path: generated/
+          retention-days: 1
+
+  abi-drift-check:
+    name: Check ABI Drift
+    runs-on: ubuntu-latest
+    needs: abi-generation
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download generated files
+        uses: actions/download-artifact@v3
+        with:
+          name: generated-abi-files
+          path: generated/
+
+      - name: Check for ABI drift
+        run: |
+          echo "Checking for ABI drift..."
+          
+          # Check if generated files differ from committed files
+          if [ -d "generated/kernel" ]; then
+            if [ -f "kernel/src/syscall/table.rs" ]; then
+              if ! diff -q generated/kernel/table.rs kernel/src/syscall/table.rs; then
+                echo "❌ ABI drift detected in kernel/src/syscall/table.rs"
+                echo "Generated file differs from committed file"
+                echo "Run 'cargo run --bin abi-gen generate' to regenerate"
+                exit 1
+              fi
+            fi
+            
+            if [ -f "kernel/src/syscall/ids.rs" ]; then
+              if ! diff -q generated/kernel/ids.rs kernel/src/syscall/ids.rs; then
+                echo "❌ ABI drift detected in kernel/src/syscall/ids.rs"
+                echo "Generated file differs from committed file"
+                echo "Run 'cargo run --bin abi-gen generate' to regenerate"
+                exit 1
+              fi
+            fi
+          fi
+          
+          if [ -d "generated/userland" ]; then
+            if [ -f "userland-stubs/src/lib.rs" ]; then
+              if ! diff -q generated/userland/lib.rs userland-stubs/src/lib.rs; then
+                echo "❌ ABI drift detected in userland-stubs/src/lib.rs"
+                echo "Generated file differs from committed file"
+                echo "Run 'cargo run --bin abi-gen generate' to regenerate"
+                exit 1
+              fi
+            fi
+          fi
+          
+          if [ -d "generated/include" ]; then
+            if [ -f "include/abi/polymera_syscalls.h" ]; then
+              if ! diff -q generated/include/polymera_syscalls.h include/abi/polymera_syscalls.h; then
+                echo "❌ ABI drift detected in include/abi/polymera_syscalls.h"
+                echo "Generated file differs from committed file"
+                echo "Run 'cargo run --bin abi-gen generate' to regenerate"
+                exit 1
+              fi
+            fi
+            
+            if [ -f "include/abi/polymera_errno.h" ]; then
+              if ! diff -q generated/include/polymera_errno.h include/abi/polymera_errno.h; then
+                echo "❌ ABI drift detected in include/abi/polymera_errno.h"
+                echo "Generated file differs from committed file"
+                echo "Run 'cargo run --bin abi-gen generate' to regenerate"
+                exit 1
+              fi
+            fi
+            
+            if [ -f "include/abi/polymera_features.h" ]; then
+              if ! diff -q generated/include/polymera_features.h include/abi/polymera_features.h; then
+                echo "❌ ABI drift detected in include/abi/polymera_features.h"
+                echo "Generated file differs from committed file"
+                echo "Run 'cargo run --bin abi-gen generate' to regenerate"
+                exit 1
+              fi
+            fi
+          fi
+          
+          if [ -d "generated/docs" ]; then
+            if [ -f "docs/abi/SYSCALLS.md" ]; then
+              if ! diff -q generated/docs/SYSCALLS.md docs/abi/SYSCALLS.md; then
+                echo "❌ ABI drift detected in docs/abi/SYSCALLS.md"
+                echo "Generated file differs from committed file"
+                echo "Run 'cargo run --bin abi-gen generate' to regenerate"
+                exit 1
+              fi
+            fi
+            
+            if [ -f "docs/abi/ERRNO.md" ]; then
+              if ! diff -q generated/docs/ERRNO.md docs/abi/ERRNO.md; then
+                echo "❌ ABI drift detected in docs/abi/ERRNO.md"
+                echo "Generated file differs from committed file"
+                echo "Run 'cargo run --bin abi-gen generate' to regenerate"
+                exit 1
+              fi
+            fi
+            
+            if [ -f "docs/abi/FEATURES.md" ]; then
+              if ! diff -q generated/docs/FEATURES.md docs/abi/FEATURES.md; then
+                echo "❌ ABI drift detected in docs/abi/FEATURES.md"
+                echo "Generated file differs from committed file"
+                echo "Run 'cargo run --bin abi-gen generate' to regenerate"
+                exit 1
+              fi
+            fi
+          fi
+          
+          echo "✅ No ABI drift detected"
+
+  abi-lint:
+    name: ABI Lint Check
+    runs-on: ubuntu-latest
+    needs: abi-generation
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build ABI linter
+        run: |
+          cd tooling/abi
+          cargo build --bin abi-lint --release
+
+      - name: Run ABI lint check
+        run: |
+          cd tooling/abi
+          
+          # Check current ABI against previous version if available
+          if [ -f "../../abi/previous" ]; then
+            echo "Running ABI lint against previous version..."
+            ./target/release/abi-lint check --current-dir ../../abi --previous ../../abi/previous --strict
+          else
+            echo "No previous version available, running basic validation..."
+            ./target/release/abi-lint check --current-dir ../../abi --strict
+          fi
+
+  abi-conformance:
+    name: ABI Conformance Tests
+    runs-on: ubuntu-latest
+    needs: [abi-generation, abi-drift-check]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Download generated files
+        uses: actions/download-artifact@v3
+        with:
+          name: generated-abi-files
+          path: generated/
+
+      - name: Copy generated files to source
+        run: |
+          echo "Copying generated files to source directories..."
+          
+          # Copy kernel files
+          if [ -d "generated/kernel" ]; then
+            mkdir -p kernel/src/syscall
+            cp generated/kernel/table.rs kernel/src/syscall/table.rs
+            cp generated/kernel/ids.rs kernel/src/syscall/ids.rs
+          fi
+          
+          # Copy userland files
+          if [ -d "generated/userland" ]; then
+            mkdir -p userland-stubs/src
+            cp generated/userland/lib.rs userland-stubs/src/lib.rs
+          fi
+          
+          # Copy include files
+          if [ -d "generated/include" ]; then
+            mkdir -p include/abi
+            cp generated/include/*.h include/abi/
+          fi
+          
+          # Copy documentation
+          if [ -d "generated/docs" ]; then
+            mkdir -p docs/abi
+            cp generated/docs/*.md docs/abi/
+          fi
+
+      - name: Build and test kernel
+        run: |
+          echo "Building and testing kernel with generated ABI..."
+          cargo build --package kernel
+          cargo test --package kernel
+
+      - name: Build and test userland stubs
+        run: |
+          echo "Building and testing userland stubs..."
+          cargo build --package userland-stubs
+          cargo test --package userland-stubs
+
+      - name: Run ABI conformance tests
+        run: |
+          echo "Running ABI conformance tests..."
+          cargo test --package tests --test conformance
+
+      - name: Test C header compilation
+        run: |
+          echo "Testing C header compilation..."
+          
+          # Create a simple test C file
+          cat > test_headers.c << 'EOF'
+          #include "include/abi/polymera_syscalls.h"
+          #include "include/abi/polymera_errno.h"
+          #include "include/abi/polymera_features.h"
+          
+          int main() {
+              // Test syscall constants
+              int syscall_id = SYS_YIELD;
+              int errno_code = EPERM;
+              unsigned long long feature = PQC_CAPS_V2;
+              
+              return 0;
+          }
+          EOF
+          
+          # Try to compile
+          gcc -std=c11 -Wall -Wextra -o test_headers test_headers.c
+          echo "✅ C headers compiled successfully"
+
+  abi-validation:
+    name: ABI Schema Validation
+    runs-on: ubuntu-latest
+    needs: [abi-generation, abi-drift-check]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build ABI generator
+        run: |
+          cd tooling/abi
+          cargo build --release
+
+      - name: Validate ABI schemas
+        run: |
+          cd tooling/abi
+          echo "Validating ABI schemas..."
+          
+          # Validate syscalls schema
+          ./target/release/abi-gen validate --input-dir ../../abi --type syscalls
+          
+          # Validate errno schema
+          ./target/release/abi-gen validate --input-dir ../../abi --type errno
+          
+          # Validate features schema
+          ./target/release/abi-gen validate --input-dir ../../abi --type features
+          
+          echo "✅ All ABI schemas validated successfully"
+
+  abi-documentation:
+    name: ABI Documentation Check
+    runs-on: ubuntu-latest
+    needs: [abi-generation, abi-drift-check]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download generated files
+        uses: actions/download-artifact@v3
+        with:
+          name: generated-abi-files
+          path: generated/
+
+      - name: Check documentation completeness
+        run: |
+          echo "Checking ABI documentation completeness..."
+          
+          # Check if all required documentation files exist
+          required_docs=(
+            "docs/abi/SYSCALLS.md"
+            "docs/abi/ERRNO.md"
+            "docs/abi/FEATURES.md"
+            "docs/abi/EXAMPLES.md"
+            "docs/abi/ABI-POLICY.md"
+          )
+          
+          for doc in "${required_docs[@]}"; do
+            if [ ! -f "$doc" ]; then
+              echo "❌ Missing required documentation: $doc"
+              exit 1
+            fi
+          done
+          
+          # Check if generated documentation is up to date
+          if [ -d "generated/docs" ]; then
+            for doc in generated/docs/*.md; do
+              if [ -f "$doc" ]; then
+                base_name=$(basename "$doc")
+                if [ -f "docs/abi/$base_name" ]; then
+                  if ! diff -q "$doc" "docs/abi/$base_name"; then
+                    echo "❌ Documentation out of date: docs/abi/$base_name"
+                    echo "Generated version differs from committed version"
+                    exit 1
+                  fi
+                fi
+              fi
+            done
+          fi
+          
+          echo "✅ All ABI documentation is complete and up to date"
+
+  abi-summary:
+    name: ABI Test Summary
+    runs-on: ubuntu-latest
+    needs: [abi-generation, abi-drift-check, abi-lint, abi-conformance, abi-validation, abi-documentation]
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate ABI summary
+        run: |
+          echo "## 🎯 ABI Conformance Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check job statuses
+          if [ "${{ needs.abi-generation.result }}" == "success" ]; then
+            echo "✅ **ABI Generation**: Successfully generated all ABI files" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **ABI Generation**: Failed to generate ABI files" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.abi-drift-check.result }}" == "success" ]; then
+            echo "✅ **Drift Check**: No ABI drift detected" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Drift Check**: ABI drift detected - files need regeneration" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.abi-lint.result }}" == "success" ]; then
+            echo "✅ **ABI Lint**: No breaking changes detected" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **ABI Lint**: Breaking changes detected" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.abi-conformance.result }}" == "success" ]; then
+            echo "✅ **Conformance Tests**: All tests passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Conformance Tests**: Some tests failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.abi-validation.result }}" == "success" ]; then
+            echo "✅ **Schema Validation**: All schemas valid" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Schema Validation**: Schema validation failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.abi-documentation.result }}" == "success" ]; then
+            echo "✅ **Documentation**: All docs complete and up to date" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Documentation**: Documentation issues detected" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Overall status
+          if [ "${{ needs.abi-generation.result }}" == "success" ] && \
+             [ "${{ needs.abi-drift-check.result }}" == "success" ] && \
+             [ "${{ needs.abi-lint.result }}" == "success" ] && \
+             [ "${{ needs.abi-conformance.result }}" == "success" ] && \
+             [ "${{ needs.abi-validation.result }}" == "success" ] && \
+             [ "${{ needs.abi-documentation.result }}" == "success" ]; then
+            echo "🎉 **Overall Status**: All ABI conformance checks passed!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Overall Status**: Some ABI conformance checks failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
+            echo "1. Fix any failing tests" >> $GITHUB_STEP_SUMMARY
+            echo "2. Regenerate ABI files if drift detected" >> $GITHUB_STEP_SUMMARY
+            echo "3. Update documentation if needed" >> $GITHUB_STEP_SUMMARY
+            echo "4. Re-run the workflow" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const summary = '## 🎯 ABI Conformance Test Summary\n\n' +
+              '**ABI Generation**: ' + (${{ needs.abi-generation.result == 'success' }} ? '✅' : '❌') + '\n' +
+              '**Drift Check**: ' + (${{ needs.abi-drift-check.result == 'success' }} ? '✅' : '❌') + '\n' +
+              '**ABI Lint**: ' + (${{ needs.abi-lint.result == 'success' }} ? '✅' : '❌') + '\n' +
+              '**Conformance Tests**: ' + (${{ needs.abi-conformance.result == 'success' }} ? '✅' : '❌') + '\n' +
+              '**Schema Validation**: ' + (${{ needs.abi-validation.result == 'success' }} ? '✅' : '❌') + '\n' +
+              '**Documentation**: ' + (${{ needs.abi-documentation.result == 'success' }} ? '✅' : '❌') + '\n\n' +
+              (${{ needs.abi-generation.result == 'success' && needs.abi-drift-check.result == 'success' && needs.abi-lint.result == 'success' && needs.abi-conformance.result == 'success' && needs.abi-validation.result == 'success' && needs.abi-documentation.result == 'success' }} ? '🎉 All ABI conformance checks passed!' : '⚠️ Some ABI conformance checks failed. Please review the logs and fix any issues.') + '\n\n' +
+              '[View full workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})';
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });

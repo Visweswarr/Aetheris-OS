@@ -1,0 +1,275 @@
+name: Scheduler Fairness Test
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'kernel/src/sched/**'
+      - 'kernel/tests/sched/**'
+      - 'kernel/src/boot.rs'
+      - '.github/workflows/scheduler-fairness.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'kernel/src/sched/**'
+      - 'kernel/tests/sched/**'
+      - 'kernel/src/boot.rs'
+      - '.github/workflows/scheduler-fairness.yml'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  scheduler-fairness-test:
+    name: Scheduler Fairness Test (QEMU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y qemu-system-x86-64 python3 python3-pip
+        pip3 install --user matplotlib numpy pandas
+        
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        target: x86_64-unknown-none
+        override: true
+        components: rust-src
+        
+    - name: Build kernel for testing
+      run: |
+        cd kernel
+        cargo build --target x86_64-unknown-none --release
+        
+    - name: Run scheduler fairness test (10s duration)
+      run: |
+        cd kernel
+        timeout 15s qemu-system-x86_64 \
+          -kernel target/x86_64-unknown-none/release/polymera-os-kernel \
+          -nographic \
+          -no-reboot \
+          -serial file:../qemu_output.log \
+          -m 256M \
+          -smp 2 \
+          -cpu qemu64 \
+          -machine q35 \
+          -drive if=none,id=boot,format=raw,file=/dev/zero,readonly=on \
+          -device ahci,id=ahci \
+          -device ide-hd,drive=boot,bus=ahci.0 \
+          || true
+        
+    - name: Check for fairness report
+      run: |
+        echo "=== QEMU Output Log ==="
+        cat qemu_output.log | head -100
+        echo ""
+        echo "=== Checking for Fairness Report ==="
+        if grep -q "SCHEDULER FAIRNESS REPORT" qemu_output.log; then
+          echo "OK: Fairness report found in QEMU output"
+        else
+          echo "FAIL: No fairness report found in QEMU output"
+          echo "Full log:"
+          cat qemu_output.log
+          exit 1
+        fi
+        
+    - name: Parse fairness report
+      run: |
+        echo "Parsing scheduler fairness report..."
+        python3 scripts/parse_fairness_report.py qemu_output.log fairness_report.json
+        
+    - name: Upload QEMU output
+      uses: actions/upload-artifact@v4
+      with:
+        name: qemu-output-log
+        path: qemu_output.log
+        retention-days: 7
+        
+    - name: Upload fairness report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: scheduler-fairness-report
+        path: fairness_report.json
+        retention-days: 30
+        
+    - name: Generate performance summary
+      if: success()
+      run: |
+        echo "## Scheduler Fairness Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "The scheduler fairness test completed successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Extract key metrics from the log
+        if grep -q "FAIRNESS_TEST_PASSED: true" qemu_output.log; then
+          echo "OK: Overall Result PASS" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "FAIL: Overall Result FAIL" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Key Metrics" >> $GITHUB_STEP_SUMMARY
+        
+        # Extract test duration
+        DURATION=$(grep "FAIRNESS_TEST_DURATION_MS:" qemu_output.log | cut -d: -f2 | tr -d ' ')
+        if [ ! -z "$DURATION" ]; then
+          DURATION_SEC=$((DURATION / 1000))
+          echo "- Test Duration: ${DURATION_SEC}s (${DURATION}ms)" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Extract task counts
+        TOTAL_TASKS=$(grep "FAIRNESS_TOTAL_TASKS:" qemu_output.log | cut -d: -f2 | tr -d ' ')
+        if [ ! -z "$TOTAL_TASKS" ]; then
+          echo "- Total Tasks: $TOTAL_TASKS" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Extract starvation results
+        STARVATION_PASSED=$(grep "FAIRNESS_STARVATION_PASSED:" qemu_output.log | cut -d: -f2 | tr -d ' ')
+        MAX_WAIT=$(grep "FAIRNESS_MAX_WAIT_TIME_MS:" qemu_output.log | cut -d: -f2 | tr -d ' ')
+        if [ "$STARVATION_PASSED" = "true" ]; then
+          echo "- Starvation Prevention: OK PASS (max wait: ${MAX_WAIT}ms)" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- Starvation Prevention: FAIL (max wait: ${MAX_WAIT}ms)" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Extract RT latency results
+        RT_PASSED=$(grep "FAIRNESS_RT_PASSED:" qemu_output.log | cut -d: -f2 | tr -d ' ')
+        RT_P95=$(grep "FAIRNESS_RT_P95_LATENCY_MS:" qemu_output.log | cut -d: -f2 | tr -d ' ')
+        if [ "$RT_PASSED" = "true" ]; then
+          echo "- RT Latency: OK PASS (P95: ${RT_P95}ms)" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- RT Latency: FAIL (P95: ${RT_P95}ms)" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Extract CPU share results
+        CPU_PASSED=$(grep "FAIRNESS_CPU_SHARE_PASSED:" qemu_output.log | cut -d: -f2 | tr -d ' ')
+        CPU_VIOLATIONS=$(grep "FAIRNESS_CPU_SHARE_VIOLATIONS:" qemu_output.log | cut -d: -f2 | tr -d ' ')
+        if [ "$CPU_PASSED" = "true" ]; then
+          echo "- CPU Share Fairness: OK PASS (0 violations)" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- CPU Share Fairness: FAIL (${CPU_VIOLATIONS} violations)" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Task Distribution" >> $GITHUB_STEP_SUMMARY
+        
+        CPU_BOUND=$(grep "FAIRNESS_CPU_BOUND_TASKS:" qemu_output.log | cut -d: -f2 | tr -d ' ')
+        IO_BLOCKED=$(grep "FAIRNESS_IO_BLOCKED_TASKS:" qemu_output.log | cut -d: -f2 | tr -d ' ')
+        RT_BURSTY=$(grep "FAIRNESS_RT_BURSTY_TASKS:" qemu_output.log | cut -d: -f2 | tr -d ' ')
+        
+        echo "- CPU-bound tasks: $CPU_BOUND" >> $GITHUB_STEP_SUMMARY
+        echo "- IO-blocked tasks: $IO_BLOCKED" >> $GITHUB_STEP_SUMMARY
+        echo "- RT-bursty tasks: $RT_BURSTY" >> $GITHUB_STEP_SUMMARY
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Artifacts: QEMU output log and detailed fairness report available for download." >> $GITHUB_STEP_SUMMARY
+        
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          
+          // Read QEMU output to check results
+          let content = '';
+          try {
+            content = fs.readFileSync('qemu_output.log', 'utf8');
+          } catch (error) {
+            console.log('Could not read QEMU output log');
+            return;
+          }
+          
+          const testPassed = content.includes('FAIRNESS_TEST_PASSED: true');
+          const starvationPassed = content.includes('FAIRNESS_STARVATION_PASSED: true');
+          const rtPassed = content.includes('FAIRNESS_RT_PASSED: true');
+          const cpuPassed = content.includes('FAIRNESS_CPU_SHARE_PASSED: true');
+          
+          // Extract metrics
+          const duration = content.match(/FAIRNESS_TEST_DURATION_MS:\s*(\d+)/)?.[1];
+          const totalTasks = content.match(/FAIRNESS_TOTAL_TASKS:\s*(\d+)/)?.[1];
+          const maxWait = content.match(/FAIRNESS_MAX_WAIT_TIME_MS:\s*(\d+)/)?.[1];
+          const rtP95 = content.match(/FAIRNESS_RT_P95_LATENCY_MS:\s*(\d+)/)?.[1];
+          
+          const result = testPassed ? 'PASSED' : 'FAILED';
+          const icon = testPassed ? 'OK' : 'X';
+          
+          let comment = '## ' + icon + ' Scheduler Fairness Test Results\n\n';
+          comment += '**Overall Result**: ' + result + '\n\n';
+          comment += '### Test Metrics\n';
+          comment += '- **Duration**: ' + (duration ? Math.round(duration/1000) + 's (' + duration + 'ms)' : 'N/A') + '\n';
+          comment += '- **Total Tasks**: ' + (totalTasks || 'N/A') + '\n';
+          comment += '- **Max Wait Time**: ' + (maxWait ? maxWait + 'ms' : 'N/A') + '\n';
+          comment += '- **RT P95 Latency**: ' + (rtP95 ? rtP95 + 'ms' : 'N/A') + '\n\n';
+          comment += '### Validation Results\n';
+          comment += '- **Starvation Prevention**: ' + (starvationPassed ? 'OK PASS' : 'FAIL') + '\n';
+          comment += '- **RT Latency Bounds**: ' + (rtPassed ? 'OK PASS' : 'FAIL') + '\n';
+          comment += '- **CPU Share Fairness**: ' + (cpuPassed ? 'OK PASS' : 'FAIL') + '\n\n';
+          
+          if (testPassed) {
+            comment += 'The scheduler maintains excellent fairness properties across all task types!\n\n';
+          } else {
+            comment += 'Scheduler fairness issues detected. Please review the detailed report and consider optimizations.\n\n';
+          }
+          
+          comment += '<details>\n<summary>View Detailed Metrics</summary>\n\n';
+          comment += '```\n';
+          comment += content.split('\n')
+            .filter(line => line.includes('FAIRNESS_'))
+            .slice(0, 20)
+            .join('\n');
+          comment += '\n```\n\n</details>\n\n';
+          comment += 'This test validates that the scheduler maintains fairness across CPU-bound, IO-blocked, and RT-bursty tasks over a 10-second period.';
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+  scheduler-performance-regression:
+    name: Performance Regression Check  
+    runs-on: ubuntu-latest
+    needs: scheduler-fairness-test
+    if: always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download fairness report
+      uses: actions/download-artifact@v4
+      with:
+        name: scheduler-fairness-report
+        path: .
+        
+    - name: Check for performance regressions
+      run: |
+        echo "Checking for performance regressions..."
+        
+        if [ ! -f fairness_report.json ]; then
+          echo "FAIL: No fairness report found"
+          exit 1
+        fi
+        
+        # Basic regression checks using Python
+        python3 -c "import json; import sys; report = json.load(open('fairness_report.json')); metrics = report.get('metrics', {}); validation = report.get('validation', {}); print('Performance Regression Analysis'); print('=================================='); max_wait = metrics.get('max_wait_time_ms', 0); rt_latency = metrics.get('rt_p95_latency_ms', 0); cpu_violations = metrics.get('cpu_share_violations', 0); regressions = []; [regressions.append('Max wait time: ' + str(max_wait) + 'ms > 100ms threshold') if max_wait > 100 else None]; [regressions.append('RT P95 latency: ' + str(rt_latency) + 'ms > 5ms threshold') if rt_latency > 5 else None]; [regressions.append('CPU share violations: ' + str(cpu_violations) + ' > 0 threshold') if cpu_violations > 0 else None]; print('FAIL: Performance regressions detected:') if regressions else print('OK: No performance regressions detected'); [print('  - ' + r) for r in regressions] if regressions else [print('   Max wait: ' + str(max_wait) + 'ms'), print('   RT P95: ' + str(rt_latency) + 'ms'), print('   CPU violations: ' + str(cpu_violations))]; sys.exit(1) if regressions else None"
+        
+    - name: Generate performance badge
+      if: success()
+      run: |
+        echo "OK: Scheduler performance validated - no regressions detected" > performance_status.txt
+        
+    - name: Upload performance status
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-status
+        path: performance_status.txt
+        retention-days: 7

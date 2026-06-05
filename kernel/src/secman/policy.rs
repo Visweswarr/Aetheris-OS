@@ -5,6 +5,8 @@
 /// policy blob on boot and caches the decision.
 
 use alloc::vec::Vec;
+use alloc::vec;
+use alloc::format;
 use alloc::string::{String, ToString};
 use core::sync::atomic::{AtomicU8, Ordering};
 use spin::Mutex;

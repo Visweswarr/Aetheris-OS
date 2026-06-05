@@ -1,0 +1,35 @@
+package polymera:intent@0.1.0;
+
+/// Polymera's intent-bus surface, exposed as a WIT interface so user apps can
+/// publish/subscribe to system intents without crossing a raw FFI boundary.
+interface intent-bus {
+    enum bus-error {
+        topic-not-found,
+        permission-denied,
+        backpressure,
+        invalid-payload,
+    }
+
+    record intent {
+        topic: string,
+        actor: string,
+        payload: list<u8>,
+        whylog-id: option<string>,
+    }
+
+    /// Publish an intent. Returns the assigned event id.
+    publish: func(intent: intent) -> result<u64, bus-error>;
+
+    /// Subscribe to a topic. Returns a handle the caller will use to poll.
+    subscribe: func(topic: string) -> result<u32, bus-error>;
+
+    /// Poll a subscription. Blocks (host-side) until the next intent or the deadline.
+    poll: func(handle: u32, timeout-millis: u32) -> result<option<intent>, bus-error>;
+
+    /// Drop a subscription.
+    unsubscribe: func(handle: u32);
+}
+
+world intent-host {
+    export intent-bus;
+}

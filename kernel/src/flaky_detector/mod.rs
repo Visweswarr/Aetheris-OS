@@ -4,6 +4,7 @@ use alloc::vec::Vec;
 use alloc::string::String;
 use alloc::boxed::Box;
 use alloc::vec;
+use alloc::format;
 
 pub mod issue_opener;
 
@@ -272,7 +273,15 @@ impl FlakyDetector {
                 diff * diff
             })
             .sum::<f64>() / durations.len() as f64;
-        let std_dev = variance.sqrt();
+        let std_dev = if variance > 0.0 {
+            let mut x = variance;
+            for _ in 0..20 {
+                x = 0.5 * (x + variance / x);
+            }
+            x
+        } else {
+            0.0
+        };
         let coefficient_of_variation = if mean > 0.0 { std_dev / mean } else { 0.0 };
         let min_duration = *durations.iter().min().unwrap_or(&0);
         let max_duration = *durations.iter().max().unwrap_or(&0);

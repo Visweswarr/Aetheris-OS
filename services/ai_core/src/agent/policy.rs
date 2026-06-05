@@ -1,4 +1,11 @@
-//! Policy Enforcement and Safety Rails
+//! Policy Enforcement, Safety Rails, and Human-in-the-Loop (HITL) support.
+//!
+//! ## HITL reject/modify (Track 2.1)
+//! The executor calls `handle_hitl_decision()` before running a step that
+//! requires approval.  The decision can be Accept, Reject, or Modify.
+//! `Modify` does NOT mutate the original request (mini-castor invariant);
+//! instead it creates a `ModifiedDecision` that pairs the original request
+//! with the human feedback and triggers a re-plan.
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -184,6 +191,68 @@ impl PolicyEnforcer {
     }
 }
 
+/// HITL decision from a human operator.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum HitlDecision {
+    /// Accept the step as-is.
+    Accept,
+    /// Reject the step entirely.
+    Reject { reason: String },
+    /// Request modification — preserves the original request and pairs it
+    /// with human feedback.  The planner should re-plan using this feedback.
+    Modify { feedback: String },
+}
+
+/// A modified-decision record (mini-castor invariant: the original request is
+/// never mutated).  This is logged as an audit trail.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModifiedDecision {
+    pub original_step: TaskStep,
+    pub human_feedback: String,
+    pub timestamp: u64,
+}
+
+impl PolicyEnforcer {
+    /// Handle a HITL decision for a step that requires approval.
+    /// Returns `Ok(true)` if the step may proceed, `Ok(false)` if rejected,
+    /// and `Err` with modified feedback if the human requested a modification.
+    pub fn handle_hitl_decision(
+        &self,
+        step: &TaskStep,
+        decision: &HitlDecision,
+    ) -> std::result::Result<bool, ModifiedDecision> {
+        match decision {
+            HitlDecision::Accept => {
+                Ok(true)
+            }
+            HitlDecision::Reject { reason } => {
+                crate::metrics::record_hitl_reject();
+                eprintln!(
+                    "[HITL] Step '{}' REJECTED: {}",
+                    step.step_id, reason
+                );
+                Ok(false)
+            }
+            HitlDecision::Modify { feedback } => {
+                crate::metrics::record_hitl_modify();
+                let modified = ModifiedDecision {
+                    original_step: step.clone(),
+                    human_feedback: feedback.clone(),
+                    timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                };
+                eprintln!(
+                    "[HITL] Step '{}' MODIFY requested: {}",
+                    step.step_id, feedback
+                );
+                Err(modified)
+            }
+        }
+    }
+}
+
 fn context_has_capability(context: &SystemActionContext, capability: &str) -> bool {
     context
         .metadata
@@ -195,4 +264,54 @@ fn context_has_capability(context: &SystemActionContext, capability: &str) -> bo
                 .any(|cap| cap == capability || cap == "admin")
         })
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn test_step() -> TaskStep {
+        TaskStep {
+            step_id: "step-001".to_string(),
+            description: "test step".to_string(),
+            tool_name: "echo".to_string(),
+            parameters: serde_json::json!({"message": "hello"}),
+            required_capabilities: Vec::new(),
+            requires_approval: false,
+            is_destructive: false,
+            depends_on: Vec::new(),
+            estimated_time_secs: 1,
+        }
+    }
+
+    #[test]
+    fn hitl_accept_allows() {
+        let enforcer = PolicyEnforcer::new_mock();
+        let result = enforcer.handle_hitl_decision(&test_step(), &HitlDecision::Accept);
+        assert_eq!(result, Ok(true));
+    }
+
+    #[test]
+    fn hitl_reject_blocks() {
+        let enforcer = PolicyEnforcer::new_mock();
+        let result = enforcer.handle_hitl_decision(
+            &test_step(),
+            &HitlDecision::Reject { reason: "too risky".into() },
+        );
+        assert_eq!(result, Ok(false));
+    }
+
+    #[test]
+    fn hitl_modify_preserves_original() {
+        let enforcer = PolicyEnforcer::new_mock();
+        let step = test_step();
+        let result = enforcer.handle_hitl_decision(
+            &step,
+            &HitlDecision::Modify { feedback: "use safer path".into() },
+        );
+        let modified = result.unwrap_err();
+        assert_eq!(modified.original_step.step_id, "step-001");
+        assert_eq!(modified.human_feedback, "use safer path");
+    }
 }

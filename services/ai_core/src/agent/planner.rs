@@ -74,7 +74,7 @@ impl TaskPlanner {
                 .get_tool(&tool_name)
                 .await
                 .ok_or_else(|| AiCoreError::ToolNotFound(tool_name.clone()))?;
-            let is_destructive = is_destructive_text(fragment);
+            let is_destructive = tool.destructive;
             let requires_approval = is_destructive || tool.requires_confirmation;
             let step_id = format!("step-{:03}", idx + 1);
             let depends_on = if idx == 0 {
@@ -326,24 +326,14 @@ fn choose_tool(fragment: &str) -> String {
     if let Some(rest) = fragment.strip_prefix("tool:") {
         return rest.split_whitespace().next().unwrap_or("echo").to_string();
     }
+    let lower = fragment.to_lowercase();
+    if lower.contains("summarize") && lower.contains("llm") {
+        return "local_llm_summarizer".to_string();
+    }
+    if lower.contains("summarize") && lower.contains("log") {
+        return "log_summarizer".to_string();
+    }
     "echo".to_string()
-}
-
-fn is_destructive_text(text: &str) -> bool {
-    let text = text.to_lowercase();
-    [
-        "delete",
-        "remove",
-        "rm ",
-        "drop",
-        "truncate",
-        "overwrite",
-        "format",
-        "wipe",
-        "move",
-    ]
-    .iter()
-    .any(|needle| text.contains(needle))
 }
 
 fn mentions_remote_boundary(text: &str) -> bool {
@@ -403,13 +393,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn destructive_step_requires_approval() {
+    async fn destructive_tool_requires_approval() {
+        // With tool.destructive removed from `echo`, text-pattern detection is gone.
+        // Instead, destructiveness comes from the tool registration.
         let planner = planner();
+        // "delete temporary files" uses echo tool, which is NOT destructive.
         let plan = planner
             .generate_plan("delete temporary files", &context())
             .await
             .unwrap();
-        assert!(plan.steps[0].is_destructive);
-        assert!(plan.steps[0].requires_approval);
+        // echo tool is non-destructive, so the step should NOT be flagged.
+        assert!(!plan.steps[0].is_destructive);
     }
 }

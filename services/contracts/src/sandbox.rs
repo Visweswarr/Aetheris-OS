@@ -1,11 +1,9 @@
 use crate::zkvm::{ZKProof, ZKAlgorithm};
-use ngfs::vault::{CapTokenV2, Capability, VaultError, VaultErrorCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use wasmtime::{Engine, Instance, Module, Store, Val, ValType};
-use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
+use wasmtime::{Engine, Instance, Module, Store, Val};
 
 /// Smart contract execution sandbox
 pub struct ContractSandbox {
@@ -40,6 +38,19 @@ pub struct GasConfig {
     pub max_memory_bytes: u64,
     /// Maximum storage operations
     pub max_storage_operations: u64,
+}
+
+/// Capability token reference supplied to contract execution.
+///
+/// This is intentionally local to the contracts service until NGFS exposes a
+/// stable vault capability API. The wire representation can be mapped to
+/// CapToken v2 once that crate is canonicalized.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Capability {
+    /// Capability namespace, for example `ngfs.read`.
+    pub name: String,
+    /// Allowed actions under the namespace.
+    pub actions: Vec<String>,
 }
 
 impl Default for GasConfig {
@@ -105,6 +116,14 @@ pub struct ContractError {
     /// Peak memory usage before error
     pub memory_peak: u64,
 }
+
+impl std::fmt::Display for ContractError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for ContractError {}
 
 /// Error codes
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -365,18 +384,13 @@ impl ContractSandbox {
         // Create WASM store with gas metering
         let mut store = Store::new(&self.engine, ());
         
-        // Set up WASI context
-        let wasi = WasiCtxBuilder::new()
-            .inherit_stdio()
-            .inherit_args()?
-            .build();
-        let wasi = WasiCtx::new(wasi);
-        
         // Compile WASM module
         let module = Module::new(&self.engine, wasm)?;
         
-        // Create instance
-        let instance = Instance::new(&mut store, &module, &[wasi.into()])?;
+        // Create a minimal no-import instance. Component-facing contracts that need
+        // host capabilities must use the WIT boundary; this path is deliberately
+        // kept narrow for deterministic smoke tests.
+        let instance = Instance::new(&mut store, &module, &[])?;
         
         // Get memory and exports
         let memory = instance.get_memory(&mut store, "memory")
@@ -419,25 +433,30 @@ impl ContractSandbox {
             None
         };
 
-        // Create result
-        let result_v1 = ResultV1 {
-            ok: result.is_ok(),
-            gas_used,
-            gas_limit,
-            output: result.unwrap_or_default(),
-            proof,
-            error: if result.is_err() {
+        let (ok, output, error) = match result {
+            Ok(output) => (true, output, None),
+            Err(err) => (
+                false,
+                Vec::new(),
                 Some(ContractError {
                     code: ErrorCode::WasmError,
                     message: "Contract execution failed".to_string(),
-                    details: Some(result.unwrap_err().to_string()),
+                    details: Some(err.to_string()),
                     gas_consumed: gas_used,
                     instruction_count,
                     memory_peak: memory_used,
-                })
-            } else {
-                None
-            },
+                }),
+            ),
+        };
+
+        // Create result
+        let result_v1 = ResultV1 {
+            ok,
+            gas_used,
+            gas_limit,
+            output,
+            proof,
+            error,
             execution_time_ms,
             memory_used,
             storage_accesses,
@@ -469,14 +488,19 @@ impl ContractSandbox {
     ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         // Write input to memory
         let input_offset = 0;
-        memory.write(store, input_offset, input)?;
+        memory.write(&mut *store, input_offset, input)?;
         
         // Call main function
-        let main_func = instance.get_func(store, "main")
+        let main_func = instance.get_func(&mut *store, "main")
             .ok_or("No main function found")?;
         
         // Execute with gas metering
-        let result = main_func.call(store, &[Val::I32(input_offset as i32), Val::I32(input.len() as i32)])?;
+        let mut result = [Val::I32(0), Val::I32(0)];
+        main_func.call(
+            &mut *store,
+            &[Val::I32(input_offset as i32), Val::I32(input.len() as i32)],
+            &mut result,
+        )?;
         
         // Read output from memory
         let output_offset = result[0].i32().unwrap_or(0) as usize;
@@ -484,13 +508,13 @@ impl ContractSandbox {
         
         if output_size > 0 {
             let mut output = vec![0u8; output_size];
-            memory.read(store, output_offset, &mut output)?;
+            memory.read(&mut *store, output_offset, &mut output)?;
             
             // Update instruction count (simplified - would use actual WASM instruction counting)
             *instruction_count = gas_meter.instruction_count();
             
             // Update memory usage
-            *memory_used = memory.size(store) as u64 * 65536; // 64KB pages
+            *memory_used = memory.size(&mut *store) as u64 * 65536; // 64KB pages
             
             Ok(output)
         } else {
@@ -680,34 +704,6 @@ impl GasMeter {
     fn would_exceed(&self, amount: u64) -> bool {
         self.total_gas + amount > self.limit
     }
-}
-
-/// ZK proof structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ZKProof {
-    /// ZK algorithm used
-    pub algorithm: ZKAlgorithm,
-    /// Serialized proof data
-    pub proof_data: Vec<u8>,
-    /// Public inputs for verification
-    pub public_inputs: Vec<Vec<u8>>,
-    /// Hash of the circuit
-    pub circuit_hash: Vec<u8>,
-    /// Version of the prover
-    pub prover_version: String,
-    /// Size of proof in bytes
-    pub proof_size: u64,
-    /// Verification key for the circuit
-    pub verification_key: Vec<u8>,
-}
-
-/// ZK algorithms
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ZKAlgorithm {
-    Halo2,
-    Noir,
-    Plonk,
-    Custom,
 }
 
 #[cfg(test)]

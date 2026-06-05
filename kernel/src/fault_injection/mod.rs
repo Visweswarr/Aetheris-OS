@@ -6,6 +6,7 @@
 
 use core::sync::atomic::{AtomicU32, AtomicBool, Ordering};
 use core::sync::atomic::AtomicU64;
+use alloc::vec::Vec;
 
 /// Fault injection configuration
 #[derive(Debug, Clone)]
@@ -29,8 +30,8 @@ pub struct FaultInjectionConfig {
     pub global_enabled: bool,
 }
 
-impl Default for FaultInjectionConfig {
-    fn default() -> Self {
+impl FaultInjectionConfig {
+    pub const fn new() -> Self {
         Self {
             inbox_overflow_enabled: false,
             inbox_overflow_interval: 100,
@@ -40,6 +41,12 @@ impl Default for FaultInjectionConfig {
             timer_jitter_percentage: 10,
             global_enabled: false,
         }
+    }
+}
+
+impl Default for FaultInjectionConfig {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -121,7 +128,7 @@ impl FaultInjectionState {
 }
 
 /// Global fault injection configuration
-static mut FAULT_CONFIG: FaultInjectionConfig = FaultInjectionConfig::default();
+static mut FAULT_CONFIG: FaultInjectionConfig = FaultInjectionConfig::new();
 
 /// Global fault injection state
 static mut FAULT_STATE: FaultInjectionState = FaultInjectionState::new();
@@ -139,7 +146,7 @@ pub fn get_fault_state() -> &'static FaultInjectionState {
 /// Update fault injection configuration
 pub fn update_fault_config(new_config: FaultInjectionConfig) {
     unsafe {
-        FAULT_CONFIG = new_config;
+        FAULT_CONFIG = new_config.clone();
         
         // Reset state when configuration changes
         FAULT_STATE.reset();

@@ -12,7 +12,7 @@ use crate::skills::broker::{CapabilityBroker, BrokerSession};
 pub const MAX_LOADED_SKILLS: usize = 16;
 pub const SKILL_HANDLE_MASK: u64 = 0x8000000000000000;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SkillHandle {
     pub id: u64,
     pub name: String,
@@ -77,7 +77,7 @@ pub struct SkillCounters {
 }
 
 impl SkillCounters {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             skills_loaded: AtomicU64::new(0),
             skills_unloaded: AtomicU64::new(0),
@@ -149,7 +149,7 @@ pub struct SkillRegistry {
 }
 
 impl SkillRegistry {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             next_skill_id: AtomicU64::new(1),
             loaded_skills: Mutex::new(Vec::new()),
@@ -204,20 +204,10 @@ impl SkillRegistry {
         Ok(handle)
     }
     
-    pub fn get_skill(&self, handle: u64) -> Option<LoadedSkill> {
-        let skills = self.loaded_skills.lock();
-        
-        for loaded_skill in skills.iter() {
-            if loaded_skill.handle.id == handle {
-                return Some(loaded_skill.clone());
-            }
-        }
-        
-        None
-    }
-    
     pub fn invoke_skill(&self, handle: u64, input: &[u8]) -> Result<crate::skills::exec::PreviewBundle, RegistryError> {
-        let mut loaded_skill = self.get_skill(handle)
+        let mut skills = self.loaded_skills.lock();
+        let loaded_skill = skills.iter_mut()
+            .find(|s| s.handle.id == handle)
             .ok_or(RegistryError::SkillNotFound)?;
         
         if !loaded_skill.handle.is_valid() {
@@ -255,7 +245,7 @@ impl SkillRegistry {
         let mut skills = self.loaded_skills.lock();
         
         if let Some(pos) = skills.iter().position(|s| s.handle.id == handle) {
-            let loaded_skill = skills.remove(pos);
+            let mut loaded_skill = skills.remove(pos);
             
             if loaded_skill.decrement_load_count() {
                 self.counters.increment_unloaded();

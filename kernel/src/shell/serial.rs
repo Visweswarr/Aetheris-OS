@@ -307,10 +307,11 @@ impl SerialInterface {
             
             // Ctrl+K - clear line after cursor
             0x0B => {
-                let after_cursor = buffer.buffer.len() - buffer.cursor;
+                let cursor = buffer.cursor;
+                let after_cursor = buffer.buffer.len() - cursor;
                 for _ in 0..after_cursor {
-                    if buffer.buffer.len() > buffer.cursor {
-                        buffer.buffer.remove(buffer.cursor);
+                    if buffer.buffer.len() > cursor {
+                        buffer.buffer.remove(cursor);
                         kprint!(" ");
                     }
                 }

@@ -1,0 +1,119 @@
+[
+  {
+    "id": "rule_1",
+    "name": "Allow HTTPS Traffic",
+    "type": "Ingress",
+    "scope": "Global",
+    "conditions": {
+      "source_ips": ["0.0.0.0/0"],
+      "destination_ips": ["0.0.0.0/0"],
+      "source_ports": [],
+      "destination_ports": [443],
+      "protocols": ["TCP"],
+      "process_capabilities": ["net:socket"],
+      "network_namespaces": ["default"],
+      "time_conditions": {
+        "allowed_ranges": [
+          {
+            "start": "09:00",
+            "end": "17:00",
+            "days": [1, 2, 3, 4, 5]
+          }
+        ],
+        "timezone": "UTC"
+      },
+      "rate_limits": {
+        "max_requests": 1000,
+        "window_seconds": 60,
+        "burst": 100
+      }
+    },
+    "action": "Allow",
+    "priority": 100,
+    "enabled": true
+  },
+  {
+    "id": "rule_2",
+    "name": "Allow Internal Network",
+    "type": "Bidirectional",
+    "scope": "Global",
+    "conditions": {
+      "source_ips": ["192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12"],
+      "destination_ips": ["192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12"],
+      "source_ports": [],
+      "destination_ports": [],
+      "protocols": ["TCP", "UDP"],
+      "process_capabilities": ["net:socket"],
+      "network_namespaces": ["default", "internal"],
+      "time_conditions": null,
+      "rate_limits": null
+    },
+    "action": "Allow",
+    "priority": 200,
+    "enabled": true
+  },
+  {
+    "id": "rule_3",
+    "name": "Block Suspicious IPs",
+    "type": "Bidirectional",
+    "scope": "Global",
+    "conditions": {
+      "source_ips": ["192.168.1.100/32", "10.0.0.100/32"],
+      "destination_ips": ["0.0.0.0/0"],
+      "source_ports": [],
+      "destination_ports": [],
+      "protocols": ["All"],
+      "process_capabilities": [],
+      "network_namespaces": [],
+      "time_conditions": null,
+      "rate_limits": null
+    },
+    "action": "Deny",
+    "priority": 50,
+    "enabled": true
+  },
+  {
+    "id": "rule_4",
+    "name": "Rate Limit API Endpoints",
+    "type": "Ingress",
+    "scope": "Global",
+    "conditions": {
+      "source_ips": ["0.0.0.0/0"],
+      "destination_ips": ["0.0.0.0/0"],
+      "source_ports": [],
+      "destination_ports": [8080, 8443],
+      "protocols": ["TCP"],
+      "process_capabilities": ["net:socket"],
+      "network_namespaces": ["default"],
+      "time_conditions": null,
+      "rate_limits": {
+        "max_requests": 100,
+        "window_seconds": 60,
+        "burst": 20
+      }
+    },
+    "action": "RateLimit",
+    "priority": 150,
+    "enabled": true
+  },
+  {
+    "id": "rule_5",
+    "name": "Allow Localhost Development",
+    "type": "Bidirectional",
+    "scope": "Process",
+    "conditions": {
+      "source_ips": ["127.0.0.1/32", "::1/128"],
+      "destination_ips": ["127.0.0.1/32", "::1/128"],
+      "source_ports": [],
+      "destination_ports": [],
+      "protocols": ["TCP", "UDP"],
+      "process_capabilities": ["net:dev"],
+      "network_namespaces": ["default"],
+      "time_conditions": null,
+      "rate_limits": null
+    },
+    "action": "Allow",
+    "priority": 300,
+    "enabled": true
+  }
+]

@@ -5,36 +5,21 @@
 
 pub mod features;
 
-// Re-export commonly used items
-pub use features::{
-    FeatureManager,
-    FeatureInfo,
-    AbiNegotiationHeader,
-    FeatureNegotiationResult,
-    negotiate_abi_features,
-    get_features,
-    is_feature_enabled,
-    check_required_features,
-    get_missing_features,
-    init_feature_manager,
-    get_feature_manager,
-    get_feature_manager_mut,
-};
+/// Initialize the kernel feature manager (stub).
+pub fn init_feature_manager() {
+    let _ = features::get_kernel_features();
+}
 
-// Feature flag constants for easy access
+// Re-export commonly used feature helpers
 pub use features::{
-    FEATURE_PQC_CAPS_V2,
-    FEATURE_APIC_TIMER,
-    FEATURE_HPET_FALLBACK,
-    FEATURE_CAP_REPLAY_WIN,
-    FEATURE_MMU_AUDIT,
-    FEATURE_CRASH_ANALYSIS,
-    FEATURE_SOAK_CHAOS,
-    FEATURE_SIDE_CHANNEL_GUARD,
-    FEATURE_STREAM_AUTH,
-    FEATURE_DID_RESOLVER,
-    FEATURE_SECURE_BOOT,
-    FEATURE_ABI_HARDENING,
-    MAX_FEATURES,
+    KernelFeature,
+    FeatureCompatibility,
+    get_kernel_features,
+    get_feature_string,
+    has_feature,
+    get_timer_features,
+    get_scheduling_features,
+    get_timer_compatibility,
+    get_jitter_compatibility,
+    print_feature_status,
 };
-

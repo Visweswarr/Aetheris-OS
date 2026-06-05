@@ -5,13 +5,13 @@
 //! - Controlled via sys_debug operations
 //! - Used throughout the kernel for consistent random number generation
 
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 use crate::determinism;
 
 /// Randomness proxy configuration
 pub struct RngProxyConfig {
     /// Whether the proxy is in deterministic mode
-    pub deterministic: bool,
+    pub deterministic: AtomicBool,
     /// Current seed value
     pub seed: AtomicU64,
     /// Current state for deterministic generation
@@ -22,7 +22,7 @@ impl RngProxyConfig {
     /// Create a new RNG proxy configuration
     pub const fn new() -> Self {
         Self {
-            deterministic: false,
+            deterministic: AtomicBool::new(false),
             seed: AtomicU64::new(0),
             state: AtomicU64::new(0),
         }
@@ -43,18 +43,18 @@ impl RngProxyConfig {
     
     /// Check if deterministic mode is enabled
     pub fn is_deterministic(&self) -> bool {
-        self.deterministic
+        self.deterministic.load(Ordering::Relaxed)
     }
     
     /// Enable deterministic mode
     pub fn enable_deterministic(&self) {
-        self.deterministic = true;
+        self.deterministic.store(true, Ordering::Relaxed);
         crate::kprintln!("[RNG] Deterministic mode enabled");
     }
     
     /// Disable deterministic mode
     pub fn disable_deterministic(&self) {
-        self.deterministic = false;
+        self.deterministic.store(false, Ordering::Relaxed);
         crate::kprintln!("[RNG] Deterministic mode disabled");
     }
     

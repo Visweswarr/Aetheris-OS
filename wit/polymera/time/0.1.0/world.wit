@@ -1,0 +1,37 @@
+package polymera:time@0.1.0;
+
+/// Time and scheduling surface for components. Distinct from `wasi:clocks` because
+/// Polymera exposes its deterministic-clock and intent-driven scheduler primitives.
+interface clocks {
+    /// Monotonic time since boot, in nanoseconds. Guaranteed never to go backwards.
+    monotonic-nanos: func() -> u64;
+
+    /// Wall-clock time as a UNIX timestamp in nanoseconds. May jump.
+    wall-clock-nanos: func() -> u64;
+
+    /// Deterministic logical clock — same value for same intent on replay.
+    /// Used by the determinism subsystem (kernel/src/determinism).
+    deterministic-tick: func() -> u64;
+}
+
+interface scheduler {
+    enum sched-error {
+        invalid-cron,
+        invalid-handler,
+        permission-denied,
+    }
+
+    /// Register a handler to fire on a cron expression. Returns an opaque id.
+    schedule-cron: func(cron-expr: string, handler-name: string) -> result<u32, sched-error>;
+
+    /// Register a handler to fire after a one-shot delay (nanoseconds).
+    schedule-after: func(delay-nanos: u64, handler-name: string) -> result<u32, sched-error>;
+
+    /// Cancel a previously scheduled handler. Idempotent.
+    cancel: func(id: u32);
+}
+
+world time-host {
+    export clocks;
+    export scheduler;
+}

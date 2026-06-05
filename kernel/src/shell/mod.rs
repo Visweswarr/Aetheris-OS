@@ -212,9 +212,9 @@ impl Shell {
         
         output.push_str(&format!("Uptime: {} ms\n", stats.uptime_ms));
         output.push_str(&format!("Ticks: {}\n", stats.ticks));
-        output.push_str(&format!("Context Switches: {}\n", stats.context_switches));
-        output.push_str(&format!("Messages Sent: {}\n", stats.messages_sent));
-        output.push_str(&format!("Messages Received: {}\n", stats.messages_received));
+        output.push_str(&format!("Context Switches: {}\n", stats.ctx_switches));
+        output.push_str(&format!("Messages Sent: {}\n", stats.msgs_sent));
+        output.push_str(&format!("Messages Received: {}\n", stats.msgs_recvd));
         output.push_str(&format!("Page Faults: {}\n", stats.page_faults));
         output.push_str(&format!("Active Tasks: {}\n", stats.active_tasks));
         output.push_str(&format!("Blocked Tasks: {}\n", stats.blocked_tasks));
@@ -435,19 +435,10 @@ pub fn init() {
     // Initialize serial interface
     init_serial_interface();
     
-    // Create shell task
-    let shell_task = Task::new(
-        "shell",
-        shell_task,
-        TaskPriority::Normal,
-        4096, // 4KB stack
-    );
-    
     // Start shell task (best-effort using the lightweight task factory).
     let task_id = crate::sched::create_task(0);
     crate::sched::enqueue_task(task_id);
     klog!(INFO, "[SHELL] Shell task started with ID: {:?}", task_id);
-    let _ = shell_task;
     
     kprintln!("[SHELL] Shell system initialized");
 }

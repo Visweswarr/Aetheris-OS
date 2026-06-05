@@ -182,10 +182,11 @@ pub struct PolicyResponse {
 impl PolicyResponse {
     /// Create a new policy response
     pub fn new(result: PolicyResult, context: PolicyContext) -> Self {
+        let evaluation_metadata = result.metadata.clone();
         Self {
             result,
             context,
-            evaluation_metadata: result.metadata.clone(),
+            evaluation_metadata,
         }
     }
     

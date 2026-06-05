@@ -1,6 +1,7 @@
 use core::mem::size_of;
 use x86_64::structures::tss::TaskStateSegment;
 use x86_64::VirtAddr;
+use crate::kprintln;
 
 /// Size of the double fault stack
 pub const DOUBLE_FAULT_STACK_SIZE: usize = 4096; // 4KB stack

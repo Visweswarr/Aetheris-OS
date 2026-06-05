@@ -84,9 +84,9 @@ fn test_runqueue_operations() {
     assert_eq!(rq.pop(), None);
     
     // Test basic operations
-    assert!(rq.push(TaskId(1)));
-    assert!(rq.push(TaskId(2)));
-    assert!(rq.push(TaskId(3)));
+    assert!(rq.push(TaskId(1), TaskPriority::Normal));
+    assert!(rq.push(TaskId(2), TaskPriority::Normal));
+    assert!(rq.push(TaskId(3), TaskPriority::Normal));
     
     assert_eq!(rq.len(), 3);
     assert!(!rq.is_empty());
@@ -99,7 +99,7 @@ fn test_runqueue_operations() {
     
     // Test circular buffer behavior
     for i in 0..10 {
-        assert!(rq.push(TaskId(i)));
+        assert!(rq.push(TaskId(i), TaskPriority::Normal));
     }
     
     for i in 0..5 {
@@ -107,7 +107,7 @@ fn test_runqueue_operations() {
     }
     
     for i in 10..15 {
-        assert!(rq.push(TaskId(i)));
+        assert!(rq.push(TaskId(i), TaskPriority::Normal));
     }
     
     kprintln!("  ✓ Runqueue operations working correctly");
@@ -278,7 +278,7 @@ pub fn performance_test() {
     for cycle in 0..100 {
         // Fill queue
         for i in 0..50 {
-            rq.push(TaskId(cycle * 50 + i));
+            rq.push(TaskId(cycle * 50 + i), TaskPriority::Normal);
         }
         
         // Empty queue
@@ -326,7 +326,7 @@ pub fn stress_test() {
         match operations % 4 {
             0 => {
                 // Add task to runqueue
-                rq.push(TaskId(operations % 256));
+                rq.push(TaskId(operations % 256), TaskPriority::Normal);
             }
             1 => {
                 // Remove task from runqueue

@@ -88,17 +88,25 @@ macro_rules! handle_assertion_failure {
 /// - Logs the failure message
 /// - Halts the system
 pub fn assertion_failure_internal(msg: &str, args: &[&dyn core::fmt::Display]) {
-    use crate::{klog, format};
+    use crate::klog;
     use crate::log::{Level, tags};
     use crate::secman::audit;
     use alloc::string::ToString;
+    use core::fmt::Write;
+    
+    let mut args_str = alloc::string::String::new();
+    for (i, arg) in args.iter().enumerate() {
+        if i > 0 {
+            args_str.push_str(", ");
+        }
+        let _ = write!(&mut args_str, "{}", arg);
+    }
     
     // Format the message with arguments if provided
     let formatted_msg = if args.is_empty() {
         msg.to_string()
     } else {
-        // Simple formatting for now - in a full implementation we'd use proper formatting
-        format!("{} with args: {:?}", msg, args)
+        alloc::format!("{} with args: [{}]", msg, args_str)
     };
     
     // Log the assertion failure
@@ -123,12 +131,11 @@ pub fn assertion_failure_internal(msg: &str, args: &[&dyn core::fmt::Display]) {
     // Log additional context information
     klog!(Level::ERROR, [tags::ASSERT], "Assertion failure occurred at:");
     klog!(Level::ERROR, [tags::ASSERT], "  File: {}:{}", file!(), line!());
-    klog!(Level::ERROR, [tags::ASSERT], "  Function: {}", function_name!());
+    klog!(Level::ERROR, [tags::ASSERT], "  Function: {}", crate::function_name!());
     
     // Log system state information
-    if let Some(current_task) = crate::sched::get_current_task_id() {
-        klog!(Level::ERROR, [tags::ASSERT], "  Current Task ID: {}", current_task);
-    }
+    let current_task = crate::sched::get_current_task_id();
+    klog!(Level::ERROR, [tags::ASSERT], "  Current Task ID: {}", current_task);
     
     // Log memory and system statistics if available
     let sched_stats = crate::sched::get_scheduler_stats();
@@ -226,17 +233,25 @@ macro_rules! handle_assertion_failure_audit {
 
 /// Internal assertion failure handler with custom audit operation
 pub fn assertion_failure_audit_internal(audit_op: u32, msg: &str, args: &[&dyn core::fmt::Display]) {
-    use crate::{klog, format};
+    use crate::klog;
     use crate::log::{Level, tags};
     use crate::secman::audit;
     use alloc::string::ToString;
+    use core::fmt::Write;
+    
+    let mut args_str = alloc::string::String::new();
+    for (i, arg) in args.iter().enumerate() {
+        if i > 0 {
+            args_str.push_str(", ");
+        }
+        let _ = write!(&mut args_str, "{}", arg);
+    }
     
     // Format the message with arguments if provided
     let formatted_msg = if args.is_empty() {
         msg.to_string()
     } else {
-        // Simple formatting for now
-        format!("{} with args: {:?}", msg, args)
+        alloc::format!("{} with args: [{}]", msg, args_str)
     };
     
     // Log the assertion failure
@@ -244,7 +259,7 @@ pub fn assertion_failure_audit_internal(audit_op: u32, msg: &str, args: &[&dyn c
     
     // Create audit entry with custom operation
     let audit_result = audit::log_event(
-        audit_op,
+        audit_op as u16,
         0, // No specific argument
         &formatted_msg
     );
@@ -261,13 +276,12 @@ pub fn assertion_failure_audit_internal(audit_op: u32, msg: &str, args: &[&dyn c
     // Log additional context information
     klog!(Level::ERROR, [tags::ASSERT], "Assertion failure occurred at:");
     klog!(Level::ERROR, [tags::ASSERT], "  File: {}:{}", file!(), line!());
-    klog!(Level::ERROR, [tags::ASSERT], "  Function: {}", function_name!());
+    klog!(Level::ERROR, [tags::ASSERT], "  Function: {}", crate::function_name!());
     klog!(Level::ERROR, [tags::ASSERT], "  Audit Operation: {}", audit_op);
     
     // Log system state information
-    if let Some(current_task) = crate::sched::get_current_task_id() {
-        klog!(Level::ERROR, [tags::ASSERT], "  Current Task ID: {}", current_task);
-    }
+    let current_task = crate::sched::get_current_task_id();
+    klog!(Level::ERROR, [tags::ASSERT], "  Current Task ID: {}", current_task);
     
     // Halt the system
     klog!(Level::ERROR, [tags::ASSERT], "System halted due to assertion failure");

@@ -1,0 +1,1 @@
+{ "jwks_path":"policy/captoken_v2/dev/jwks.json", "audience":"aetheris-kernel", "clock_skew_s":120 }

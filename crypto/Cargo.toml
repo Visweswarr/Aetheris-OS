@@ -15,31 +15,34 @@ readme = "README.md"
 libc = "0.2"
 thiserror = "1.0"
 
+# Cryptographic dependencies
+pqcrypto-kyber = { version = "0.7", optional = true }
+pqcrypto-dilithium = { version = "0.5", optional = true }
+sha2 = { version = "0.10", optional = true }
+ed25519-dalek = { version = "2.0", optional = true }
+p256 = { version = "0.13", optional = true }
+rsa = { version = "0.9", optional = true }
+tokio = { version = "1.0", optional = true }
+
 # Optional dependencies
 serde = { version = "1.0", optional = true, features = ["derive"] }
 serde_json = { version = "1.0", optional = true }
 
-# Build dependencies
-bindgen = "0.69"
-cc = "1.0"
-
 [build-dependencies]
 bindgen = "0.69"
 cc = "1.0"
+home = "=0.5.9"
 
 [features]
 default = ["std"]
 std = []
-kyber = ["kyber-kem"]
-dilithium = ["dilithium-sig"]
+kyber = ["pqcrypto-kyber"]
+dilithium = ["pqcrypto-dilithium"]
 full = ["std", "kyber", "dilithium", "crypto", "async"]
-crypto = ["sha2", "ed25519", "p256", "rsa"]
+crypto = ["sha2", "ed25519-dalek", "p256", "rsa"]
 async = ["tokio"]
 serde = ["dep:serde", "dep:serde_json"]
-
-# Internal features
-kyber-kem = []
-dilithium-sig = []
+tools = []
 
 [dev-dependencies]
 # Testing
@@ -47,7 +50,6 @@ tempfile = "3.8"
 assert_fs = "1.1"
 predicates = "3.0"
 mockall = "0.12"
-criterion = "0.5"
 
 # Benchmarking
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -60,12 +62,12 @@ crate-type = ["lib", "staticlib", "cdylib"]
 [[bin]]
 name = "crypto-bench"
 path = "src/bin/bench.rs"
-required-features = ["full"]
+required-features = ["full", "tools"]
 
 [[bin]]
 name = "crypto-test"
 path = "src/bin/test.rs"
-required-features = ["full"]
+required-features = ["full", "tools"]
 
 [profile.dev]
 opt-level = 0

@@ -1,0 +1,71 @@
+{
+  "name": "@aetheris/shell-notifications",
+  "version": "1.0.0",
+  "description": "Aetheris Shell Notification System with Action Center Hooks",
+  "main": "dist/notify.js",
+  "types": "dist/notify.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src/**/*.ts tests/**/*.ts",
+    "format": "prettier --write src/**/*.ts tests/**/*.ts",
+    "example": "ts-node src/examples/summary-notification.ts",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "aetheris",
+    "notifications",
+    "shell",
+    "action-center",
+    "ai-core",
+    "tool-calls"
+  ],
+  "author": "Aetheris OS Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aetheris-os/polymera-os.git",
+    "directory": "apps/shell"
+  },
+  "dependencies": {
+    "events": "^3.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/jest": "^29.0.0",
+    "typescript": "^5.0.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "ts-node": "^10.9.0",
+    "eslint": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "prettier": "^3.0.0"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/tests/**/*.test.ts"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/**/*.d.ts"
+    ],
+    "coverageDirectory": "coverage",
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "html"
+    ]
+  },
+  "files": [
+    "dist/**/*",
+    "src/**/*",
+    "tests/**/*",
+    "*.d.ts",
+    "*.js"
+  ]
+}

@@ -1,0 +1,75 @@
+name: Nightly LLM Integration
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 3 AM UTC daily
+  workflow_dispatch:
+
+env:
+  OLLAMA_HOST: ${{ vars.OLLAMA_HOST || 'http://localhost:11434' }}
+
+jobs:
+  llm-integration:
+    name: Local LLM Integration Test
+    runs-on: ubuntu-latest
+    if: ${{ vars.OLLAMA_HOST != '' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Check Ollama connectivity
+        id: ollama-check
+        continue-on-error: true
+        run: |
+          curl -sf "${{ env.OLLAMA_HOST }}/api/tags" > /dev/null 2>&1
+          echo "ollama_available=$?" >> $GITHUB_OUTPUT
+
+      - name: Build ai_core
+        run: |
+          cd services/ai_core
+          cargo build --release
+
+      - name: Run LLM summarize-log test
+        if: steps.ollama-check.outcome == 'success'
+        run: |
+          cd services/ai_core
+          echo "INFO  2024-01-01 service started" > /tmp/test.log
+          echo "WARN  2024-01-01 high latency detected" >> /tmp/test.log
+          echo "ERROR 2024-01-01 connection refused" >> /tmp/test.log
+          cargo run --release --bin ai_core_cli -- \
+            summarize-log --path /tmp/test.log \
+            --model qwen2.5:7b \
+            --approve
+          echo "✅ LLM summarize-log test passed"
+        env:
+          OLLAMA_HOST: ${{ env.OLLAMA_HOST }}
+
+      - name: Fail-closed test (no Ollama)
+        if: steps.ollama-check.outcome != 'success'
+        run: |
+          cd services/ai_core
+          echo "Testing fail-closed behavior without Ollama..."
+          echo "INFO test" > /tmp/test.log
+          # This should fail with an explicit error about Ollama being unreachable
+          if cargo run --release --bin ai_core_cli -- \
+            summarize-log --path /tmp/test.log \
+            --model qwen2.5:7b \
+            --approve 2>&1 | grep -q "unreachable"; then
+            echo "✅ Fail-closed test passed: got explicit unreachable error"
+          else
+            echo "❌ Fail-closed test failed: did not get expected error"
+            exit 1
+          fi
+
+      - name: Summary
+        run: |
+          echo "## Nightly LLM Integration Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Ollama connectivity | ${{ steps.ollama-check.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| OLLAMA_HOST | ${{ env.OLLAMA_HOST }} |" >> $GITHUB_STEP_SUMMARY

@@ -34,13 +34,13 @@ pub fn init() -> Selectors {
         // Load the GDT
         GDT.load();
         
-        kprintln!("[HAL] GDT loaded with {} entries", GDT.breakpoint.options().bits());
+        kprintln!("[HAL] GDT loaded successfully");
         kprintln!("[HAL] GDT: Code selector: {:04x}", code_selector.0);
         kprintln!("[HAL] GDT: Data selector: {:04x}", data_selector.0);
         kprintln!("[HAL] GDT: TSS selector: {:04x}", tss_selector.0);
         
-        // Load the TSS selector into the CPU
-        x86_64::instructions::tables::ltr(tss_selector);
+        // Load the TSS selector into the CPU.
+        x86_64::instructions::tables::load_tss(tss_selector);
         
         kprintln!("[HAL] TSS selector loaded into CPU");
         

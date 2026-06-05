@@ -1,0 +1,266 @@
+name: Fuzz Inbox Push/Pop Operations
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'kernel/**'
+      - 'kernel/fuzz/**'
+      - '.github/workflows/fuzz-inbox.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'kernel/**'
+      - 'kernel/fuzz/**'
+      - '.github/workflows/fuzz-inbox.yml'
+  schedule:
+    # Run fuzz testing daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  FUZZ_TIMEOUT: 30s
+
+jobs:
+  fuzz-inbox:
+    name: Fuzz Inbox Operations
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        # Test different Rust toolchain versions
+        rust-version: [stable, nightly]
+        # Test different sanitizers
+        sanitizer: [address, memory, undefined]
+        # Test different fuzzing engines
+        fuzzer: [libfuzzer, afl]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for fuzzing
+    
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ matrix.rust-version }}
+        profile: minimal
+        override: true
+    
+    - name: Install cargo-fuzz
+      uses: actions-rs/install@v0.1
+      with:
+        crate: cargo-fuzz
+        version: latest
+        use-tool-cache: true
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          libclang-dev \
+          llvm-dev \
+          clang \
+          libssl-dev \
+          pkg-config
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+    
+    - name: Cache fuzz artifacts
+      uses: actions/cache@v3
+      with:
+        path: |
+          kernel/fuzz/target
+          kernel/fuzz/corpus
+          kernel/fuzz/artifacts
+        key: ${{ runner.os }}-fuzz-${{ matrix.fuzzer }}-${{ matrix.sanitizer }}-${{ hashFiles('kernel/fuzz/**') }}
+        restore-keys: |
+          ${{ runner.os }}-fuzz-${{ matrix.fuzzer }}-${{ matrix.sanitizer }}-
+    
+    - name: Build kernel dependencies
+      working-directory: kernel
+      run: |
+        cargo check --all-features
+        cargo build --all-features
+    
+    - name: Build fuzz target
+      working-directory: kernel/fuzz
+      run: |
+        cargo fuzz build --target fuzz_inbox \
+          --sanitizer ${{ matrix.sanitizer }} \
+          --release
+    
+    - name: Run fuzz smoke test (30 seconds)
+      working-directory: kernel/fuzz
+      timeout-minutes: 2
+      run: |
+        echo "Running fuzz smoke test for ${{ env.FUZZ_TIMEOUT }}..."
+        
+        # Run fuzzer for specified duration
+        timeout ${{ env.FUZZ_TIMEOUT }} \
+          cargo fuzz run fuzz_inbox \
+            --sanitizer ${{ matrix.sanitizer }} \
+            --release \
+            --max-total-time ${{ env.FUZZ_TIMEOUT }} \
+            --max-crashes 1 \
+            --print-final-stats \
+            --print-coverage \
+            --artifact-prefix artifacts/
+        
+        echo "Fuzz smoke test completed successfully"
+        echo "No crashes detected in ${{ env.FUZZ_TIMEOUT }}"
+    
+    - name: Collect fuzz artifacts
+      if: always()
+      working-directory: kernel/fuzz
+      run: |
+        echo "Collecting fuzz artifacts..."
+        
+        # List all artifacts
+        find . -name "artifacts" -type d
+        find . -name "corpus" -type d
+        
+        # Show corpus statistics
+        if [ -d "corpus/fuzz_inbox" ]; then
+          echo "Corpus size: $(find corpus/fuzz_inbox -type f | wc -l) files"
+          echo "Corpus total size: $(du -sh corpus/fuzz_inbox | cut -f1)"
+        fi
+        
+        # Show any crash artifacts
+        if [ -d "artifacts" ]; then
+          echo "Artifacts found:"
+          find artifacts -type f
+        fi
+    
+    - name: Upload fuzz artifacts
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: fuzz-artifacts-${{ matrix.fuzzer }}-${{ matrix.sanitizer }}
+        path: |
+          kernel/fuzz/artifacts/
+          kernel/fuzz/corpus/
+        retention-days: 30
+    
+    - name: Generate fuzz report
+      if: always()
+      working-directory: kernel/fuzz
+      run: |
+        echo "=== FUZZ TESTING REPORT ==="
+        echo "Fuzzer: ${{ matrix.fuzzer }}"
+        echo "Sanitizer: ${{ matrix.sanitizer }}"
+        echo "Rust version: ${{ matrix.rust-version }}"
+        echo "Duration: ${{ env.FUZZ_TIMEOUT }}"
+        echo ""
+        
+        # Check for crashes
+        if [ -d "artifacts" ] && [ "$(find artifacts -type f | wc -l)" -gt 0 ]; then
+          echo "❌ CRASHES DETECTED!"
+          echo "Crash artifacts found:"
+          find artifacts -type f
+          exit 1
+        else
+          echo "✅ NO CRASHES DETECTED"
+          echo "Fuzz testing completed successfully"
+        fi
+        
+        echo ""
+        echo "=== END FUZZ REPORT ==="
+    
+    - name: Run extended fuzz test (optional)
+      if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      working-directory: kernel/fuzz
+      timeout-minutes: 10
+      run: |
+        echo "Running extended fuzz test..."
+        
+        # Run fuzzer for longer duration (5 minutes)
+        timeout 5m \
+          cargo fuzz run fuzz_inbox \
+            --sanitizer ${{ matrix.sanitizer }} \
+            --release \
+            --max-total-time 5m \
+            --max-crashes 5 \
+            --print-final-stats \
+            --print-coverage \
+            --artifact-prefix artifacts-extended/
+        
+        echo "Extended fuzz test completed"
+    
+    - name: Upload extended artifacts
+      if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      uses: actions/upload-artifact@v3
+      with:
+        name: fuzz-extended-${{ matrix.fuzzer }}-${{ matrix.sanitizer }}
+        path: kernel/fuzz/artifacts-extended/
+        retention-days: 30
+
+  fuzz-inbox-quick:
+    name: Quick Fuzz Test (CI)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+    
+    - name: Install cargo-fuzz
+      uses: actions-rs/install@v0.1
+      with:
+        crate: cargo-fuzz
+        version: latest
+        use-tool-cache: true
+    
+    - name: Build and test fuzz target
+      working-directory: kernel/fuzz
+      timeout-minutes: 2
+      run: |
+        echo "Running quick fuzz test for CI..."
+        
+        # Build fuzz target
+        cargo fuzz build --target fuzz_inbox --release
+        
+        # Run quick smoke test (30 seconds)
+        timeout 30s \
+          cargo fuzz run fuzz_inbox \
+            --release \
+            --max-total-time 30s \
+            --max-crashes 1 \
+            --print-final-stats
+        
+        echo "Quick fuzz test completed successfully"
+        echo "No crashes detected in 30 seconds"
+    
+    - name: Verify no crashes
+      if: always()
+      working-directory: kernel/fuzz
+      run: |
+        if [ -d "artifacts" ] && [ "$(find artifacts -type f | wc -l)" -gt 0 ]; then
+          echo "❌ CRASHES DETECTED IN QUICK TEST!"
+          find artifacts -type f
+          exit 1
+        else
+          echo "✅ Quick fuzz test passed - no crashes"
+        fi

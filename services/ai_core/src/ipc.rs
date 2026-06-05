@@ -1,20 +1,18 @@
 //! IPC communication module for AI Core Service
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
-use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{mpsc, RwLock};
 
-
-
-use crate::model::ModelManager;
-use crate::tools::ToolRegistry;
 use crate::cap::CapTokenManager;
-use crate::router::PromptRouter;
-use crate::memory::MemoryStore;
-use crate::notifications::NotificationManager;
 use crate::error::Result;
+use crate::memory::MemoryStore;
+use crate::model::ModelManager;
+use crate::notifications::NotificationManager;
+use crate::router::PromptRouter;
+use crate::tools::ToolRegistry;
 
 pub use crate::generated::ai_core::*;
 
@@ -64,8 +62,13 @@ impl IpcServer {
         }
         Ok(Self {
             socket_path: socket_path.to_path_buf(),
-            model_manager, tool_registry, cap_token_manager, prompt_router,
-            memory_store, notification_manager, max_sessions,
+            model_manager,
+            tool_registry,
+            cap_token_manager,
+            prompt_router,
+            memory_store,
+            notification_manager,
+            max_sessions,
             request_timeout: Duration::from_secs(request_timeout_secs),
             active_sessions: Arc::new(RwLock::new(HashMap::new())),
             shutdown_tx: None,

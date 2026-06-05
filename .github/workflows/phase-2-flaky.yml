@@ -1,0 +1,263 @@
+name: Phase 2 Flaky Test Detector
+
+on:
+  workflow_call:
+    inputs:
+      matrix_config:
+        description: 'Matrix configuration data'
+        required: true
+        type: string
+      failed_tests:
+        description: 'JSON array of failed test names'
+        required: true
+        type: string
+      test_results_dir:
+        description: 'Directory containing test results'
+        required: true
+        type: string
+      config_id:
+        description: 'Matrix configuration ID'
+        required: true
+        type: string
+      run_id:
+        description: 'GitHub Actions run ID'
+        required: true
+        type: string
+      matrix_name:
+        description: 'Matrix configuration name'
+        required: true
+        type: string
+      max_retries:
+        description: 'Maximum number of retries for failed tests'
+        required: false
+        default: '2'
+        type: string
+
+env:
+  RUST_BACKTRACE: 1
+  RUST_LOG: info
+  MAX_RETRIES: ${{ inputs.max_retries }}
+
+jobs:
+  flaky-detection:
+    name: "Flaky Test Detection - ${{ inputs.matrix_name }}"
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-flaky-detection-${{ inputs.config_id }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-flaky-detection-${{ inputs.config_id }}-
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils jq
+
+      - name: Parse matrix configuration
+        run: |
+          echo "Parsing matrix configuration..."
+          echo '${{ inputs.matrix_config }}' > matrix_config.json
+          
+          # Extract configuration values
+          export APIC_ENABLED=$(jq -r '.apic' matrix_config.json)
+          export HPET_ENABLED=$(jq -r '.hpet' matrix_config.json)
+          export JITTER_INJECTION=$(jq -r '.jitter' matrix_config.json)
+          export AUTH_ENABLED=$(jq -r '.auth' matrix_config.json)
+          export CAP_POLICY=$(jq -r '.cap_policy' matrix_config.json)
+          
+          echo "Configuration: APIC=$APIC_ENABLED, HPET=$HPET_ENABLED, Jitter=$JITTER_INJECTION, Auth=$AUTH_ENABLED, Policy=$CAP_POLICY"
+
+      - name: Parse failed tests
+        run: |
+          echo "Parsing failed tests..."
+          echo '${{ inputs.failed_tests }}' > failed_tests.json
+          
+          # Count failed tests
+          FAILED_COUNT=$(jq '. | length' failed_tests.json)
+          echo "Found $FAILED_COUNT failed tests"
+          
+          # List failed tests
+          jq -r '.[]' failed_tests.json | while read test_name; do
+            echo "  - $test_name"
+          done
+
+      - name: Configure kernel features
+        run: |
+          echo "Configuring kernel for flaky test retry..."
+          
+          # Create configuration file
+          cat > kernel/.config.flaky << EOF
+          # Flaky test retry configuration: ${{ inputs.config_id }}
+          CONFIG_APIC_TIMER=$APIC_ENABLED
+          CONFIG_HPET_FALLBACK=$HPET_ENABLED
+          CONFIG_JITTER_INJECTION=$JITTER_INJECTION
+          CONFIG_IPC_AUTH=$AUTH_ENABLED
+          CONFIG_CAP_POLICY_$([ "$CAP_POLICY" = "closed" ] && echo "CLOSED" || echo "OPEN")=y
+          EOF
+          
+          echo "Configuration saved to kernel/.config.flaky"
+
+      - name: Build kernel for retry
+        run: |
+          cd kernel
+          
+          # Apply flaky configuration
+          if [ -f .config.flaky ]; then
+            echo "Applying flaky configuration..."
+            cat .config.flaky
+          fi
+          
+          # Build with specific features
+          cargo build --release --features "$APIC_ENABLED && 'apic_timer' || '' $HPET_ENABLED && 'hpet_fallback' || '' $JITTER_INJECTION && 'jitter_injection' || '' $AUTH_ENABLED && 'ipc_auth' || '' $([ "$CAP_POLICY" = "closed" ] && echo 'cap_policy_closed' || echo 'cap_policy_open')"
+          
+          echo "Kernel built successfully for flaky test retry"
+
+      - name: Run flaky test orchestrator
+        run: |
+          echo "Running flaky test orchestrator..."
+          
+          # Make orchestrator executable
+          chmod +x tooling/ci/flaky_orchestrator.sh
+          
+          # Run orchestrator with retry logic
+          ./tooling/ci/flaky_orchestrator.sh \
+            --config-id "${{ inputs.config_id }}" \
+            --matrix-name "${{ inputs.matrix_name }}" \
+            --failed-tests failed_tests.json \
+            --max-retries ${{ inputs.max_retries }} \
+            --results-dir "${{ inputs.test_results_dir }}" \
+            --run-id "${{ inputs.run_id }}"
+
+      - name: Upload retry results
+        uses: actions/upload-artifact@v3
+        with:
+          name: flaky-retry-results-${{ inputs.config_id }}-${{ github.sha }}
+          path: |
+            flaky_analysis.json
+            retry_results/
+            test_summary.md
+
+      - name: Create flaky issue if needed
+        if: contains(fromJSON(steps.flaky-orchestrator.outputs.issue_needed), 'true')
+        run: |
+          echo "Creating GitHub issue for flaky tests..."
+          
+          # Install GitHub CLI
+          type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+          curl -fsSL https://cli.github.com/install.sh | sudo bash
+          
+          # Create issue using template
+          gh issue create \
+            --title "Flaky Tests Detected in Matrix Configuration: ${{ inputs.matrix_name }}" \
+            --body-file tooling/ci/templates/flaky_issue.md \
+            --label "flaky-test" \
+            --label "phase2" \
+            --label "ci-failure"
+          
+          echo "GitHub issue created for flaky tests"
+
+      - name: Set outputs
+        id: flaky-orchestrator
+        run: |
+          # Read analysis results
+          if [ -f flaky_analysis.json ]; then
+            ANALYSIS=$(cat flaky_analysis.json)
+            
+            # Set outputs for workflow
+            echo "flaky_tests_found=$(echo "$ANALYSIS" | jq -r '.flaky_tests_found')" >> $GITHUB_OUTPUT
+            echo "definitive_failures=$(echo "$ANALYSIS" | jq -r '.definitive_failures')" >> $GITHUB_OUTPUT
+            echo "issue_needed=$(echo "$ANALYSIS" | jq -r '.issue_needed')" >> $GITHUB_OUTPUT
+            echo "retry_summary=$(echo "$ANALYSIS" | jq -r '.retry_summary')" >> $GITHUB_OUTPUT
+          else
+            echo "flaky_tests_found=false" >> $GITHUB_OUTPUT
+            echo "definitive_failures=false" >> $GITHUB_OUTPUT
+            echo "issue_needed=false" >> $GITHUB_OUTPUT
+            echo "retry_summary=No analysis results found" >> $GITHUB_OUTPUT
+          fi
+
+  # Summary job that provides final results
+  flaky-summary:
+    name: "Flaky Test Summary"
+    runs-on: ubuntu-latest
+    needs: flaky-detection
+    if: always()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download retry results
+        uses: actions/download-artifact@v3
+        with:
+          name: flaky-retry-results-${{ inputs.config_id }}-${{ github.sha }}
+
+      - name: Generate flaky summary
+        run: |
+          echo "## Flaky Test Analysis Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f flaky_analysis.json ]; then
+            ANALYSIS=$(cat flaky_analysis.json)
+            
+            echo "### Configuration: ${{ inputs.matrix_name }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Config ID**: ${{ inputs.config_id }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Run ID**: ${{ inputs.run_id }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Parse analysis results
+            FLAKY_COUNT=$(echo "$ANALYSIS" | jq -r '.flaky_tests | length')
+            DEFINITIVE_COUNT=$(echo "$ANALYSIS" | jq -r '.definitive_failures | length')
+            TOTAL_FAILED=$(echo "$ANALYSIS" | jq -r '.total_failed')
+            
+            echo "### Test Results Summary" >> $GITHUB_STEP_SUMMARY
+            echo "- **Total Failed Tests**: $TOTAL_FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "- **Flaky Tests**: $FLAKY_COUNT" >> $GITHUB_STEP_SUMMARY
+            echo "- **Definitive Failures**: $DEFINITIVE_COUNT" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # List flaky tests
+            if [ "$FLAKY_COUNT" -gt 0 ]; then
+              echo "### Flaky Tests (Passed on Retry)" >> $GITHUB_STEP_SUMMARY
+              echo "$ANALYSIS" | jq -r '.flaky_tests[] | "- " + .name + " (Failed on attempt " + (.failed_attempts | tostring) + ", passed on attempt " + (.passed_attempt | tostring) + ")"' >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            # List definitive failures
+            if [ "$DEFINITIVE_COUNT" -gt 0 ]; then
+              echo "### Definitive Failures (Failed All Attempts)" >> $GITHUB_STEP_SUMMARY
+              echo "$ANALYSIS" | jq -r '.definitive_failures[] | "- " + .name + " (Failed on all " + (.total_attempts | tostring) + " attempts)"' >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            # Overall status
+            if [ "$DEFINITIVE_COUNT" -eq 0 ]; then
+              echo "## ✅ Status: ALL TESTS PASSED (Some Flaky)" >> $GITHUB_STEP_SUMMARY
+              echo "All tests eventually passed, though some were flaky and required retries." >> $GITHUB_STEP_SUMMARY
+            else
+              echo "## ❌ Status: DEFINITIVE FAILURES DETECTED" >> $GITHUB_STEP_SUMMARY
+              echo "Some tests failed consistently across all retry attempts." >> $GITHUB_STEP_SUMMARY
+            fi
+            
+          else
+            echo "### Analysis Results Not Found" >> $GITHUB_STEP_SUMMARY
+            echo "No flaky analysis results were generated." >> $GITHUB_STEP_SUMMARY
+          fi

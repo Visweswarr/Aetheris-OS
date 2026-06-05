@@ -1,0 +1,31 @@
+# Polymera OS CODEOWNERS template.
+#
+# Copy entries from this file into .github/CODEOWNERS only after real GitHub
+# users or teams are assigned. Do not invent owners to satisfy governance.
+
+/LANGUAGES.md                         @polymera-os/architecture
+/DEPRECATIONS.md                      @polymera-os/architecture
+/docs/polyglot/                       @polymera-os/architecture
+
+/kernel/                              @polymera-os/kernel
+/drivers/                             @polymera-os/kernel
+/crates/                              @polymera-os/rust-core
+/services/ai_core/                    @polymera-os/ai-core
+/services/wasm_driver/                @polymera-os/runtime
+/services/supervisor/                 @polymera-os/runtime
+/services/python_runtime/             @polymera-os/ai-core
+
+/wit/                                 @polymera-os/runtime
+/proto/                               @polymera-os/service-mesh
+
+/services/fs_go/                      @polymera-os/go-services
+/services/net_go/                     @polymera-os/go-services
+/go/                                  @polymera-os/go-services
+
+/apps/assistant-ui/                   @polymera-os/ui
+/apps/shell/                          @polymera-os/ui
+/bindings/ts/                         @polymera-os/ui
+/tooling/ts/                          @polymera-os/ui
+
+/c/crypto/verified/                   @polymera-os/security
+/zig/                                 @polymera-os/systems

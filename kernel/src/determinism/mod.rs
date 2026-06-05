@@ -321,27 +321,6 @@ pub fn create_deterministic_rng() -> DeterministicRng {
     DeterministicRng::new(get_replay_seed())
 }
 
-/// Print determinism system status
-pub fn print_status() {
-    kprintln!("=== DETERMINISM SYSTEM STATUS ===");
-    kprintln!("Enabled: {}", is_determinism_enabled());
-    kprintln!("Replay Seed: 0x{:016x}", get_replay_seed());
-    kprintln!("Virtual Time: {}ms", get_global_time_ms());
-    kprintln!("Virtual Ticks: {}", get_global_ticks());
-    kprintln!("================================");
-}
-
-/// Get current virtual tick count
-pub fn get_virtual_ticks() -> u64 {
-    get_config().get_virtual_ticks()
-}
-
-/// Create a deterministic RNG instance
-pub fn create_deterministic_rng() -> DeterministicRng {
-    let seed = get_replay_seed();
-    DeterministicRng::new(seed)
-}
-
 /// Initialize determinism system
 pub fn init() {
     // Check for environment variable or compile-time feature

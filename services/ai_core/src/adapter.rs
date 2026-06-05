@@ -46,9 +46,9 @@ impl AdapterRegistry {
 
     pub async fn train(&self, adapter_id: &str, training_digest: &[u8]) -> Result<AdapterManifest> {
         let mut adapters = self.adapters.write().await;
-        let adapter = adapters
-            .get_mut(adapter_id)
-            .ok_or_else(|| AiCoreError::NotFoundError(format!("adapter {} not found", adapter_id)))?;
+        let adapter = adapters.get_mut(adapter_id).ok_or_else(|| {
+            AiCoreError::NotFoundError(format!("adapter {} not found", adapter_id))
+        })?;
 
         match &self.backend {
             AdapterBackend::Mock => {
@@ -69,9 +69,9 @@ impl AdapterRegistry {
 
     pub async fn detach(&self, adapter_id: &str) -> Result<AdapterManifest> {
         let mut adapters = self.adapters.write().await;
-        let adapter = adapters
-            .get_mut(adapter_id)
-            .ok_or_else(|| AiCoreError::NotFoundError(format!("adapter {} not found", adapter_id)))?;
+        let adapter = adapters.get_mut(adapter_id).ok_or_else(|| {
+            AiCoreError::NotFoundError(format!("adapter {} not found", adapter_id))
+        })?;
         adapter.state = AdapterState::Detached;
         let snapshot = adapter.clone();
         drop(adapters);
@@ -94,16 +94,24 @@ impl AdapterRegistry {
 
     fn validate_manifest(&self, manifest: &AdapterManifest) -> Result<()> {
         if manifest.adapter_id.trim().is_empty() {
-            return Err(AiCoreError::ValidationError("adapter_id is required".to_string()));
+            return Err(AiCoreError::ValidationError(
+                "adapter_id is required".to_string(),
+            ));
         }
         if manifest.base_model_id.trim().is_empty() {
-            return Err(AiCoreError::ValidationError("base_model_id is required".to_string()));
+            return Err(AiCoreError::ValidationError(
+                "base_model_id is required".to_string(),
+            ));
         }
         if manifest.rank == 0 || manifest.rank > 256 {
-            return Err(AiCoreError::ValidationError("adapter rank must be 1..=256".to_string()));
+            return Err(AiCoreError::ValidationError(
+                "adapter rank must be 1..=256".to_string(),
+            ));
         }
         if manifest.target_modules.is_empty() {
-            return Err(AiCoreError::ValidationError("target_modules cannot be empty".to_string()));
+            return Err(AiCoreError::ValidationError(
+                "target_modules cannot be empty".to_string(),
+            ));
         }
         Ok(())
     }

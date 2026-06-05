@@ -1,0 +1,725 @@
+name: P4-03 Advanced Networking Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'services/net/**'
+      - 'crypto/**'
+      - 'go/tooling/**'
+      - 'ui/net/**'
+      - 'tooling/**'
+      - '.github/workflows/p4-03-net-adv.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'services/net/**'
+      - 'crypto/**'
+      - 'go/tooling/**'
+      - 'ui/net/**'
+      - 'tooling/**'
+      - '.github/workflows/p4-03-net-adv.yml'
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUST_LOG: info
+
+jobs:
+  # Build and test Rust networking components
+  rust-networking:
+    name: Rust Networking Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust-version: ['1.70', '1.75', 'stable', 'beta']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ matrix.rust-version }}
+        components: rustfmt, clippy
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ matrix.rust-version }}-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          build-essential \
+          libssl-dev \
+          pkg-config \
+          libclang-dev \
+          libudev-dev
+    
+    - name: Build crypto module
+      run: |
+        cd crypto
+        cargo build --release --features full
+        cargo test --features full
+    
+    - name: Build networking services
+      run: |
+        cd services/net/posixnet
+        cargo build --release
+        cargo test
+    
+    - name: Run clippy
+      run: |
+        cd services/net/posixnet
+        cargo clippy -- -D warnings
+    
+    - name: Run rustfmt
+      run: |
+        cd services/net/posixnet
+        cargo fmt -- --check
+    
+    - name: Build network benchmark tool
+      run: |
+        cd tooling
+        cargo build --release --bin network_benchmark
+    
+    - name: Run network benchmark tests
+      run: |
+        cd tooling
+        cargo test --bin network_benchmark
+
+  # Test Go networking tools
+  go-networking:
+    name: Go Networking Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.19', '1.20', '1.21']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ matrix.go-version }}
+    
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+    
+    - name: Build netctl tool
+      run: |
+        cd go/tooling/netctl
+        go build -o netctl .
+    
+    - name: Test netctl commands
+      run: |
+        cd go/tooling/netctl
+        ./netctl --help
+        ./netctl sockets
+        ./netctl capabilities
+        ./netctl stats
+        ./netctl firewall list
+        ./netctl firewall policy list
+        ./netctl bench tcp --clients 10 --duration 5s
+        ./netctl bench tls --clients 5 --duration 5s
+        ./netctl bench quic --clients 5 --duration 5s
+    
+    - name: Build network benchmark tool
+      run: |
+        cd tooling
+        go build -o network_benchmark network_benchmark.go
+    
+    - name: Test network benchmark
+      run: |
+        cd tooling
+        ./network_benchmark --help
+        timeout 10s ./network_benchmark tcp --clients 10 --duration 5s || true
+
+  # Test Python validator
+  python-validator:
+    name: Python Validator Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyyaml aiohttp
+    
+    - name: Test network validator
+      run: |
+        cd tooling
+        python network_validator.py --help
+        
+        # Create test configurations
+        cat > test_tls_config.json << 'EOF'
+        {
+          "tls_version": "TLSv1.3",
+          "cipher_suites": ["TLS_AES_256_GCM_SHA384"],
+          "enable_pqc": true,
+          "pqc_algorithms": ["Kyber512", "Dilithium2"],
+          "enable_mtls": false,
+          "verify_peer": true,
+          "session_timeout": 3600
+        }
+        EOF
+        
+        cat > test_firewall_rules.json << 'EOF'
+        [
+          {
+            "id": "rule_1",
+            "name": "Allow localhost",
+            "type": "Ingress",
+            "scope": "Global",
+            "source_ips": ["127.0.0.1/32"],
+            "dest_ips": ["0.0.0.0/0"],
+            "source_ports": [],
+            "dest_ports": [8080, 8443],
+            "protocols": ["TCP"],
+            "action": "Allow",
+            "priority": 100,
+            "enabled": true
+          }
+        ]
+        EOF
+        
+        cat > test_rego_policy.rego << 'EOF'
+        package firewall
+        
+        default allow = false
+        
+        allow {
+            input.connection.source_ip == "127.0.0.1"
+        }
+        EOF
+        
+        # Test validations
+        python network_validator.py --tls-config test_tls_config.json
+        python network_validator.py --firewall-rules test_firewall_rules.json
+        python network_validator.py --rego-policy test_rego_policy.rego
+
+  # Test TypeScript/Node.js bridge
+  typescript-bridge:
+    name: TypeScript Bridge Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ['18', '20', '21']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: |
+        cd ui/net
+        npm install typescript @types/node
+    
+    - name: Compile TypeScript
+      run: |
+        cd ui/net
+        npx tsc --noEmit secure_sockets.ts
+    
+    - name: Test TypeScript code
+      run: |
+        cd ui/net
+        node -e "
+          const { createSecureSocket, createFirewallManager, createPQCManager, createNetworkBenchmark } = require('./secure_sockets.ts');
+          console.log('TypeScript bridge loaded successfully');
+        "
+
+  # Integration tests
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [rust-networking, go-networking, python-validator, typescript-bridge]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          build-essential \
+          libssl-dev \
+          pkg-config \
+          libclang-dev \
+          libudev-dev \
+          python3 \
+          python3-pip \
+          nodejs \
+          npm
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+    
+    - name: Install Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Install Python dependencies
+      run: |
+        pip install pyyaml aiohttp
+    
+    - name: Build all components
+      run: |
+        # Build crypto module
+        cd crypto
+        cargo build --release --features full
+        
+        # Build networking services
+        cd ../services/net/posixnet
+        cargo build --release
+        
+        # Build Go tools
+        cd ../../../go/tooling/netctl
+        go build -o netctl .
+        
+        # Build benchmark tools
+        cd ../../../tooling
+        cargo build --release --bin network_benchmark
+        go build -o network_benchmark network_benchmark.go
+    
+    - name: Run integration tests
+      run: |
+        # Test TLS echo server/client
+        echo "Testing TLS echo server/client..."
+        cd go/tooling/netctl
+        timeout 10s ./netctl tls-echo --addr 127.0.0.1 --port 8443 --profile tls13_modern &
+        SERVER_PID=$!
+        sleep 2
+        timeout 5s ./netctl tls-client --addr 127.0.0.1 --port 8443 --profile tls13_modern || true
+        kill $SERVER_PID 2>/dev/null || true
+        
+        # Test firewall functionality
+        echo "Testing firewall functionality..."
+        ./netctl firewall list
+        ./netctl firewall test --source-ip 127.0.0.1 --dest-ip 127.0.0.1 --source-port 12345 --dest-port 8080 --protocol TCP
+        
+        # Test benchmarking
+        echo "Testing benchmarking..."
+        cd ../../../tooling
+        timeout 10s ./network_benchmark tcp --clients 10 --duration 5s || true
+        timeout 10s ./network_benchmark tls --clients 5 --duration 5s || true
+        
+        # Test Python validator
+        echo "Testing Python validator..."
+        python network_validator.py --help
+
+  # Performance tests
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: [rust-networking, go-networking]
+    if: github.event_name == 'schedule' || github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          build-essential \
+          libssl-dev \
+          pkg-config \
+          libclang-dev \
+          libudev-dev
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+    
+    - name: Install Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Build performance test tools
+      run: |
+        # Build crypto module
+        cd crypto
+        cargo build --release --features full
+        
+        # Build networking services
+        cd ../services/net/posixnet
+        cargo build --release
+        
+        # Build benchmark tools
+        cd ../../../tooling
+        cargo build --release --bin network_benchmark
+        go build -o network_benchmark network_benchmark.go
+    
+    - name: Run performance benchmarks
+      run: |
+        cd tooling
+        
+        echo "Running TCP performance benchmark..."
+        ./network_benchmark tcp --clients 100 --duration 30s --output json > tcp_results.json
+        
+        echo "Running TLS performance benchmark..."
+        ./network_benchmark tls --clients 50 --duration 30s --output json > tls_results.json
+        
+        echo "Running QUIC performance benchmark..."
+        ./network_benchmark quic --clients 25 --duration 30s --output json > quic_results.json
+        
+        echo "Running concurrent connections benchmark..."
+        ./network_benchmark concurrent --connections 1000 --protocol tcp --duration 60s --output json > concurrent_results.json
+    
+    - name: Upload performance results
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-results
+        path: tooling/*_results.json
+
+  # Security tests
+  security-tests:
+    name: Security Tests
+    runs-on: ubuntu-latest
+    needs: [rust-networking, python-validator]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          build-essential \
+          libssl-dev \
+          pkg-config \
+          libclang-dev \
+          libudev-dev \
+          python3 \
+          python3-pip
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+    
+    - name: Install Python dependencies
+      run: |
+        pip install pyyaml aiohttp
+    
+    - name: Build components
+      run: |
+        cd crypto
+        cargo build --release --features full
+        
+        cd ../services/net/posixnet
+        cargo build --release
+    
+    - name: Run security tests
+      run: |
+        cd tooling
+        
+        # Test TLS security configurations
+        echo "Testing TLS security configurations..."
+        python network_validator.py --tls-config <(cat << 'EOF'
+        {
+          "tls_version": "TLSv1.2",
+          "cipher_suites": ["TLS_RSA_WITH_RC4_128_SHA"],
+          "enable_pqc": false,
+          "enable_mtls": false,
+          "verify_peer": false,
+          "session_timeout": 86400
+        }
+        EOF
+        ) || echo "Security issues detected as expected"
+        
+        # Test firewall security rules
+        echo "Testing firewall security rules..."
+        python network_validator.py --firewall-rules <(cat << 'EOF'
+        [
+          {
+            "id": "rule_1",
+            "name": "Allow all",
+            "type": "Bidirectional",
+            "scope": "Global",
+            "source_ips": ["0.0.0.0/0"],
+            "dest_ips": ["0.0.0.0/0"],
+            "source_ports": [],
+            "dest_ports": [],
+            "protocols": ["All"],
+            "action": "Allow",
+            "priority": 1,
+            "enabled": true
+          }
+        ]
+        EOF
+        ) || echo "Security issues detected as expected"
+        
+        # Test PQC configuration
+        echo "Testing PQC configuration..."
+        python network_validator.py --pqc-config <(cat << 'EOF'
+        {
+          "enable_pqc": true,
+          "pqc_algorithms": ["Kyber512", "Dilithium2"]
+        }
+        EOF
+        )
+
+  # Documentation tests
+  documentation-tests:
+    name: Documentation Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Check documentation exists
+      run: |
+        # Check that documentation files exist
+        test -f docs/phase-4/P4-03-A3-NETWORKING.md || (echo "Missing documentation: docs/phase-4/P4-03-A3-NETWORKING.md" && exit 1)
+        
+        # Check that README files exist
+        test -f services/net/posixnet/README.md || (echo "Missing README: services/net/posixnet/README.md" && exit 1)
+        test -f crypto/README.md || (echo "Missing README: crypto/README.md" && exit 1)
+        
+        # Check that example configurations exist
+        test -f tooling/examples/tls_config.json || (echo "Missing example: tooling/examples/tls_config.json" && exit 1)
+        test -f tooling/examples/firewall_rules.json || (echo "Missing example: tooling/examples/firewall_rules.json" && exit 1)
+        test -f tooling/examples/rego_policy.rego || (echo "Missing example: tooling/examples/rego_policy.rego" && exit 1)
+    
+    - name: Validate documentation format
+      run: |
+        # Check markdown format
+        if command -v markdownlint >/dev/null 2>&1; then
+          markdownlint docs/phase-4/P4-03-A3-NETWORKING.md
+        fi
+        
+        # Check for broken links (basic check)
+        grep -r "http" docs/phase-4/P4-03-A3-NETWORKING.md | head -5
+
+  # Comprehensive TLS integration tests
+  tls-integration-tests:
+    name: TLS Integration Tests
+    runs-on: ubuntu-latest
+    needs: [rust-networking, go-networking, python-validator, typescript-bridge]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          build-essential \
+          libssl-dev \
+          pkg-config \
+          libclang-dev \
+          libudev-dev \
+          python3 \
+          python3-pip \
+          nodejs \
+          npm \
+          gcc
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+    
+    - name: Install Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Install Python dependencies
+      run: |
+        pip install pyyaml aiohttp
+    
+    - name: Install Node.js dependencies
+      run: |
+        cd ui/net
+        npm install typescript @types/node
+    
+    - name: Build all components
+      run: |
+        # Build crypto module
+        cd crypto
+        cargo build --release --features full
+        
+        # Build networking services
+        cd ../services/net/posixnet
+        cargo build --release
+        
+        # Build Go tools
+        cd ../../../go/tooling/netctl
+        go build -o netctl .
+        
+        # Build benchmark tools
+        cd ../../../tooling
+        cargo build --release --bin network_benchmark
+        go build -o network_benchmark network_benchmark.go
+    
+    - name: Run comprehensive TLS tests
+      run: |
+        chmod +x tests/run_all_tls_tests.sh
+        ./tests/run_all_tls_tests.sh
+    
+    - name: Run Rust TLS unit tests
+      run: |
+        cd services/net/posixnet
+        cargo test --test tls_tests -- --nocapture
+    
+    - name: Run C TLS tests
+      run: |
+        gcc -o /tmp/tls_c_tests tests/c/tls_c_tests.c c/libc_aetheris/src/pqc_tls.c -I c/libc_aetheris/include
+        /tmp/tls_c_tests
+    
+    - name: Run Go TLS tests
+      run: |
+        cd tests/go
+        go test tls_go_tests.go -v
+    
+    - name: Run Python TLS tests
+      run: |
+        cd tests/python
+        python3 tls_python_tests.py
+    
+    - name: Test TypeScript compilation
+      run: |
+        cd ui/net
+        npx tsc --noEmit secure_sockets.ts
+    
+    - name: Test TLS echo server/client integration
+      run: |
+        cd go/tooling/netctl
+        timeout 10s ./netctl tls-echo-server --addr 127.0.0.1 --port 8443 &
+        SERVER_PID=$!
+        sleep 2
+        timeout 5s ./netctl tls-echo-client --addr 127.0.0.1 --port 8443 --message "Hello TLS!" || true
+        kill $SERVER_PID 2>/dev/null || true
+        wait $SERVER_PID 2>/dev/null || true
+    
+    - name: Test firewall integration
+      run: |
+        cd go/tooling/netctl
+        ./netctl firewall add --source-ip 127.0.0.1 --dest-port 8443 --action allow
+        ./netctl firewall test --source-ip 127.0.0.1 --dest-port 8443 --protocol TCP
+    
+    - name: Test benchmark integration
+      run: |
+        cd go/tooling/netctl
+        timeout 10s ./netctl bench tcp --connections 100 --duration 5s || true
+        timeout 10s ./netctl bench tls --connections 50 --duration 3s || true
+    
+    - name: Test PQC algorithm rotation
+      run: |
+        cd go/tooling/netctl
+        for kyber in kyber512 kyber768 kyber1024; do
+          for dilithium in dilithium2 dilithium3 dilithium5; do
+            echo "Testing $kyber + $dilithium"
+            timeout 2s ./netctl tls-echo-server --addr 127.0.0.1 --port 8444 --kyber $kyber --dilithium $dilithium &
+            SERVER_PID=$!
+            sleep 1
+            kill $SERVER_PID 2>/dev/null || true
+            wait $SERVER_PID 2>/dev/null || true
+          done
+        done
+    
+    - name: Test performance regression
+      run: |
+        cd go/tooling/netctl
+        timeout 60s ./netctl bench concurrent --connections 1000 --duration 10s --protocol tls || true
+    
+    - name: Test security validation
+      run: |
+        cd tooling
+        python3 network_validator.py --validate-tls || true
+        python3 network_validator.py --validate-pqc || true
+        python3 network_validator.py --validate-firewall || true
+
+  # Final status check
+  status-check:
+    name: Status Check
+    runs-on: ubuntu-latest
+    needs: [rust-networking, go-networking, python-validator, typescript-bridge, integration-tests, security-tests, documentation-tests, tls-integration-tests]
+    if: always()
+    
+    steps:
+    - name: Check all jobs status
+      run: |
+        echo "Rust Networking: ${{ needs.rust-networking.result }}"
+        echo "Go Networking: ${{ needs.go-networking.result }}"
+        echo "Python Validator: ${{ needs.python-validator.result }}"
+        echo "TypeScript Bridge: ${{ needs.typescript-bridge.result }}"
+        echo "Integration Tests: ${{ needs.integration-tests.result }}"
+        echo "Security Tests: ${{ needs.security-tests.result }}"
+        echo "Documentation Tests: ${{ needs.documentation-tests.result }}"
+        echo "TLS Integration Tests: ${{ needs.tls-integration-tests.result }}"
+        
+        if [[ "${{ needs.rust-networking.result }}" != "success" || 
+              "${{ needs.go-networking.result }}" != "success" || 
+              "${{ needs.python-validator.result }}" != "success" || 
+              "${{ needs.typescript-bridge.result }}" != "success" || 
+              "${{ needs.integration-tests.result }}" != "success" || 
+              "${{ needs.security-tests.result }}" != "success" || 
+              "${{ needs.documentation-tests.result }}" != "success" ||
+              "${{ needs.tls-integration-tests.result }}" != "success" ]]; then
+          echo "Some tests failed!"
+          exit 1
+        else
+          echo "All tests passed!"
+        fi

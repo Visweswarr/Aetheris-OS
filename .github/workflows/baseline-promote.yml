@@ -1,0 +1,253 @@
+name: Baseline Promotion Analysis & PR Creation
+
+on:
+  # Manual trigger only
+  workflow_dispatch:
+    inputs:
+      force_analysis:
+        description: 'Force analysis even if no changes detected'
+        required: false
+        default: false
+        type: boolean
+      target_branch:
+        description: 'Target branch for baseline promotion PR'
+        required: false
+        default: 'main'
+        type: string
+
+env:
+  HISTORY_DIR: perf/history
+  BASELINE_FILE: perf/baselines/p2.json
+  PROPOSAL_DIR: perf/baseline_proposal
+  TARGET_BRANCH: ${{ github.event.inputs.target_branch || 'main' }}
+
+jobs:
+  analyze-baseline:
+    name: Analyze Baseline Promotion
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pathlib
+        
+    - name: Create performance history directory
+      run: |
+        mkdir -p ${{ env.HISTORY_DIR }}
+        echo "[]" > ${{ env.HISTORY_DIR }}/sample_config.json
+        
+    - name: Create baseline directory
+      run: |
+        mkdir -p perf/baselines
+        echo '{"version": "0.2.0-phase2", "baselines": {}}' > ${{ env.BASELINE_FILE }}
+        
+    - name: Run baseline promotion analysis
+      run: |
+        echo "Running baseline promotion analysis..."
+        python tooling/perf/promote_baseline.py \
+          --history-dir ${{ env.HISTORY_DIR }} \
+          --baseline-file ${{ env.BASELINE_FILE }} \
+          --output-dir ${{ env.PROPOSAL_DIR }} \
+          --verbose
+        
+    - name: Verify analysis output
+      run: |
+        echo "Verifying analysis output..."
+        
+        # Check if proposal directory was created
+        if [ ! -d "${{ env.PROPOSAL_DIR }}" ]; then
+          echo "Proposal directory not created"
+          exit 1
+        fi
+        
+        # Check required files
+        required_files=(
+          "baseline_proposal.json"
+          "proposed_baseline.json"
+          "impact_heatmap.txt"
+          "summary_report.md"
+          "approval_checklist.md"
+        )
+        
+        for file in "${required_files[@]}"; do
+          if [ ! -f "${{ env.PROPOSAL_DIR }}/$file" ]; then
+            echo "Required file not found: $file"
+            exit 1
+          fi
+        done
+        
+        echo "All analysis files verified"
+        
+    - name: Upload analysis artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: baseline-proposal
+        path: ${{ env.PROPOSAL_DIR }}
+        retention-days: 30
+        
+  create-promotion-pr:
+    name: Create Baseline Promotion PR
+    runs-on: ubuntu-latest
+    needs: analyze-baseline
+    if: always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Download analysis artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: baseline-proposal
+        path: ${{ env.PROPOSAL_DIR }}
+        
+    - name: Setup Git
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        
+    - name: Check if promotion is ready
+      id: check-promotion
+      run: |
+        echo "Checking if baseline promotion is ready..."
+        
+        if [ -f "${{ env.PROPOSAL_DIR }}/baseline_proposal.json" ]; then
+          # Extract promotion readiness from JSON
+          promotion_ready=$(python -c "import json; f=open('${{ env.PROPOSAL_DIR }}/baseline_proposal.json'); data=json.load(f); print(data.get('promotion_ready', False))")
+          
+          if [ "$promotion_ready" = "True" ]; then
+            echo "Baseline promotion is ready"
+            echo "ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "Baseline promotion is not ready yet"
+            echo "ready=false" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "Baseline proposal file not found"
+          echo "ready=false" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Create baseline promotion PR
+      if: steps.check-promotion.outputs.ready == 'true'
+      run: |
+        echo "Creating baseline promotion PR..."
+        
+        # Create a new branch for the promotion
+        branch_name="baseline-promotion-$(date +%Y%m%d-%H%M%S)"
+        git checkout -b "$branch_name"
+        
+        # Copy proposed baseline to the repository
+        cp "${{ env.PROPOSAL_DIR }}/proposed_baseline.json" "${{ env.BASELINE_FILE }}"
+        
+        # Update baseline documentation
+        mkdir -p docs/perf
+        cp "${{ env.PROPOSAL_DIR }}/summary_report.md" "docs/perf/BASELINES.md"
+        
+        # Add changelog entry
+        changelog_entry=$(python -c "import json; f=open('${{ env.PROPOSAL_DIR }}/baseline_proposal.json'); data=json.load(f); print(data.get('changelog_entry', ''))")
+        
+        if [ -n "$changelog_entry" ]; then
+          echo "$changelog_entry" >> "docs/perf/CHANGELOG.md"
+        fi
+        
+        # Commit changes
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        
+        git add "${{ env.BASELINE_FILE }}" "docs/perf/BASELINES.md" "docs/perf/CHANGELOG.md"
+        git commit -m "Baseline Promotion: Update performance baselines"
+        
+        # Push branch
+        git push origin "$branch_name"
+        
+        # Create PR using GitHub API
+        echo "Baseline promotion branch created: $branch_name"
+        echo "Please create a PR manually from branch: $branch_name"
+        echo "Title: Baseline Promotion: Update Performance Baselines"
+        echo "Body: This PR updates performance baselines based on automated analysis. See the attached files for details."
+        echo "Labels: baseline-promotion, performance, automated"
+        
+    - name: Comment on existing PRs
+      if: steps.check-promotion.outputs.ready == 'false'
+      run: |
+        echo "Baseline promotion is not ready yet"
+        echo "No automated PR commenting available without GitHub CLI"
+        echo "Check the analysis results for details"
+        
+    - name: Upload PR artifacts
+      if: steps.check-promotion.outputs.ready == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: baseline-promotion-pr
+        path: ${{ env.PROPOSAL_DIR }}
+        retention-days: 30
+        
+  notify-team:
+    name: Notify Team
+    runs-on: ubuntu-latest
+    needs: [analyze-baseline, create-promotion-pr]
+    if: always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download analysis artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: baseline-proposal
+        path: ${{ env.PROPOSAL_DIR }}
+        
+    - name: Setup Git
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        
+    - name: Create team notification
+      run: |
+        echo "Team notification status..."
+        
+        # Check if promotion was created
+        if [ -f "${{ env.PROPOSAL_DIR }}/baseline_proposal.json" ]; then
+          promotion_ready=$(python -c "import json; f=open('${{ env.PROPOSAL_DIR }}/baseline_proposal.json'); data=json.load(f); print(data.get('promotion_ready', False))")
+          
+          if [ "$promotion_ready" = "True" ]; then
+            echo "Baseline promotion is ready for review and approval"
+            echo "Check the generated branch for details"
+          else
+            echo "No team notification needed - promotion not ready"
+          fi
+        else
+          echo "Analysis artifacts not found, skipping notification"
+        fi
+        
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    needs: [analyze-baseline, create-promotion-pr, notify-team]
+    if: always()
+    
+    steps:
+    - name: Cleanup temporary files
+      run: |
+        echo "Cleaning up temporary files..."
+        
+        # Remove proposal directory if it exists locally
+        if [ -d "${{ env.PROPOSAL_DIR }}" ]; then
+          rm -rf "${{ env.PROPOSAL_DIR }}"
+        fi
+        
+        echo "Cleanup completed"

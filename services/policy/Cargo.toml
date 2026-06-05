@@ -59,8 +59,7 @@ logging = ["tracing-subscriber"]
 full = ["std", "sync", "async", "logging"]
 
 # Development features
-dev = ["full", "pretty_assertions"]
-bench = ["criterion"]
+dev = ["full"]
 
 [lib]
 name = "polymera_policy"
@@ -80,11 +79,6 @@ required-features = ["async"]
 name = "policy-test"
 path = "src/bin/test.rs"
 required-features = ["std"]
-
-[[bin]]
-name = "policy-bench"
-path = "src/bin/bench.rs"
-required-features = ["bench"]
 
 [profile.dev]
 opt-level = 0

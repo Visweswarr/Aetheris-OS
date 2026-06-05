@@ -2,14 +2,15 @@
 //!
 //! Tests the complete IPC communication flow including message serialization,
 //! transmission, processing, and response handling.
+#![cfg(unix)]
 
+use prost::Message;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
-use tokio::net::UnixStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use prost::Message;
+use tokio::net::UnixStream;
 use uuid::Uuid;
 
 use aetheris_ai_core::{AiCoreService, Config, Result};
@@ -18,14 +19,16 @@ use aetheris_ai_core::{AiCoreService, Config, Result};
 async fn setup_test_server() -> Result<(std::path::PathBuf, tokio::task::JoinHandle<()>)> {
     let temp_dir = TempDir::new().unwrap();
     let socket_path = temp_dir.path().join("test.sock");
-    
+
     // Create test configuration files
     let model_config_path = temp_dir.path().join("models.toml");
     let tool_config_path = temp_dir.path().join("tools.toml");
     let cap_config_path = temp_dir.path().join("cap_tokens.toml");
-    
+
     // Write minimal config files
-    tokio::fs::write(&model_config_path, r#"
+    tokio::fs::write(
+        &model_config_path,
+        r#"
 [global_settings]
 default_temperature = 0.7
 default_max_tokens = 2048
@@ -40,9 +43,13 @@ default_model = "mock"
 [tools.mock]
 model_type = "Mock"
 enabled = true
-"#).await?;
-    
-    tokio::fs::write(&tool_config_path, r#"
+"#,
+    )
+    .await?;
+
+    tokio::fs::write(
+        &tool_config_path,
+        r#"
 [global_settings]
 max_concurrent_executions = 10
 default_timeout_seconds = 30
@@ -64,9 +71,13 @@ timeout_seconds = 10
 cache_ttl_seconds = 300
 max_memory_mb = 20
 required_capabilities = ["tools:calculator"]
-"#).await?;
-    
-    tokio::fs::write(&cap_config_path, r#"
+"#,
+    )
+    .await?;
+
+    tokio::fs::write(
+        &cap_config_path,
+        r#"
 [validation]
 require_signature = false
 check_expiration = true
@@ -91,8 +102,10 @@ public_key = ""
 trusted = true
 max_token_lifetime = 3600
 allowed_capabilities = ["ai:chat", "ai:tools", "ai:admin"]
-"#).await?;
-    
+"#,
+    )
+    .await?;
+
     // Start the server
     let server_handle = tokio::spawn(async move {
         let config = Config {
@@ -106,17 +119,17 @@ allowed_capabilities = ["ai:chat", "ai:tools", "ai:admin"]
             max_sessions: 10,
             request_timeout: 30,
         };
-        
+
         let service = AiCoreService::new(config).await.unwrap();
         service.start().await.unwrap();
-        
+
         // Keep the server running
         tokio::time::sleep(Duration::from_secs(10)).await;
     });
-    
+
     // Wait for server to start
     tokio::time::sleep(Duration::from_millis(100)).await;
-    
+
     Ok((socket_path, server_handle))
 }
 
@@ -124,7 +137,7 @@ allowed_capabilities = ["ai:chat", "ai:tools", "ai:admin"]
 async fn test_service_creation() {
     let temp_dir = TempDir::new().unwrap();
     let socket_path = temp_dir.path().join("test.sock");
-    
+
     let config = Config {
         socket: socket_path,
         model_config: temp_dir.path().join("models.toml"),
@@ -136,7 +149,7 @@ async fn test_service_creation() {
         max_sessions: 10,
         request_timeout: 5,
     };
-    
+
     // This will fail due to missing config files, but we can test the structure
     let result = AiCoreService::new(config).await;
     assert!(result.is_err()); // Expected to fail due to missing config files
@@ -146,13 +159,15 @@ async fn test_service_creation() {
 async fn test_config_file_creation() {
     let temp_dir = TempDir::new().unwrap();
     let socket_path = temp_dir.path().join("test.sock");
-    
+
     // Create minimal config files
     let model_config_path = temp_dir.path().join("models.toml");
     let tool_config_path = temp_dir.path().join("tools.toml");
     let cap_config_path = temp_dir.path().join("cap_tokens.toml");
-    
-    tokio::fs::write(&model_config_path, r#"
+
+    tokio::fs::write(
+        &model_config_path,
+        r#"
 [global_settings]
 default_temperature = 0.7
 default_max_tokens = 2048
@@ -167,9 +182,14 @@ default_model = "mock"
 [tools.mock]
 model_type = "Mock"
 enabled = true
-"#).await.unwrap();
-    
-    tokio::fs::write(&tool_config_path, r#"
+"#,
+    )
+    .await
+    .unwrap();
+
+    tokio::fs::write(
+        &tool_config_path,
+        r#"
 [global_settings]
 max_concurrent_executions = 10
 default_timeout_seconds = 30
@@ -184,9 +204,14 @@ timeout_seconds = 5
 cache_ttl_seconds = 60
 max_memory_mb = 10
 required_capabilities = ["tools:echo"]
-"#).await.unwrap();
-    
-    tokio::fs::write(&cap_config_path, r#"
+"#,
+    )
+    .await
+    .unwrap();
+
+    tokio::fs::write(
+        &cap_config_path,
+        r#"
 [validation]
 require_signature = false
 check_expiration = true
@@ -211,8 +236,11 @@ public_key = ""
 trusted = true
 max_token_lifetime = 3600
 allowed_capabilities = ["ai:chat", "ai:tools", "ai:admin"]
-"#).await.unwrap();
-    
+"#,
+    )
+    .await
+    .unwrap();
+
     let config = Config {
         socket: socket_path,
         model_config: model_config_path,
@@ -224,7 +252,7 @@ allowed_capabilities = ["ai:chat", "ai:tools", "ai:admin"]
         max_sessions: 10,
         request_timeout: 5,
     };
-    
+
     // This should succeed with proper config files
     let result = AiCoreService::new(config).await;
     assert!(result.is_ok());
@@ -234,10 +262,10 @@ allowed_capabilities = ["ai:chat", "ai:tools", "ai:admin"]
 async fn test_socket_creation() {
     let temp_dir = TempDir::new().unwrap();
     let socket_path = temp_dir.path().join("test.sock");
-    
+
     // Test that we can create a socket path
     assert!(!socket_path.exists());
-    
+
     // Test that the parent directory exists
     assert!(socket_path.parent().unwrap().exists());
 }
@@ -246,19 +274,19 @@ async fn test_socket_creation() {
 async fn test_protobuf_serialization() {
     // Test basic protobuf serialization/deserialization
     use aetheris_ai_core::ipc::ai_core::*;
-    
+
     let ping_request = PingRequest {
         client_id: "test_client".to_string(),
         version: "1.0.0".to_string(),
     };
-    
+
     // Serialize
     let mut data = Vec::new();
     ping_request.encode(&mut data).unwrap();
-    
+
     // Deserialize
     let deserialized = PingRequest::decode(&data).unwrap();
-    
+
     assert_eq!(ping_request.client_id, deserialized.client_id);
     assert_eq!(ping_request.version, deserialized.version);
 }
@@ -266,25 +294,28 @@ async fn test_protobuf_serialization() {
 #[tokio::test]
 async fn test_message_creation() {
     use aetheris_ai_core::ipc::ai_core::*;
-    
+
     let ping_request = PingRequest {
         client_id: "test_client".to_string(),
         version: "1.0.0".to_string(),
     };
-    
+
     let message = AiCoreMessage {
         message_type: Some(ai_core_message::MessageType::PingRequest(ping_request)),
         message_id: Uuid::new_v4().to_string(),
-        timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+        timestamp: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
         session_id: "test_session".to_string(),
         cap_token: None,
     };
-    
+
     assert!(!message.message_id.is_empty());
     assert!(message.timestamp > 0);
     assert_eq!(message.session_id, "test_session");
     assert!(message.cap_token.is_none());
-    
+
     match message.message_type {
         Some(ai_core_message::MessageType::PingRequest(req)) => {
             assert_eq!(req.client_id, "test_client");
@@ -297,15 +328,19 @@ async fn test_message_creation() {
 #[tokio::test]
 async fn test_capability_token_creation() {
     use aetheris_ai_core::ipc::ai_core::*;
-    
+
     let cap_token = CapToken {
         token_id: "test_token".to_string(),
         capability: "ai:chat".to_string(),
-        expires_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() + 3600,
+        expires_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 3600,
         signature: vec![],
         issuer: "aetheris-system".to_string(),
     };
-    
+
     assert_eq!(cap_token.token_id, "test_token");
     assert_eq!(cap_token.capability, "ai:chat");
     assert_eq!(cap_token.issuer, "aetheris-system");
@@ -316,7 +351,7 @@ async fn test_capability_token_creation() {
 #[tokio::test]
 async fn test_chat_config_creation() {
     use aetheris_ai_core::ipc::ai_core::*;
-    
+
     let chat_config = ChatConfig {
         model: "mock".to_string(),
         temperature: 0.7,
@@ -326,7 +361,7 @@ async fn test_chat_config_creation() {
         enable_tools: false,
         allowed_tools: Vec::new(),
     };
-    
+
     assert_eq!(chat_config.model, "mock");
     assert_eq!(chat_config.temperature, 0.7);
     assert_eq!(chat_config.max_tokens, 100);
@@ -339,13 +374,13 @@ async fn test_chat_config_creation() {
 #[tokio::test]
 async fn test_error_code_enum() {
     use aetheris_ai_core::ipc::ai_core::*;
-    
+
     let error_code = ErrorCode::InvalidRequest;
     assert_eq!(error_code as i32, 1);
-    
+
     let error_code = ErrorCode::Unauthorized;
     assert_eq!(error_code as i32, 2);
-    
+
     let error_code = ErrorCode::CapabilityDenied;
     assert_eq!(error_code as i32, 3);
 }
@@ -353,13 +388,13 @@ async fn test_error_code_enum() {
 #[tokio::test]
 async fn test_service_state_enum() {
     use aetheris_ai_core::ipc::ai_core::*;
-    
+
     let state = ServiceState::Running;
     assert_eq!(state as i32, 1);
-    
+
     let state = ServiceState::Stopped;
     assert_eq!(state as i32, 3);
-    
+
     let state = ServiceState::Error;
     assert_eq!(state as i32, 4);
 }

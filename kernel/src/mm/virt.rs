@@ -7,6 +7,7 @@ use crate::{kprintln, klog};
 use super::{MemoryResult, MemoryError, constants::*};
 use x86_64::{VirtAddr, PhysAddr};
 use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 use spin::Mutex;
 use core::sync::atomic::{AtomicU64, Ordering};
 
@@ -247,6 +248,8 @@ impl VmFlags {
             executable: self.execute,
             accessed: self.accessed,
             dirty: self.dirty,
+            write_through: false,
+            cache_disabled: false,
         }
     }
 }
@@ -308,7 +311,7 @@ pub struct VirtualMemoryManager {
 
 impl VirtualMemoryManager {
     /// Create a new virtual memory manager
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             mappings: BTreeMap::new(),
             mapped_pages: 0,
@@ -954,6 +957,8 @@ pub fn map_virtual_to_physical(virtual_addr: u64, physical_addr: u64, size: u64,
         executable: protection.execute,
         accessed: false,
         dirty: false,
+        write_through: false,
+        cache_disabled: false,
     };
     
     let page_count = super::utils::bytes_to_pages(size);
@@ -962,7 +967,7 @@ pub fn map_virtual_to_physical(virtual_addr: u64, physical_addr: u64, size: u64,
         let virt_page = virtual_addr + i * PAGE_SIZE as u64;
         let phys_page = physical_addr + i * PAGE_SIZE as u64;
         
-        super::paging::map_page(virt_page, phys_page, page_flags)?;
+        super::paging::map_page(VirtAddr::new(virt_page), PhysAddr::new(phys_page), page_flags)?;
     }
     
     klog!(TRACE, "[VIRT] Mapped {} pages: 0x{:016x} -> 0x{:016x}", 

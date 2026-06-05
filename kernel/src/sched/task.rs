@@ -129,6 +129,14 @@ pub struct Task {
     /// This is set when a blocked task is woken up and cleared when the task
     /// actually starts running. Used to measure wake-to-run latency.
     pub wake_timestamp: Option<u64>,
+
+    /// CPU Affinity Mask (Bitmask of allowed CPUs)
+    /// Default: !0 (All CPUs)
+    pub affinity_mask: u64,
+
+    /// Preferred NUMA Node
+    /// Default: 0
+    pub preferred_node: u32,
 }
 
 impl Task {
@@ -150,6 +158,8 @@ impl Task {
             time_slice: DEFAULT_TIME_SLICE,
             preemption_requested: false,
             wake_timestamp: None,
+            affinity_mask: !0,
+            preferred_node: 0,
         }
     }
     
@@ -172,6 +182,8 @@ impl Task {
             time_slice: priority_to_time_slice(priority),
             preemption_requested: false,
             wake_timestamp: None,
+            affinity_mask: !0,
+            preferred_node: 0,
         }
     }
     
@@ -189,6 +201,8 @@ impl Task {
             time_slice: u32::MAX, // Idle task never gets preempted by time
             preemption_requested: false,
             wake_timestamp: None,
+            affinity_mask: !0,
+            preferred_node: 0,
         }
     }
     
@@ -462,37 +476,6 @@ mod tests {
         assert_eq!(task.priority, TaskPriority::Normal);
         assert_eq!(task.time_slice, DEFAULT_TIME_SLICE);
     }
-    
-    #[test]
-    fn test_idle_task() {
-        let idle = Task::idle();
-        assert!(idle.is_idle());
-        assert_eq!(idle.id.0, 0);
-        assert_eq!(idle.state, TaskState::Running);
-    }
-    
-    #[test]
-    fn test_state_transitions() {
-        assert!(is_valid_state_transition(TaskState::Ready, TaskState::Running));
-        assert!(is_valid_state_transition(TaskState::Running, TaskState::Blocked));
-        assert!(!is_valid_state_transition(TaskState::Dead, TaskState::Ready));
-    }
-    
-    #[test]
-    fn test_time_slice() {
-        let mut task = Task::new(1, 0x1000);
-        assert_eq!(task.time_slice, DEFAULT_TIME_SLICE);
-        
-        // Tick down time slice
-        for _ in 0..DEFAULT_TIME_SLICE - 1 {
-            assert!(!task.tick_time_slice());
-        }
-        
-        // Last tick should expire the time slice
-        assert!(task.tick_time_slice());
-        assert_eq!(task.time_slice, 0);
-    }
-}
     
     #[test]
     fn test_idle_task() {

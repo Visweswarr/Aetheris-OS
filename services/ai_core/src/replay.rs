@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::RwLock;
 
@@ -20,7 +21,11 @@ impl ReplayRecorder {
         Self::default()
     }
 
-    pub async fn record(&self, event_type: impl Into<String>, payload: Value) -> Result<ReplayRecord> {
+    pub async fn record(
+        &self,
+        event_type: impl Into<String>,
+        payload: Value,
+    ) -> Result<ReplayRecord> {
         let mut records = self.records.write().await;
         let sequence = records.len() as u64;
         let event_type = event_type.into();
@@ -47,7 +52,69 @@ impl ReplayRecorder {
     pub async fn clear(&self) {
         self.records.write().await.clear();
     }
+
+    /// Resume from a previously recorded log.  Walk through `expected_records`
+    /// in order; for each, check that the next live event matches.  If the agent
+    /// emits a different event type or payload hash, return `ReplayDivergence`.
+    pub async fn resume_from_log(
+        &self,
+        expected_records: &[ReplayRecord],
+    ) -> std::result::Result<usize, ReplayDivergence> {
+        let current = self.records.read().await;
+        let replay_len = expected_records.len().min(current.len());
+        for i in 0..replay_len {
+            let expected = &expected_records[i];
+            let actual = &current[i];
+            if expected.event_type != actual.event_type {
+                return Err(ReplayDivergence {
+                    index: i,
+                    expected_event: expected.event_type.clone(),
+                    actual_event: actual.event_type.clone(),
+                    expected_hash: expected.canonical_hash.clone(),
+                    actual_hash: actual.canonical_hash.clone(),
+                });
+            }
+            if expected.canonical_hash != actual.canonical_hash {
+                return Err(ReplayDivergence {
+                    index: i,
+                    expected_event: expected.event_type.clone(),
+                    actual_event: actual.event_type.clone(),
+                    expected_hash: expected.canonical_hash.clone(),
+                    actual_hash: actual.canonical_hash.clone(),
+                });
+            }
+        }
+        Ok(replay_len)
+    }
 }
+
+/// Error emitted when a replay diverges from the expected log.
+/// This means the agent or system behaved differently on resume,
+/// which could indicate non-determinism.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplayDivergence {
+    pub index: usize,
+    pub expected_event: String,
+    pub actual_event: String,
+    pub expected_hash: String,
+    pub actual_hash: String,
+}
+
+impl std::fmt::Display for ReplayDivergence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "replay divergence at record {}: expected event '{}' (hash {}), got '{}' (hash {})",
+            self.index,
+            self.expected_event,
+            self.expected_hash,
+            self.actual_event,
+            self.actual_hash
+        )
+    }
+}
+
+impl std::error::Error for ReplayDivergence {}
 
 pub fn compare_replay(expected: &ReplayRun, actual: &ReplayRun) -> ReplayComparison {
     let tolerance = actual.tolerance;
@@ -61,7 +128,12 @@ pub fn compare_replay(expected: &ReplayRun, actual: &ReplayRun) -> ReplayCompari
         ));
     }
 
-    for (index, (left, right)) in expected.records.iter().zip(actual.records.iter()).enumerate() {
+    for (index, (left, right)) in expected
+        .records
+        .iter()
+        .zip(actual.records.iter())
+        .enumerate()
+    {
         if left.event_type != right.event_type {
             mismatches.push(format!(
                 "record {} event type mismatch: expected {}, got {}",
@@ -95,12 +167,18 @@ fn compare_json(
         (Value::Number(left), Value::Number(right)) => {
             let Some(left) = left.as_f64() else {
                 if expected != actual {
-                    mismatches.push(format!("{} integer mismatch: expected {}, got {}", path, expected, actual));
+                    mismatches.push(format!(
+                        "{} integer mismatch: expected {}, got {}",
+                        path, expected, actual
+                    ));
                 }
                 return;
             };
             let Some(right) = right.as_f64() else {
-                mismatches.push(format!("{} number type mismatch: expected {}, got {}", path, expected, actual));
+                mismatches.push(format!(
+                    "{} number type mismatch: expected {}, got {}",
+                    path, expected, actual
+                ));
                 return;
             };
 
@@ -120,16 +198,33 @@ fn compare_json(
         }
         (Value::Array(left), Value::Array(right)) => {
             if left.len() != right.len() {
-                mismatches.push(format!("{} array length mismatch: expected {}, got {}", path, left.len(), right.len()));
+                mismatches.push(format!(
+                    "{} array length mismatch: expected {}, got {}",
+                    path,
+                    left.len(),
+                    right.len()
+                ));
             }
             for (index, (left, right)) in left.iter().zip(right.iter()).enumerate() {
-                compare_json(left, right, &format!("{}[{}]", path, index), tolerance, mismatches);
+                compare_json(
+                    left,
+                    right,
+                    &format!("{}[{}]", path, index),
+                    tolerance,
+                    mismatches,
+                );
             }
         }
         (Value::Object(left), Value::Object(right)) => {
             for (key, left_value) in left {
                 if let Some(right_value) = right.get(key) {
-                    compare_json(left_value, right_value, &format!("{}.{}", path, key), tolerance, mismatches);
+                    compare_json(
+                        left_value,
+                        right_value,
+                        &format!("{}.{}", path, key),
+                        tolerance,
+                        mismatches,
+                    );
                 } else {
                     mismatches.push(format!("{} missing key {}", path, key));
                 }
@@ -142,7 +237,10 @@ fn compare_json(
         }
         _ => {
             if expected != actual {
-                mismatches.push(format!("{} mismatch: expected {}, got {}", path, expected, actual));
+                mismatches.push(format!(
+                    "{} mismatch: expected {}, got {}",
+                    path, expected, actual
+                ));
             }
         }
     }
@@ -157,11 +255,17 @@ mod tests {
     #[tokio::test]
     async fn replay_allows_small_float_drift() {
         let recorder = ReplayRecorder::new();
-        recorder.record("fusion", json!({"confidence": 0.9000})).await.unwrap();
+        recorder
+            .record("fusion", json!({"confidence": 0.9000}))
+            .await
+            .unwrap();
         let expected = recorder.run("expected", ReplayTolerance::default()).await;
 
         let recorder = ReplayRecorder::new();
-        recorder.record("fusion", json!({"confidence": 0.90005})).await.unwrap();
+        recorder
+            .record("fusion", json!({"confidence": 0.90005}))
+            .await
+            .unwrap();
         let actual = recorder.run("actual", ReplayTolerance::default()).await;
 
         assert!(compare_replay(&expected, &actual).equal);

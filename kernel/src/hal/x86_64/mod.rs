@@ -172,7 +172,7 @@ impl X64Hal {
     /// Get APIC timer metrics
     #[allow(dead_code)]
     pub fn get_apic_timer_metrics() -> Option<apic::TimerMetrics> {
-        apic::get_apic_timer_metrics().cloned()
+        apic::get_apic_timer_metrics()
     }
     
     /// Run APIC preemption demo

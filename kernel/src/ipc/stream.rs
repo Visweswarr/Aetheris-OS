@@ -242,7 +242,7 @@ impl RollingNonceWindow {
 }
 
 /// IPC stream state and authentication
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IpcStream {
     /// Unique stream identifier
     pub id: StreamId,

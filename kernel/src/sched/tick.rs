@@ -253,6 +253,18 @@ impl JitterBudget {
         }
     }
 
+    pub fn get_consecutive_overruns(&self) -> u32 {
+        self.consecutive_overruns.load(Ordering::Relaxed)
+    }
+
+    pub fn get_total_overruns(&self) -> u64 {
+        self.total_overruns.load(Ordering::Relaxed)
+    }
+
+    pub fn get_max_jitter_us(&self) -> u32 {
+        self.config.max_jitter_us
+    }
+
     /// Get jitter budget statistics
     pub fn get_stats(&self) -> JitterBudgetStats {
         let consecutive_overruns = self.consecutive_overruns.load(Ordering::Relaxed);

@@ -1,57 +1,128 @@
 #![no_std]
-#![no_main]
-#![feature(naked_functions)]
+#![feature(alloc_error_handler)]
+#![feature(abi_x86_interrupt)]
 
 extern crate alloc;
 
-mod boot;
-mod panic;
-mod serial;
-mod hal;
-mod log;
-mod mm;
-mod sched;
-mod syscall;
-mod abi; // Added for ABI features and versioning
-mod demo;
-mod ipc;
-mod security;
-mod secman;
-mod trace; // Added for tracing system
-mod determinism; // Added for determinism and replay support
-mod rng; // Added for randomness proxy
-mod format; // Added for enhanced formatting and hexdump
-mod dashboard;
-mod macros; // Added for kassert macro
-mod fault_injection; // Added for fault injection hooks
-mod exec; // Added for ELF header parser
-mod crash_dump; // Added for enhanced crash dumps
-mod fuzzing; // Added for enhanced fuzzing system
-mod shell; // Added for minimal line-oriented shell
-mod flaky_detector; // Added for flaky test detection and auto-issue creation
-mod audit; // Added for audit codes and logging
-mod intent; // Added for Intent Kernel v0
-mod world; // Added for World Model v0
-mod skills; // Added for Skill Runtime v0
-mod event; // Added for Event Fabric v0
-mod policy; // Added for Policy Guardrail v0
-mod llm; // Added for LLM Adapter v0
+// Re-export alloc macros at crate root for convenience
+pub use alloc::format;
+pub use alloc::vec;
 
-mod examples; // Added for demo examples
-mod tests;
+// Re-export lazy_static macro
+pub use lazy_static::lazy_static;
 
-use core::arch::global_asm;
-use core::panic::PanicInfo;
-use crate::serial::kprintln;
+// Re-export core::arch::asm for inline assembly
+pub use core::arch::asm;
 
-// Include assembly files
-global_asm!(include_str!("asm/syscall.S"));
-
-#[no_mangle]
-pub extern "C" fn _start() -> ! {
-    log::init_levels();
-    kprintln!("[PolymeraCore] build={} target=x86_64-unknown-none", env!("CARGO_PKG_VERSION"));
-    boot::init();
-    loop { x86_64::instructions::hlt(); }
+/// println! macro stub for no_std - redirects to kprintln!
+#[macro_export]
+macro_rules! println {
+    () => ($crate::kprintln!());
+    ($($arg:tt)*) => ($crate::kprintln!($($arg)*));
 }
 
+/// print! macro stub for no_std - redirects to kprint!
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => ($crate::kprint!($($arg)*));
+}
+
+/// Allocating `format!` replacement for no_std contexts.
+#[macro_export]
+macro_rules! kformat {
+    ($($arg:tt)*) => {{
+        let mut s = ::alloc::string::String::new();
+        let _ = ::core::fmt::Write::write_fmt(&mut s, format_args!($($arg)*));
+        s
+    }};
+}
+
+// Core modules - always available in no_std
+pub mod boot;
+pub mod panic;
+pub mod serial;
+pub mod hal;
+pub mod log;
+pub mod mm;
+pub mod sched;
+pub mod syscall;
+pub mod error;
+pub mod mem;
+pub mod sync;
+pub mod arch;
+pub mod macros;
+pub mod time;
+pub mod process;
+pub mod caps;
+pub mod ebpf;
+pub mod power;
+pub mod integration;
+pub mod scheme;
+
+// Cryptographic primitives
+pub mod crypto;
+
+// Feature modules - stub implementations for no_std
+pub mod abi;
+pub mod demo;
+pub mod ipc;
+pub mod security;
+pub mod secman;
+pub mod trace;
+pub mod determinism;
+pub mod rng;
+pub mod format;
+pub mod dashboard;
+pub mod fault_injection;
+pub mod exec;
+pub mod crash_dump;
+pub mod fuzzing;
+pub mod shell;
+pub mod flaky_detector;
+pub mod audit;
+pub mod intent;
+pub mod world;
+pub mod skills;
+pub mod event;
+pub mod policy;
+pub mod llm;
+pub mod examples;
+pub mod heap;
+pub mod aetheris_polyglot;
+
+// Tests (conditionally compiled)
+#[cfg(test)]
+pub mod tests;
+
+// Note: Global allocator is defined in mm/mod.rs
+
+// Re-export common types
+pub use error::{KernelError, KernelResult, KernelConfig};
+
+/// Target architecture constant
+pub const TARGET_ARCH: &str = if cfg!(target_arch = "x86_64") {
+    "x86_64"
+} else if cfg!(target_arch = "aarch64") {
+    "aarch64"
+} else {
+    "unknown"
+};
+
+/// Initialize kernel library components
+pub fn init() {
+    log::init_levels();
+    kprintln!("[PolymeraCore] lib={} target={}", env!("CARGO_PKG_VERSION"), TARGET_ARCH);
+    boot::init();
+}
+
+/// Kernel main entry point (for library use)
+pub fn kernel_main() -> ! {
+    init();
+    loop { 
+        #[cfg(target_arch = "x86_64")]
+        unsafe { x86_64::instructions::hlt(); }
+        
+        #[cfg(not(target_arch = "x86_64"))]
+        core::hint::spin_loop();
+    }
+}

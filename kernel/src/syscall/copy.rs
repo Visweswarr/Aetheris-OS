@@ -4,9 +4,11 @@
 /// with bounds checking, alignment validation, and kernel address guards.
 
 use super::validate::{is_valid_user_pointer, is_kernel_pointer};
-use crate::{kprintln, klog, kprintln};
+use crate::{kprintln, klog, format, vec};
 use crate::log::Level;
 use crate::secman::audit::{audit_log, AuditEvent, AuditLevel};
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use core::mem;
 use core::ptr;
 use core::slice;

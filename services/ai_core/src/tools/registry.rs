@@ -25,6 +25,11 @@ pub struct Tool {
     pub implementation_type: ToolImplementationType,
     pub timeout_seconds: u64,
     pub requires_confirmation: bool,
+    /// Whether this tool performs destructive operations (delete, overwrite, etc.).
+    /// When true, the executor always requires explicit approval before running.
+    /// This replaces the text-pattern inference that previously guessed destructiveness
+    /// from intent text — the tool itself is the authority on whether it is destructive.
+    pub destructive: bool,
     pub metadata: HashMap<String, Value>,
 }
 
@@ -84,11 +89,13 @@ impl ToolRegistry {
         tools.insert(browser_summarize.id.clone(), browser_summarize);
         let browser_classify = Self::builtin_browser_classify_tool();
         tools.insert(browser_classify.id.clone(), browser_classify);
+        let local_llm = Self::builtin_local_llm_summarizer_tool();
+        tools.insert(local_llm.id.clone(), local_llm);
         Self {
             tools: Arc::new(RwLock::new(tools)),
             stats: Arc::new(RwLock::new(ToolRegistryStats {
-                total_tools: 4,
-                builtin_tools: 4,
+                total_tools: 5,
+                builtin_tools: 5,
                 ..ToolRegistryStats::default()
             })),
         }
@@ -107,6 +114,8 @@ impl ToolRegistry {
         self.register_tool(Self::builtin_browser_summarize_tool())
             .await?;
         self.register_tool(Self::builtin_browser_classify_tool())
+            .await?;
+        self.register_tool(Self::builtin_local_llm_summarizer_tool())
             .await?;
         Ok(())
     }
@@ -132,6 +141,7 @@ impl ToolRegistry {
             implementation_type: ToolImplementationType::Builtin,
             timeout_seconds: 30,
             requires_confirmation: false,
+            destructive: false,
             metadata: HashMap::new(),
         }
     }
@@ -163,6 +173,7 @@ impl ToolRegistry {
             implementation_type: ToolImplementationType::Builtin,
             timeout_seconds: 30,
             requires_confirmation: true,
+            destructive: false,
             metadata: HashMap::from([
                 (
                     "metric".to_string(),
@@ -197,6 +208,7 @@ impl ToolRegistry {
             implementation_type: ToolImplementationType::Builtin,
             timeout_seconds: 30,
             requires_confirmation: true,
+            destructive: false,
             metadata: HashMap::from([(
                 "metric".to_string(),
                 serde_json::json!("ai_browser_summaries_total"),
@@ -226,6 +238,7 @@ impl ToolRegistry {
             implementation_type: ToolImplementationType::Builtin,
             timeout_seconds: 30,
             requires_confirmation: true,
+            destructive: false,
             metadata: HashMap::new(),
         }
     }
@@ -257,6 +270,7 @@ impl ToolRegistry {
             "log_summarizer" => self.execute_log_summarizer(request, start).await?,
             "browser_summarize" => self.execute_browser_summarize(request, start).await?,
             "browser_classify_page" => self.execute_browser_classify(request, start).await?,
+            "local_llm_summarizer" => self.execute_local_llm_summarizer(request, start).await?,
             _ => ToolResult {
                     tool_id: tool_id.clone(),
                     success: true,
@@ -324,7 +338,7 @@ impl ToolRegistry {
             source_path: path.clone(),
             text,
             component_path,
-        });
+        }).await;
         crate::metrics::record_log_summary();
         let payload = serde_json::json!({
             "source_path": summary.source_path,
@@ -418,6 +432,126 @@ impl ToolRegistry {
             execution_time_ms: start.elapsed().as_millis() as u64,
             metadata: HashMap::new(),
         })
+    }
+
+    async fn execute_local_llm_summarizer(
+        &self,
+        request: &ToolCallRequest,
+        start: std::time::Instant,
+    ) -> Result<ToolResult> {
+        let model = request
+            .parameters
+            .get("model")
+            .and_then(Value::as_str)
+            .unwrap_or("qwen2.5:7b");
+        let text = read_text_or_parameter(&request.parameters, "local_llm_summarizer").await?;
+
+        // Fail-closed: attempt HTTP to Ollama; return explicit error if unreachable.
+        let ollama_host = std::env::var("OLLAMA_HOST")
+            .unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| AiCoreError::IoError(format!("HTTP client error: {}", e)))?;
+        let body = serde_json::json!({
+            "model": model,
+            "prompt": format!("Summarize the following text concisely:\n\n{}", text),
+            "stream": false
+        });
+        let response = client
+            .post(format!("{}/api/generate", ollama_host))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| {
+                crate::metrics::record_capability_denial();
+                AiCoreError::IoError(format!(
+                    "Ollama daemon unreachable at {}: {}. \
+                     The local LLM summarizer requires a running Ollama instance. \
+                     Do NOT silently fall back — the user needs to know their model didn't run.",
+                    ollama_host, e
+                ))
+            })?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body_text = response.text().await.unwrap_or_default();
+            return Err(AiCoreError::IoError(format!(
+                "Ollama returned HTTP {}: {}",
+                status, body_text
+            )));
+        }
+        let resp_json: Value = response
+            .json()
+            .await
+            .map_err(|e| AiCoreError::IoError(format!("Ollama response parse error: {}", e)))?;
+        let summary = resp_json
+            .get("response")
+            .and_then(Value::as_str)
+            .unwrap_or("(no response from model)")
+            .to_string();
+        crate::metrics::record_llm_call();
+        let payload = serde_json::json!({
+            "model": model,
+            "summary": summary,
+            "metric": "ai_llm_calls_total",
+            "ollama_host": ollama_host
+        });
+        Ok(ToolResult {
+            tool_id: request.tool_name.clone(),
+            success: true,
+            result: Some(serde_json::to_vec_pretty(&payload)?),
+            error_message: None,
+            execution_time_ms: start.elapsed().as_millis() as u64,
+            metadata: HashMap::from([
+                ("metric".to_string(), serde_json::json!("ai_llm_calls_total")),
+                ("model".to_string(), serde_json::json!(model)),
+            ]),
+        })
+    }
+
+    fn builtin_local_llm_summarizer_tool() -> Tool {
+        Tool {
+            id: "local_llm_summarizer".to_string(),
+            name: "local_llm_summarizer".to_string(),
+            description: "Summarize text using a local LLM via Ollama. Fail-closed: returns \
+                          an explicit error if the Ollama daemon is unreachable."
+                .to_string(),
+            version: "1.0.0".to_string(),
+            parameters_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "path": {"type": "string"},
+                    "model": {"type": "string", "default": "qwen2.5:7b"},
+                    "max_bytes": {"type": "integer"}
+                }
+            }),
+            required_capabilities: vec![
+                "ai.summarize".to_string(),
+                "local_llm:summarize".to_string(),
+            ],
+            category: "ai".to_string(),
+            tags: vec![
+                "llm".to_string(),
+                "ollama".to_string(),
+                "summary".to_string(),
+                "local".to_string(),
+            ],
+            implementation_type: ToolImplementationType::Builtin,
+            timeout_seconds: 60,
+            requires_confirmation: true,
+            destructive: false,
+            metadata: HashMap::from([
+                (
+                    "metric".to_string(),
+                    serde_json::json!("ai_llm_calls_total"),
+                ),
+                (
+                    "fail_mode".to_string(),
+                    serde_json::json!("fail-closed"),
+                ),
+            ]),
+        }
     }
 
     pub async fn execute_tool_with_params(

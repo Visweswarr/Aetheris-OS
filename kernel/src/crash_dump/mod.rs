@@ -122,7 +122,7 @@ impl CrashDump {
     pub fn new(error_type: CrashErrorType) -> Self {
         Self {
             timestamp: crate::log::get_current_time_ms(),
-            task_id: crate::sched::get_current_task_id(),
+            task_id: Some(crate::sched::get_current_task_id()),
             error_type,
             registers: None,
             stack_trace: None,
@@ -136,7 +136,7 @@ impl CrashDump {
     pub fn with_config(error_type: CrashErrorType, config: CrashDumpConfig) -> Self {
         Self {
             timestamp: crate::log::get_current_time_ms(),
-            task_id: crate::sched::get_current_task_id(),
+            task_id: Some(crate::sched::get_current_task_id()),
             error_type,
             registers: None,
             stack_trace: None,

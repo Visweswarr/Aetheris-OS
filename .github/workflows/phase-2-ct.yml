@@ -1,0 +1,403 @@
+# Phase 2 PQC Constant-Time Validation
+# Runs constant-time validation and fails if timing channels detected
+
+name: "Phase 2 PQC Constant-Time Validation"
+
+on:
+  # Manual trigger for constant-time validation
+  workflow_dispatch:
+    inputs:
+      run_extended_validation:
+        description: 'Run extended validation (more samples)'
+        required: false
+        default: false
+        type: boolean
+      enable_jitter_analysis:
+        description: 'Enable detailed jitter analysis'
+        required: false
+        default: true
+        type: boolean
+  # Scheduled constant-time validation
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM UTC
+  # Constant-time validation on security-related changes
+  pull_request:
+    paths:
+      - 'crypto/pqc/**'
+      - 'kernel/src/security/**'
+      - 'kernel/src/ipc/**'
+      - 'perf/pqc/**'
+  # Constant-time validation on main branch
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'crypto/pqc/**'
+      - 'kernel/src/security/**'
+      - 'kernel/src/ipc/**'
+      - 'perf/pqc/**'
+
+env:
+  RUST_BACKTRACE: 1
+  RUST_LOG: info
+  SAMPLE_SIZE: 10000  # N=10k samples per operation
+  EXTENDED_SAMPLE_SIZE: 50000  # Extended validation samples
+  SIGNIFICANCE_LEVEL: 0.01  # p < 0.01 for statistical significance
+
+jobs:
+  # PQC Constant-Time Validation
+  pqc-constant-time-validation:
+    name: "PQC Constant-Time Validation"
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: "Setup Rust toolchain"
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+      
+      - name: "Cache Rust dependencies"
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-pqc-ct-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pqc-ct-
+      
+      - name: "Install dependencies"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc jq
+      
+      - name: "Build constant-time validation tools"
+        run: |
+          cd perf/pqc
+          cargo build --release --bin ct_check
+          echo "Constant-time validation tools built successfully"
+      
+      - name: "Run constant-time validation"
+        id: run_ct_validation
+        run: |
+          cd perf/pqc
+          
+          # Determine sample size
+          if [[ "${{ github.event.inputs.run_extended_validation }}" == "true" ]]; then
+            SAMPLE_SIZE=$EXTENDED_SAMPLE_SIZE
+            echo "Running extended constant-time validation (${SAMPLE_SIZE} samples)"
+          else
+            echo "Running standard constant-time validation (${SAMPLE_SIZE} samples)"
+          fi
+          
+          # Run constant-time validation
+          timeout 120s cargo run --release --bin ct_check \
+            --sample-size $SAMPLE_SIZE \
+            --significance-level $SIGNIFICANCE_LEVEL \
+            --enable-jitter-analysis ${{ github.event.inputs.enable_jitter_analysis }} \
+            --output-file ct_validation_results.json
+          
+          echo "Constant-time validation completed"
+      
+      - name: "Parse constant-time results"
+        id: parse_ct_results
+        run: |
+          cd perf/pqc
+          
+          if [[ ! -f "ct_validation_results.json" ]]; then
+            echo "❌ Constant-time validation results file not found"
+            exit 1
+          fi
+          
+          # Extract validation results
+          TOTAL_OPERATIONS=$(jq -r '.total_operations // 0' ct_validation_results.json)
+          CONSTANT_TIME_OPS=$(jq -r '.constant_time_operations // 0' ct_validation_results.json)
+          POTENTIAL_CHANNELS=$(jq -r '.potential_timing_channels // 0' ct_validation_results.json)
+          OVERALL_STATUS=$(jq -r '.overall_status // "UNKNOWN"' ct_validation_results.json)
+          CONFIDENCE_LEVEL=$(jq -r '.confidence_level // 0' ct_validation_results.json)
+          
+          # Extract algorithm-specific results
+          DILITHIUM2_SIGN_CT=$(jq -r '.algorithm_results.dilithium2_sign.is_constant_time // false' ct_validation_results.json)
+          DILITHIUM2_VERIFY_CT=$(jq -r '.algorithm_results.dilithium2_verify.is_constant_time // false' ct_validation_results.json)
+          KYBER768_ENCAP_CT=$(jq -r '.algorithm_results.kyber768_encapsulate.is_constant_time // false' ct_validation_results.json)
+          KYBER768_DECAP_CT=$(jq -r '.algorithm_results.kyber768_decapsulate.is_constant_time // false' ct_validation_results.json)
+          
+          # Extract p-values for statistical analysis
+          DILITHIUM2_SIGN_PVALUE=$(jq -r '.algorithm_results.dilithium2_sign.t_test_result.p_value // 1.0' ct_validation_results.json)
+          DILITHIUM2_VERIFY_PVALUE=$(jq -r '.algorithm_results.dilithium2_verify.t_test_result.p_value // 1.0' ct_validation_results.json)
+          KYBER768_ENCAP_PVALUE=$(jq -r '.algorithm_results.kyber768_encapsulate.t_test_result.p_value // 1.0' ct_validation_results.json)
+          KYBER768_DECAP_PVALUE=$(jq -r '.algorithm_results.kyber768_decapsulate.t_test_result.p_value // 1.0' ct_validation_results.json)
+          
+          echo "TOTAL_OPERATIONS=$TOTAL_OPERATIONS" >> $GITHUB_OUTPUT
+          echo "CONSTANT_TIME_OPS=$CONSTANT_TIME_OPS" >> $GITHUB_OUTPUT
+          echo "POTENTIAL_CHANNELS=$POTENTIAL_CHANNELS" >> $GITHUB_OUTPUT
+          echo "OVERALL_STATUS=$OVERALL_STATUS" >> $GITHUB_OUTPUT
+          echo "CONFIDENCE_LEVEL=$CONFIDENCE_LEVEL" >> $GITHUB_OUTPUT
+          
+          echo "DILITHIUM2_SIGN_CT=$DILITHIUM2_SIGN_CT" >> $GITHUB_OUTPUT
+          echo "DILITHIUM2_VERIFY_CT=$DILITHIUM2_VERIFY_CT" >> $GITHUB_OUTPUT
+          echo "KYBER768_ENCAP_CT=$KYBER768_ENCAP_CT" >> $GITHUB_OUTPUT
+          echo "KYBER768_DECAP_CT=$KYBER768_DECAP_CT" >> $GITHUB_OUTPUT
+          
+          echo "DILITHIUM2_SIGN_PVALUE=$DILITHIUM2_SIGN_PVALUE" >> $GITHUB_OUTPUT
+          echo "DILITHIUM2_VERIFY_PVALUE=$DILITHIUM2_VERIFY_PVALUE" >> $GITHUB_OUTPUT
+          echo "KYBER768_ENCAP_PVALUE=$KYBER768_ENCAP_PVALUE" >> $GITHUB_OUTPUT
+          echo "KYBER768_DECAP_PVALUE=$KYBER768_DECAP_PVALUE" >> $GITHUB_OUTPUT
+          
+          # Check if all operations are constant-time
+          if [[ "$POTENTIAL_CHANNELS" == "0" ]]; then
+            echo "ALL_CONSTANT_TIME=true" >> $GITHUB_OUTPUT
+            echo "CT_STATUS=✅ ALL_OPERATIONS_CONSTANT_TIME" >> $GITHUB_OUTPUT
+          else
+            echo "ALL_CONSTANT_TIME=false" >> $GITHUB_OUTPUT
+            echo "CT_STATUS=❌ TIMING_CHANNELS_DETECTED" >> $GITHUB_OUTPUT
+          fi
+          
+          # Check statistical significance
+          SIGNIFICANCE_THRESHOLD=$(echo "$SIGNIFICANCE_LEVEL" | bc -l)
+          DILITHIUM2_SIGN_SIG=$(echo "$DILITHIUM2_SIGN_PVALUE >= $SIGNIFICANCE_THRESHOLD" | bc -l)
+          DILITHIUM2_VERIFY_SIG=$(echo "$DILITHIUM2_VERIFY_PVALUE >= $SIGNIFICANCE_THRESHOLD" | bc -l)
+          KYBER768_ENCAP_SIG=$(echo "$KYBER768_ENCAP_PVALUE >= $SIGNIFICANCE_THRESHOLD" | bc -l)
+          KYBER768_DECAP_SIG=$(echo "$KYBER768_DECAP_PVALUE >= $SIGNIFICANCE_THRESHOLD" | bc -l)
+          
+          echo "DILITHIUM2_SIGN_SIG=$DILITHIUM2_SIGN_SIG" >> $GITHUB_OUTPUT
+          echo "DILITHIUM2_VERIFY_SIG=$DILITHIUM2_VERIFY_SIG" >> $GITHUB_OUTPUT
+          echo "KYBER768_ENCAP_SIG=$KYBER768_ENCAP_SIG" >> $GITHUB_OUTPUT
+          echo "KYBER768_DECAP_SIG=$KYBER768_DECAP_SIG" >> $GITHUB_OUTPUT
+      
+      - name: "Generate constant-time validation report"
+        run: |
+          cd perf/pqc
+          
+          # Create comprehensive constant-time validation summary
+          cat > ct_validation_summary.md << EOF
+          # Phase 2 PQC Constant-Time Validation Report
+          
+          **Commit**: ${{ github.sha }}
+          **Branch**: ${{ github.ref_name }}
+          **Timestamp**: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          **Sample Size**: ${{ steps.parse_ct_results.outputs.TOTAL_OPERATIONS }}
+          **Significance Level**: ${{ env.SIGNIFICANCE_LEVEL }}
+          
+          ## Constant-Time Validation Results
+          
+          | Metric | Value | Status |
+          |--------|-------|--------|
+          | Total Operations | ${{ steps.parse_ct_results.outputs.TOTAL_OPERATIONS }} | - |
+          | Constant-Time Operations | ${{ steps.parse_ct_results.outputs.CONSTANT_TIME_OPS }} | ✅ |
+          | Potential Timing Channels | ${{ steps.parse_ct_results.outputs.POTENTIAL_CHANNELS }} | ${{ steps.parse_ct_results.outputs.POTENTIAL_CHANNELS == '0' && '✅' || '❌' }} |
+          | Overall Status | ${{ steps.parse_ct_results.outputs.OVERALL_STATUS }} | - |
+          | Confidence Level | ${{ steps.parse_ct_results.outputs.CONFIDENCE_LEVEL }}% | - |
+          
+          ## Algorithm-Specific Results
+          
+          | Algorithm | Operation | Constant-Time | P-Value | Significant | Status |
+          |-----------|-----------|---------------|---------|-------------|--------|
+          | Dilithium2 | Sign | ${{ steps.parse_ct_results.outputs.DILITHIUM2_SIGN_CT == 'true' && '✅' || '❌' }} | ${{ steps.parse_ct_results.outputs.DILITHIUM2_SIGN_PVALUE }} | ${{ steps.parse_ct_results.outputs.DILITHIUM2_SIGN_SIG == '1' && '✅' || '❌' }} | ${{ steps.parse_ct_results.outputs.DILITHIUM2_SIGN_CT == 'true' && 'PASS' || 'FAIL' }} |
+          | Dilithium2 | Verify | ${{ steps.parse_ct_results.outputs.DILITHIUM2_VERIFY_CT == 'true' && '✅' || '❌' }} | ${{ steps.parse_ct_results.outputs.DILITHIUM2_VERIFY_PVALUE }} | ${{ steps.parse_ct_results.outputs.DILITHIUM2_VERIFY_SIG == '1' && '✅' || '❌' }} | ${{ steps.parse_ct_results.outputs.DILITHIUM2_VERIFY_CT == 'true' && 'PASS' || 'FAIL' }} |
+          | Kyber768 | Encapsulate | ${{ steps.parse_ct_results.outputs.KYBER768_ENCAP_CT == 'true' && '✅' || '❌' }} | ${{ steps.parse_ct_results.outputs.KYBER768_ENCAP_PVALUE }} | ${{ steps.parse_ct_results.outputs.KYBER768_ENCAP_SIG == '1' && '✅' || '❌' }} | ${{ steps.parse_ct_results.outputs.KYBER768_ENCAP_CT == 'true' && 'PASS' || 'FAIL' }} |
+          | Kyber768 | Decapsulate | ${{ steps.parse_ct_results.outputs.KYBER768_DECAP_CT == 'true' && '✅' || '❌' }} | ${{ steps.parse_ct_results.outputs.KYBER768_DECAP_PVALUE }} | ${{ steps.parse_ct_results.outputs.KYBER768_DECAP_SIG == '1' && '✅' || '❌' }} | ${{ steps.parse_ct_results.outputs.KYBER768_DECAP_CT == 'true' && 'PASS' || 'FAIL' }} |
+          
+          ## Validation Status
+          
+          **${{ steps.parse_ct_results.outputs.CT_STATUS }}**
+          
+          ## Statistical Analysis
+          
+          **Significance Level**: p < ${{ env.SIGNIFICANCE_LEVEL }}
+          
+          - **Dilithium2 Sign**: p = ${{ steps.parse_ct_results.outputs.DILITHIUM2_SIGN_PVALUE }} ${{ steps.parse_ct_results.outputs.DILITHIUM2_SIGN_SIG == '1' && '(✅ Not Significant)' || '(❌ Significant - Potential Channel)' }}
+          - **Dilithium2 Verify**: p = ${{ steps.parse_ct_results.outputs.DILITHIUM2_VERIFY_PVALUE }} ${{ steps.parse_ct_results.outputs.DILITHIUM2_VERIFY_SIG == '1' && '(✅ Not Significant)' || '(❌ Significant - Potential Channel)' }}
+          - **Kyber768 Encapsulate**: p = ${{ steps.parse_ct_results.outputs.KYBER768_ENCAP_PVALUE }} ${{ steps.parse_ct_results.outputs.KYBER768_ENCAP_SIG == '1' && '(✅ Not Significant)' || '(❌ Significant - Potential Channel)' }}
+          - **Kyber768 Decapsulate**: p = ${{ steps.parse_ct_results.outputs.KYBER768_DECAP_PVALUE }} ${{ steps.parse_ct_results.outputs.KYBER768_DECAP_SIG == '1' && '(✅ Not Significant)' || '(❌ Significant - Potential Channel)' }}
+          
+          ## Detailed Results
+          
+          \`\`\`json
+          $(cat ct_validation_results.json | jq '.')
+          \`\`\`
+          
+          ## Security Assessment
+          
+          ${{ steps.parse_ct_results.outputs.POTENTIAL_CHANNELS == '0' && '✅ **SECURE**: All PQC operations are constant-time with no detectable timing channels.' || '❌ **VULNERABLE**: Potential timing channels detected. Immediate investigation required.' }}
+          
+          ## Recommendations
+          
+          ${{ steps.parse_ct_results.outputs.POTENTIAL_CHANNELS == '0' && '1. ✅ Continue with current implementation\n2. ✅ Monitor for performance regressions\n3. ✅ Regular re-validation recommended' || '1. ❌ Investigate timing channel sources\n2. ❌ Implement constant-time fixes\n3. ❌ Re-run validation after fixes\n4. ❌ Block deployment until resolved' }}
+          EOF
+      
+      - name: "Upload constant-time validation results"
+        uses: actions/upload-artifact@v3
+        with:
+          name: pqc-ct-validation-${{ github.sha }}
+          path: |
+            perf/pqc/ct_validation_results.json
+            perf/pqc/ct_validation_summary.md
+      
+      - name: "Comment on PR (if applicable)"
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('perf/pqc/ct_validation_summary.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+      
+      - name: "Generate security alert (if timing channels detected)"
+        if: steps.parse_ct_results.outputs.ALL_CONSTANT_TIME != 'true'
+        run: |
+          echo "🚨 SECURITY ALERT: Potential timing channels detected!"
+          echo "=================================================="
+          echo ""
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          echo ""
+          echo "CRITICAL FINDINGS:"
+          echo "=================="
+          echo "Total Operations: ${{ steps.parse_ct_results.outputs.TOTAL_OPERATIONS }}"
+          echo "Constant-Time Operations: ${{ steps.parse_ct_results.outputs.CONSTANT_TIME_OPS }}"
+          echo "Potential Timing Channels: ${{ steps.parse_ct_results.outputs.POTENTIAL_CHANNELS }}"
+          echo ""
+          echo "ALGORITHM STATUS:"
+          echo "================="
+          echo "Dilithium2 Sign: ${{ steps.parse_ct_results.outputs.DILITHIUM2_SIGN_CT == 'true' && '✅ PASS' || '❌ FAIL' }} (p=${{ steps.parse_ct_results.outputs.DILITHIUM2_SIGN_PVALUE }})"
+          echo "Dilithium2 Verify: ${{ steps.parse_ct_results.outputs.DILITHIUM2_VERIFY_CT == 'true' && '✅ PASS' || '❌ FAIL' }} (p=${{ steps.parse_ct_results.outputs.DILITHIUM2_VERIFY_PVALUE }})"
+          echo "Kyber768 Encapsulate: ${{ steps.parse_ct_results.outputs.KYBER768_ENCAP_CT == 'true' && '✅ PASS' || '❌ FAIL' }} (p=${{ steps.parse_ct_results.outputs.KYBER768_ENCAP_PVALUE }})"
+          echo "Kyber768 Decapsulate: ${{ steps.parse_ct_results.outputs.KYBER768_DECAP_CT == 'true' && '✅ PASS' || '❌ FAIL' }} (p=${{ steps.parse_ct_results.outputs.KYBER768_DECAP_PVALUE }})"
+          echo ""
+          echo "IMMEDIATE ACTIONS REQUIRED:"
+          echo "==========================="
+          echo "1. ❌ BLOCK deployment of this commit"
+          echo "2. ❌ Investigate timing channel sources"
+          echo "3. ❌ Implement constant-time fixes"
+          echo "4. ❌ Re-run validation after fixes"
+          echo "5. ❌ Only deploy after all tests pass"
+          echo ""
+          echo "This is a CRITICAL SECURITY ISSUE that could lead to:"
+          echo "- Private key extraction via timing attacks"
+          echo "- Message content leakage"
+          echo "- Cryptographic protocol compromise"
+          echo ""
+          echo "Contact security team immediately!"
+      
+      - name: "Fail if timing channels detected"
+        if: steps.parse_ct_results.outputs.ALL_CONSTANT_TIME != 'true'
+        run: |
+          echo "❌ CRITICAL: Potential timing channels detected!"
+          echo "Constant-time validation FAILED"
+          echo ""
+          echo "Security implications:"
+          echo "- Private key extraction possible"
+          echo "- Message content leakage possible"
+          echo "- Cryptographic protocol compromise possible"
+          echo ""
+          echo "BLOCKING deployment until resolved"
+          exit 1
+      
+      - name: "Success notification"
+        if: steps.parse_ct_results.outputs.ALL_CONSTANT_TIME == 'true'
+        run: |
+          echo "✅ SUCCESS: All PQC operations are constant-time!"
+          echo "Constant-time validation PASSED"
+          echo ""
+          echo "Security status:"
+          echo "- No timing channels detected"
+          echo "- All operations constant-time"
+          echo "- Statistical significance validated"
+          echo "- Ready for secure deployment"
+          echo ""
+          echo "🎉 PQC constant-time validation: COMPLETE"
+
+  # Security Summary
+  security-summary:
+    name: "Constant-Time Security Summary"
+    runs-on: ubuntu-latest
+    needs: [pqc-constant-time-validation]
+    if: always()
+    
+    steps:
+      - name: "Generate security summary"
+        run: |
+          cat > ct_security_summary.md << EOF
+          # 🔒 PQC Constant-Time Security Summary
+          
+          **Commit**: ${{ github.sha }}
+          **Branch**: ${{ github.ref_name }}
+          **Timestamp**: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          
+          ## Security Validation Status
+          
+          **${{ needs.pqc-constant-time-validation.result == 'success' && '✅ SECURE - ALL OPERATIONS CONSTANT-TIME' || '❌ VULNERABLE - TIMING CHANNELS DETECTED' }}**
+          
+          ### Validation Results
+          - **Total Operations**: ${{ needs.pqc-constant-time-validation.result == 'success' && 'Validated' || 'Failed' }}
+          - **Constant-Time Operations**: ${{ needs.pqc-constant-time-validation.result == 'success' && '100%' || 'Partial' }}
+          - **Timing Channels**: ${{ needs.pqc-constant-time-validation.result == 'success' && 'None Detected' || 'Detected' }}
+          - **Statistical Confidence**: ${{ needs.pqc-constant-time-validation.result == 'success' && 'High' || 'Low' }}
+          
+          ## Security Assessment
+          
+          ${{ needs.pqc-constant-time-validation.result == 'success' && '✅ **SECURE IMPLEMENTATION**\n\nAll PQC operations have been validated as constant-time with no detectable timing channels. The implementation is secure against timing attacks and ready for production deployment.' || '❌ **SECURITY VULNERABILITY**\n\nPotential timing channels have been detected in PQC operations. This represents a critical security vulnerability that must be resolved before deployment.' }}
+          
+          ## Recommendations
+          
+          ${{ needs.pqc-constant-time-validation.result == 'success' && '1. ✅ Continue with current implementation\n2. ✅ Monitor for performance regressions\n3. ✅ Regular re-validation recommended\n4. ✅ Consider automated security scanning' || '1. ❌ IMMEDIATELY BLOCK deployment\n2. ❌ Investigate timing channel sources\n3. ❌ Implement constant-time fixes\n4. ❌ Re-run validation after fixes\n5. ❌ Only deploy after all tests pass' }}
+          
+          ## Next Steps
+          
+          ${{ needs.pqc-constant-time-validation.result == 'success' && '**Ready for Phase 2 deployment**\n\nAll security validations passed. The PQC implementation meets constant-time requirements and can proceed to production.' || '**Security investigation required**\n\nDeployment blocked until timing channels are resolved. Contact security team immediately.' }}
+          
+          ---
+          
+          **Constant-Time Security Validation**: ${{ needs.pqc-constant-time-validation.result == 'success' && 'PASSED - SECURE' || 'FAILED - VULNERABLE' }}
+          EOF
+      
+      - name: "Upload security summary"
+        uses: actions/upload-artifact@v3
+        with:
+          name: ct-security-summary-${{ github.sha }}
+          path: ct_security_summary.md
+      
+      - name: "Comment on PR (if applicable)"
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('ct_security_summary.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+      
+      - name: "Final security status"
+        run: |
+          if [[ "${{ needs.pqc-constant-time-validation.result }}" == "success" ]]; then
+            echo "🔒 PQC Constant-Time Security: VALIDATED"
+            echo "✅ All operations are constant-time"
+            echo "✅ No timing channels detected"
+            echo "✅ Ready for secure deployment"
+          else
+            echo "🚨 PQC Constant-Time Security: FAILED"
+            echo "❌ Timing channels detected"
+            echo "❌ Security vulnerability present"
+            echo "❌ Deployment blocked"
+            exit 1
+          fi

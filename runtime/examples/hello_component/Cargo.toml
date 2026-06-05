@@ -1,0 +1,27 @@
+[package]
+name = "hello-component"
+version = "0.1.0"
+edition = "2021"
+description = "Hello-world WASM component for Polymera OS (Initiative 3 reference impl)"
+
+# Build with `cargo component build --release`.
+# Outputs target/wasm32-wasip2/release/hello_component.wasm — a Component Model artifact
+# the Polymera host (services/wasm_driver/src/host.rs) can load.
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.34"
+
+[package.metadata.component]
+package = "polymera:hello"
+
+[package.metadata.component.target]
+path = "wit"
+world = "hello-world"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

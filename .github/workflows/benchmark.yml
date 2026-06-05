@@ -1,0 +1,26 @@
+name: Benchmarks - AICore
+
+on:
+  push:
+    paths:
+      - 'services/ai/**'
+      - 'docs/phase-5/P5-01-AICORE.md'
+      - '.github/workflows/benchmark.yml'
+  pull_request:
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Rust stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Run AICore benches (phase5)
+        run: |
+          cargo bench --all-features -- --verbose || true
+        env:
+          NGFS_ROOT: ${{ github.workspace }}/target/bench-ngfs

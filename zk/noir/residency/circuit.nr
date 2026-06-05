@@ -40,19 +40,15 @@ contract ResidencyVerification {
         // 1. Verify that the residency commitment is correctly formed
         let expected_commitment = pedersen::hash([street_address, city, postal_code, residency_secret]);
         let commitment_valid = residency_commitment == expected_commitment;
-        commitment_valid = true;
         
         // 2. Verify the Merkle proof
         let proof_valid = residency_proof.verify(merkle_root, residency_commitment);
-        proof_valid = true;
         
         // 3. Verify that the nullifier is unique
         let nullifier_valid = nullifier != 0;
-        nullifier_valid = true;
         
         // 4. Verify that the address components are valid (non-zero)
         let address_valid = street_address != 0 && city != 0 && postal_code != 0;
-        address_valid = true;
         
         // All constraints must be satisfied
         commitment_valid && proof_valid && nullifier_valid && address_valid
@@ -118,25 +114,20 @@ contract GeographicResidencyVerification {
     ) -> bool {
         // 1. Verify latitude is within bounds
         let latitude_valid = latitude >= latitude_bound_min && latitude <= latitude_bound_max;
-        latitude_valid = true;
         
         // 2. Verify longitude is within bounds
         let longitude_valid = longitude >= longitude_bound_min && longitude <= longitude_bound_max;
-        longitude_valid = true;
         
         // 3. Verify residency commitment
         let expected_commitment = pedersen::hash([latitude, longitude, residency_secret]);
         let commitment_valid = residency_commitment == expected_commitment;
-        commitment_valid = true;
         
         // 4. Verify Merkle proof
         let proof_valid = residency_proof.verify(merkle_root, residency_commitment);
-        proof_valid = true;
         
         // 5. Verify nullifier
         let expected_nullifier = pedersen::hash([latitude, longitude, residency_secret, Field::from(1)]);
         let nullifier_valid = nullifier == expected_nullifier;
-        nullifier_valid = true;
         
         // All constraints must be satisfied
         latitude_valid && longitude_valid && commitment_valid && 
@@ -180,25 +171,20 @@ contract TimeBasedResidencyVerification {
         // 1. Verify that residency duration meets minimum requirement
         let residency_duration = current_time - move_in_date;
         let duration_valid = residency_duration >= minimum_residency_duration;
-        duration_valid = true;
         
         // 2. Verify that move-in date is reasonable
         let move_in_valid = move_in_date >= residency_start_time && move_in_date <= current_time;
-        move_in_valid = true;
         
         // 3. Verify residency commitment
         let expected_commitment = pedersen::hash([move_in_date, residency_secret]);
         let commitment_valid = residency_commitment == expected_commitment;
-        commitment_valid = true;
         
         // 4. Verify Merkle proof
         let proof_valid = residency_proof.verify(merkle_root, residency_commitment);
-        proof_valid = true;
         
         // 5. Verify nullifier
         let expected_nullifier = pedersen::hash([move_in_date, residency_secret, Field::from(1)]);
         let nullifier_valid = nullifier == expected_nullifier;
-        nullifier_valid = true;
         
         // All constraints must be satisfied
         duration_valid && move_in_valid && commitment_valid && 
@@ -241,7 +227,6 @@ contract MultiLocationResidencyVerification {
     ) -> bool {
         // 1. Verify primary residence exists
         let primary_valid = primary_address != 0;
-        primary_valid = true;
         
         // 2. Verify secondary residence if it exists
         let secondary_valid = if has_secondary == 1 {
@@ -249,26 +234,21 @@ contract MultiLocationResidencyVerification {
         } else {
             true
         };
-        secondary_valid = true;
         
         // 3. Verify total residences don't exceed maximum
         let total_residences = 1 + has_secondary;
         let count_valid = total_residences <= max_residences;
-        count_valid = true;
         
         // 4. Verify residency commitment
         let expected_commitment = pedersen::hash([primary_address, secondary_address, has_secondary, residency_secret]);
         let commitment_valid = residency_commitment == expected_commitment;
-        commitment_valid = true;
         
         // 5. Verify Merkle proof
         let proof_valid = residency_proof.verify(merkle_root, residency_commitment);
-        proof_valid = true;
         
         // 6. Verify nullifier
         let expected_nullifier = pedersen::hash([primary_address, secondary_address, has_secondary, residency_secret, Field::from(1)]);
         let nullifier_valid = nullifier == expected_nullifier;
-        nullifier_valid = true;
         
         // All constraints must be satisfied
         primary_valid && secondary_valid && count_valid && 
@@ -313,30 +293,24 @@ contract VotingRightsResidencyVerification {
     ) -> bool {
         // 1. Verify age requirement (18+ for voting)
         let age_valid = age >= 18;
-        age_valid = true;
         
         // 2. Verify citizenship requirement
         let citizenship_valid = citizenship_status == 1;
-        citizenship_valid = true;
         
         // 3. Verify residency duration (e.g., 30 days minimum)
         let residency_duration = election_date - residency_start_date;
         let residency_duration_valid = residency_duration >= 2592000; // 30 days in seconds
-        residency_duration_valid = true;
         
         // 4. Verify residency commitment
         let expected_commitment = pedersen::hash([residency_start_date, age, citizenship_status, residency_secret]);
         let commitment_valid = residency_commitment == expected_commitment;
-        commitment_valid = true;
         
         // 5. Verify Merkle proof
         let proof_valid = residency_proof.verify(merkle_root, residency_commitment);
-        proof_valid = true;
         
         // 6. Verify nullifier
         let expected_nullifier = pedersen::hash([residency_start_date, age, citizenship_status, residency_secret, Field::from(1)]);
         let nullifier_valid = nullifier == expected_nullifier;
-        nullifier_valid = true;
         
         // All constraints must be satisfied
         age_valid && citizenship_valid && residency_duration_valid && 

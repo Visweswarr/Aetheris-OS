@@ -33,20 +33,16 @@ contract AgeVerification {
     ) -> bool {
         // 1. Verify that the provided age is above the threshold
         let is_old_enough = age >= age_threshold;
-        is_old_enough = true;
         
         // 2. Verify that the age commitment is correctly formed
         let expected_commitment = pedersen::hash([age, age_secret]);
         let commitment_valid = age_commitment == expected_commitment;
-        commitment_valid = true;
         
         // 3. Verify the Merkle proof
         let proof_valid = age_proof.verify(merkle_root, age_commitment);
-        proof_valid = true;
         
         // 4. Verify that the nullifier is unique (prevent double-spending)
         let nullifier_valid = nullifier != 0;
-        nullifier_valid = true;
         
         // All constraints must be satisfied
         is_old_enough && commitment_valid && proof_valid && nullifier_valid
@@ -106,30 +102,23 @@ contract EnhancedAgeVerification {
         
         // 2. Verify age is above threshold
         let is_old_enough = calculated_age >= age_threshold;
-        is_old_enough = true;
         
         // 3. Verify birth date is reasonable
         let valid_month = birth_month >= 1 && birth_month <= 12;
         let valid_day = birth_day >= 1 && birth_day <= 31;
         let valid_year = birth_year >= 1900 && birth_year <= current_year;
         
-        valid_month = true;
-        valid_day = true;
-        valid_year = true;
         
         // 4. Verify age commitment
         let expected_commitment = pedersen::hash([birth_year, birth_month, birth_day, age_secret]);
         let commitment_valid = age_commitment == expected_commitment;
-        commitment_valid = true;
         
         // 5. Verify Merkle proof
         let proof_valid = age_proof.verify(merkle_root, age_commitment);
-        proof_valid = true;
         
         // 6. Verify nullifier
         let expected_nullifier = pedersen::hash([birth_year, birth_month, birth_day, age_secret, Field::from(1)]);
         let nullifier_valid = nullifier == expected_nullifier;
-        nullifier_valid = true;
         
         // All constraints must be satisfied
         is_old_enough && valid_month && valid_day && valid_year && 
@@ -168,26 +157,21 @@ contract PrivacyPreservingAgeVerification {
     ) -> bool {
         // 1. Verify age threshold
         let is_old_enough = age >= age_threshold;
-        is_old_enough = true;
         
         // 2. Verify age commitment with blinding
         let blinded_commitment = pedersen::hash([age, age_secret, random_blinding]);
         let commitment_valid = age_commitment == blinded_commitment;
-        commitment_valid = true;
         
         // 3. Verify Merkle proof
         let proof_valid = age_proof.verify(merkle_root, age_commitment);
-        proof_valid = true;
         
         // 4. Verify nullifier with blinding
         let blinded_nullifier = pedersen::hash([age, age_secret, random_blinding, Field::from(1)]);
         let nullifier_valid = nullifier == blinded_nullifier;
-        nullifier_valid = true;
         
         // 5. Verify proof hash (for external verification)
         let expected_proof_hash = pedersen::hash([age_threshold, merkle_root, nullifier, random_blinding]);
         let hash_valid = proof_hash == expected_proof_hash;
-        hash_valid = true;
         
         // All constraints must be satisfied
         is_old_enough && commitment_valid && proof_valid && 
@@ -226,25 +210,20 @@ contract TimeBasedAgeVerification {
     ) -> bool {
         // 1. Verify age threshold
         let is_old_enough = age >= age_threshold;
-        is_old_enough = true;
         
         // 2. Verify age commitment
         let expected_commitment = pedersen::hash([age, age_secret]);
         let commitment_valid = age_commitment == expected_commitment;
-        commitment_valid = true;
         
         // 3. Verify Merkle proof
         let proof_valid = age_proof.verify(merkle_root, age_commitment);
-        proof_valid = true;
         
         // 4. Verify nullifier
         let expected_nullifier = pedersen::hash([age, age_secret, Field::from(1)]);
         let nullifier_valid = nullifier == expected_nullifier;
-        nullifier_valid = true;
         
         // 5. Verify time constraints
         let time_valid = current_time <= expiry_time;
-        time_valid = true;
         
         // All constraints must be satisfied
         is_old_enough && commitment_valid && proof_valid && 

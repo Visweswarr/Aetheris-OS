@@ -614,7 +614,8 @@ pub fn test_divide_by_zero() {
     kprintln!("[IDT] Testing divide by zero handler...");
     
     // This will trigger a divide by zero exception
-    let _result = 1u64 / 0u64;
+    let zero = core::hint::black_box(0u64);
+    let _result = 1u64 / zero;
 }
 
 #[cfg(test)]

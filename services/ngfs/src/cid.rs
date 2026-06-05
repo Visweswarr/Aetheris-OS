@@ -1,6 +1,6 @@
 use blake3::Hasher;
-use alloc::string::String;
-use alloc::vec::Vec;
+use std::string::String;
+use std::vec::Vec;
 use core::fmt;
 
 /// Content Identifier (CID) for NGFS CAS storage
