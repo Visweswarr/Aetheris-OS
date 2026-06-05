@@ -1,8 +1,8 @@
-#![no_std]
-
 use core::fmt;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
+use alloc::format;
 
 /// Memory region information
 #[derive(Debug, Clone)]
@@ -43,7 +43,7 @@ impl fmt::Display for MemoryPermissions {
 }
 
 /// Memory region types
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MemoryRegionType {
     KernelCode,
     KernelData,

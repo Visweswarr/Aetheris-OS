@@ -1,0 +1,24 @@
+{
+  "name": "aetheris-os",
+  "version": "0.4.0-phase4-ready",
+  "description": "Third party licenses for Node.js dependencies",
+  "generated": "2025-01-07T17:44:00.000Z",
+  "dependencies": {
+    "js-yaml": {
+      "licenses": "MIT",
+      "repository": "https://github.com/nodeca/js-yaml",
+      "copyright": "Copyright (c) 2011-2017 by Vitaly Puzrin"
+    },
+    "ts-node": {
+      "licenses": "MIT",
+      "repository": "https://github.com/TypeStrong/ts-node",
+      "copyright": "Copyright (c) 2014 Blake Embrey"
+    },
+    "typescript": {
+      "licenses": "Apache-2.0",
+      "repository": "https://github.com/Microsoft/TypeScript",
+      "copyright": "Copyright (c) Microsoft Corporation"
+    }
+  },
+  "note": "This is a placeholder. Run 'npx license-checker --json' to generate the complete list."
+}

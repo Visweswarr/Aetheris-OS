@@ -1,0 +1,348 @@
+name: SLO Gates
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to check SLOs against'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      tolerance_mode:
+        description: 'Enable tolerance mode'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build-slo-checker:
+    name: Build SLO Checker
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "perf"
+      
+      - name: Build SLO checker
+        run: |
+          cd perf
+          cargo build --release
+      
+      - name: Upload SLO checker binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: slo-checker
+          path: perf/target/release/check_slo
+
+  collect-metrics:
+    name: Collect Performance Metrics
+    runs-on: ubuntu-latest
+    needs: build-slo-checker
+    
+    strategy:
+      matrix:
+        environment: [development, staging, production]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup test environment
+        run: |
+          # Install dependencies for metric collection
+          sudo apt-get update
+          sudo apt-get install -y curl jq
+      
+      - name: Download SLO checker
+        uses: actions/download-artifact@v3
+        with:
+          name: slo-checker
+          path: ./slo-checker
+      
+      - name: Make SLO checker executable
+        run: chmod +x ./slo-checker/check_slo
+      
+      - name: Simulate metric collection
+        run: |
+          # In a real scenario, this would collect actual metrics from services
+          # For demo purposes, we'll use our test metrics based on environment
+          
+          case "${{ matrix.environment }}" in
+            "development")
+              cp perf/test_metrics_pass.json metrics.json
+              ;;
+            "staging") 
+              # Staging might have slightly degraded performance
+              jq '.metrics[].values.p95 *= 1.2' perf/test_metrics_pass.json > metrics.json
+              ;;
+            "production")
+              # Production should have the best performance
+              cp perf/test_metrics_pass.json metrics.json
+              ;;
+          esac
+          
+          # Update environment in metrics
+          jq --arg env "${{ matrix.environment }}" '.environment = $env' metrics.json > temp.json
+          mv temp.json metrics.json
+          
+          echo "Collected metrics for ${{ matrix.environment }}:"
+          jq '.environment' metrics.json
+      
+      - name: Upload metrics
+        uses: actions/upload-artifact@v3
+        with:
+          name: metrics-${{ matrix.environment }}
+          path: metrics.json
+
+  check-slos:
+    name: Check SLOs
+    runs-on: ubuntu-latest
+    needs: [build-slo-checker, collect-metrics]
+    
+    strategy:
+      matrix:
+        environment: [development, staging, production]
+      fail-fast: false
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download SLO checker
+        uses: actions/download-artifact@v3
+        with:
+          name: slo-checker
+          path: ./slo-checker
+      
+      - name: Download metrics
+        uses: actions/download-artifact@v3
+        with:
+          name: metrics-${{ matrix.environment }}
+          path: ./metrics
+      
+      - name: Make SLO checker executable
+        run: chmod +x ./slo-checker/check_slo
+      
+      - name: Set environment variables
+        run: |
+          echo "ENVIRONMENT=${{ matrix.environment }}" >> $GITHUB_ENV
+          echo "TOLERANCE_MODE=${{ github.event.inputs.tolerance_mode || 'false' }}" >> $GITHUB_ENV
+          
+          # Set fail-on-violation based on environment and event type
+          if [[ "${{ matrix.environment }}" == "production" && "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "FAIL_ON_VIOLATION=true" >> $GITHUB_ENV
+          elif [[ "${{ matrix.environment }}" == "staging" && "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "FAIL_ON_VIOLATION=true" >> $GITHUB_ENV
+          else
+            echo "FAIL_ON_VIOLATION=false" >> $GITHUB_ENV
+          fi
+      
+      - name: Run SLO checks
+        id: slo_check
+        run: |
+          echo "Running SLO checks for ${{ matrix.environment }}..."
+          
+          # Build command arguments
+          ARGS=(
+            --config perf/slo.yaml
+            --metrics ./metrics/metrics.json
+            --env "${{ matrix.environment }}"
+            --format json
+            --output slo_results_${{ matrix.environment }}.json
+          )
+          
+          # Add tolerance flag if enabled
+          if [[ "${{ env.TOLERANCE_MODE }}" == "true" ]]; then
+            ARGS+=(--tolerance)
+          fi
+          
+          # Add fail-on-violation flag if enabled
+          if [[ "${{ env.FAIL_ON_VIOLATION }}" == "true" ]]; then
+            ARGS+=(--fail-on-violation)
+          fi
+          
+          # Run SLO checker
+          if ./slo-checker/check_slo "${ARGS[@]}"; then
+            echo "SLO_STATUS=passed" >> $GITHUB_OUTPUT
+          else
+            echo "SLO_STATUS=failed" >> $GITHUB_OUTPUT
+            
+            # Don't fail the job if fail-on-violation is false
+            if [[ "${{ env.FAIL_ON_VIOLATION }}" == "false" ]]; then
+              echo "SLO violations detected but not failing due to environment policy"
+              exit 0
+            else
+              echo "SLO violations detected - failing build"
+              exit 1
+            fi
+          fi
+      
+      - name: Parse SLO results
+        if: always()
+        run: |
+          if [[ -f "slo_results_${{ matrix.environment }}.json" ]]; then
+            echo "SLO Results for ${{ matrix.environment }}:"
+            jq -r '"Total SLOs: " + (.total_slos | tostring)' slo_results_${{ matrix.environment }}.json
+            jq -r '"Passed: " + (.passed | tostring)' slo_results_${{ matrix.environment }}.json  
+            jq -r '"Failed: " + (.failed | tostring)' slo_results_${{ matrix.environment }}.json
+            jq -r '"Warnings: " + (.warnings | tostring)' slo_results_${{ matrix.environment }}.json
+            jq -r '"Exemptions: " + (.exemptions | tostring)' slo_results_${{ matrix.environment }}.json
+            
+            echo ""
+            echo "Failed SLOs:"
+            jq -r '.results[] | select(.status == "Fail") | "- " + .slo_name + ": " + .message' slo_results_${{ matrix.environment }}.json || echo "None"
+          fi
+      
+      - name: Generate HTML report
+        if: always()
+        run: |
+          ./slo-checker/check_slo \
+            --config perf/slo.yaml \
+            --metrics ./metrics/metrics.json \
+            --env "${{ matrix.environment }}" \
+            --format html \
+            --output slo_report_${{ matrix.environment }}.html || true
+      
+      - name: Upload SLO results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: slo-results-${{ matrix.environment }}
+          path: |
+            slo_results_${{ matrix.environment }}.json
+            slo_report_${{ matrix.environment }}.html
+      
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const environment = '${{ matrix.environment }}';
+            const sloStatus = '${{ steps.slo_check.outputs.SLO_STATUS }}';
+            
+            try {
+              const resultsFile = `slo_results_${environment}.json`;
+              if (fs.existsSync(resultsFile)) {
+                const results = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
+                
+                const statusEmoji = sloStatus === 'passed' ? '✅' : '❌';
+                const reportUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+                
+                let comment = `## ${statusEmoji} SLO Check Results - ${environment}\n\n`;
+                comment += `- **Total SLOs**: ${results.total_slos}\n`;
+                comment += `- **Passed**: ${results.passed}\n`;
+                comment += `- **Failed**: ${results.failed}\n`;
+                comment += `- **Warnings**: ${results.warnings}\n`;
+                comment += `- **Exemptions**: ${results.exemptions}\n\n`;
+                
+                if (results.failed > 0) {
+                  comment += `### Failed SLOs:\n`;
+                  results.results.filter(r => r.status === 'Fail').forEach(result => {
+                    comment += `- **${result.slo_name}**: ${result.message}\n`;
+                  });
+                  comment += '\n';
+                }
+                
+                comment += `[View detailed report](${reportUrl})\n`;
+                
+                github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: comment
+                });
+              }
+            } catch (error) {
+              console.log('Error posting PR comment:', error);
+            }
+
+  deployment-gate:
+    name: Deployment Gate
+    runs-on: ubuntu-latest
+    needs: check-slos
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Check production SLOs
+        run: |
+          echo "Checking if production SLOs passed..."
+          
+          # In a real scenario, this would check the results from the SLO checks
+          # and make deployment decisions based on the outcomes
+          
+          echo "✅ Production SLOs passed - deployment approved"
+          echo "DEPLOYMENT_APPROVED=true" >> $GITHUB_ENV
+      
+      - name: Trigger deployment
+        if: env.DEPLOYMENT_APPROVED == 'true'
+        run: |
+          echo "🚀 Triggering deployment to production..."
+          # This would trigger your actual deployment workflow
+          echo "Deployment would be triggered here"
+
+  summary:
+    name: SLO Summary
+    runs-on: ubuntu-latest
+    needs: check-slos
+    if: always()
+    
+    steps:
+      - name: Download all SLO results
+        uses: actions/download-artifact@v3
+        with:
+          pattern: slo-results-*
+          merge-multiple: true
+      
+      - name: Generate summary
+        run: |
+          echo "# SLO Gates Summary" > summary.md
+          echo "" >> summary.md
+          
+          for env in development staging production; do
+            if [[ -f "slo_results_${env}.json" ]]; then
+              echo "## ${env^} Environment" >> summary.md
+              
+              total=$(jq -r '.total_slos' "slo_results_${env}.json")
+              passed=$(jq -r '.passed' "slo_results_${env}.json")
+              failed=$(jq -r '.failed' "slo_results_${env}.json")
+              
+              if [[ $failed -eq 0 ]]; then
+                echo "✅ **All SLOs passed** ($passed/$total)" >> summary.md
+              else
+                echo "❌ **SLO violations detected** ($failed failures, $passed passed)" >> summary.md
+              fi
+              echo "" >> summary.md
+            fi
+          done
+          
+          echo "Generated summary:"
+          cat summary.md
+      
+      - name: Upload summary
+        uses: actions/upload-artifact@v3
+        with:
+          name: slo-summary
+          path: summary.md

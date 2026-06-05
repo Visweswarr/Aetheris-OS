@@ -11,12 +11,14 @@ use crate::crypto::pqc::kyber::{KyberKem, KyberParameterSet, KyberPublicKey, Kyb
 use crate::crypto::pqc::kyber::KyberParameterSet::Kyber768;
 use crate::secman::keys::{KeyId, SessionKey, IssuerKey};
 use crate::secman::audit::{audit_log, AuditEvent, AuditLevel};
-use crate::{kprintln, klog, kprintln};
+use crate::{kprintln, klog};
 use crate::log::Level;
 use core::time::Duration;
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use alloc::collections::{HashMap, VecDeque};
+use alloc::collections::{BTreeMap, VecDeque};
+use alloc::format;
 use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
 use spin::Mutex;
 use lazy_static::lazy_static;
@@ -51,7 +53,7 @@ pub const MAC_TAG_SIZE: usize = 16;
 //=============================================================================
 
 /// Unique identifier for an IPC stream
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StreamId {
     /// Sender process ID
     pub sender: ProcessId,
@@ -240,7 +242,7 @@ impl RollingNonceWindow {
 }
 
 /// IPC stream state and authentication
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IpcStream {
     /// Unique stream identifier
     pub id: StreamId,
@@ -422,9 +424,9 @@ impl IpcStream {
 /// Stream manager for handling multiple IPC streams
 pub struct StreamManager {
     /// Active streams indexed by stream ID
-    streams: HashMap<StreamId, IpcStream>,
+    streams: BTreeMap<StreamId, IpcStream>,
     /// Streams indexed by process pair for quick lookup
-    process_pair_streams: HashMap<(ProcessId, ProcessId), Vec<StreamId>>,
+    process_pair_streams: BTreeMap<(ProcessId, ProcessId), Vec<StreamId>>,
     /// Global stream counter
     stream_counter: AtomicU64,
     /// Statistics
@@ -435,8 +437,8 @@ impl StreamManager {
     /// Create a new stream manager
     pub fn new() -> Self {
         Self {
-            streams: HashMap::new(),
-            process_pair_streams: HashMap::new(),
+            streams: BTreeMap::new(),
+            process_pair_streams: BTreeMap::new(),
             stream_counter: AtomicU64::new(1),
             stats: StreamManagerStats::new(),
         }
@@ -465,7 +467,7 @@ impl StreamManager {
         let sequence = self.stream_counter.fetch_add(1, Ordering::Relaxed);
         
         // Generate new session key
-        let session_key = self.generate_session_key()?;
+        let session_key = Self::generate_session_key()?;
         
         // Create stream
         let stream_id = StreamId::new(sender, receiver, sequence);
@@ -527,7 +529,7 @@ impl StreamManager {
         
         for (stream_id, stream) in &mut self.streams {
             if stream.needs_rotation() {
-                match self.generate_session_key() {
+                match Self::generate_session_key() {
                     Ok(new_key) => {
                         if let Err(e) = stream.rotate_key(new_key) {
                             klog!(ERROR, "[STREAM-MANAGER] Failed to rotate key for stream {}: {}", 
@@ -567,7 +569,7 @@ impl StreamManager {
     }
     
     /// Generate a new session key
-    fn generate_session_key(&self) -> Result<StreamSessionKey, String> {
+    fn generate_session_key() -> Result<StreamSessionKey, String> {
         // Generate Kyber keypair
         let (public_key, secret_key) = KyberKem::generate_keypair(Kyber768)
             .map_err(|e| format!("Failed to generate Kyber keypair: {}", e))?;

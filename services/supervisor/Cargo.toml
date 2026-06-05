@@ -1,0 +1,16 @@
+[package]
+name = "polymera-supervisor"
+version = "0.1.0"
+edition = "2021"
+description = "OTP-style supervisor trees for Polymera OS (Initiative 6)"
+
+[dependencies]
+tokio       = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+serde       = { version = "1", features = ["derive"] }
+toml        = "0.8"
+thiserror   = "1"
+tracing     = "0.1"
+
+[dev-dependencies]
+tokio       = { version = "1", features = ["test-util"] }
+tracing-subscriber = "0.3"

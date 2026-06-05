@@ -1,0 +1,21 @@
+id,title,phase,area,owner,estimate,due,depends_on,acceptance_criteria
+BL-001,Consolidate architecture docs,P2,Architecture,ARCH,5d,,-,Architecture diagrams committed; components and interfaces listed
+BL-002,Security model baseline (CapToken v2 rollup),P2,Security,SEC,4d,,-,SECURITY_MODEL.md covers AI sandbox, syscall scopes, audit
+BL-003,Assistant UX prototype,P3,AI+UX,AI,7d,BL-001,Assistant sidebar prototype passes 3 key flows with usability notes
+BL-004,Browser spec & prototype,P3,AI+Browser,APP,7d,BL-001,Spec covers Q&A/summarize; prototype loads page and shows AI summary
+BL-005,Notes spec & prototype,P3,AI+Notes,APP,5d,BL-001,Prototype: create note; summarize; improve writing; save
+BL-006,Social hub wireframe,P3,Social+UX,APP,4d,BL-001,Unified feed wireframes; contact card; reply actions
+BL-007,XR home wireframe,P3,XR,XR,5d,BL-001,Spatial window layout; controller/gaze interactions documented
+BL-008,Shell boot to GUI,P4,Core,PLAT,10d,BL-001,Wayland compositor boots; open/move/resize test app
+BL-009,AI assistant v1 backend,P4,AI,AI,8d,BL-003,Text Q&A; simple OS actions; session memory; logs
+BL-010,Notes v1 app,P4,Apps,APP,6d,BL-005,Create/edit; summarize action; voice transcribe; save
+BL-011,Browser v1 app,P4,Apps,APP,8d,BL-004,Load pages; AI sidebar summarize/Q&A; safe DOM extract
+BL-012,Calendar v1 app,P4,Apps,APP,6d,BL-001,Create event; NL parse date/time; list views
+BL-013,Email v1 app,P4,Apps,APP,8d,BL-001,IMAP read; summarize thread; AI compose basic draft
+BL-014,Cloud sync MVP,P4,Cloud,CLD,7d,BL-001,Sign-in; notes sync; TLS; token auth
+BL-015,Wallet v1 (testnet),P4,Web3,W3,7d,BL-002,Key gen; balance view; testnet send; PIN confirm
+BL-016,Agentic browser plan/act,P5,AI+Browser,AI,12d,BL-011,Plan approval UI; headless actions; source citations
+BL-017,XR home MVP,P5,XR,XR,12d,BL-007,Spatial 2D windows; basic room; perf target met
+BL-018,Social hub v2 + Aetheris Chat,P5,Social,APP,12d,BL-006,Unified feed; reply; E2E chat; AI summary
+BL-019,Perf gates + pen-test,P5,Perf+Security,SEC,10d,BL-008,Perf <targets>; critical vulns fixed; report complete
+BL-020,Docs & tutorials,P6,Docs,DOCS,8d,BL-019,User guide; onboarding; assistant-integrated help

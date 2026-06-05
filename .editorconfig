@@ -1,8 +1,9 @@
 # EditorConfig is awesome: https://EditorConfig.org
+
 # top-most EditorConfig file
 root = true
 
-# Unix-style newlines with a newline ending every file
+# All files
 [*]
 charset = utf-8
 end_of_line = lf
@@ -15,23 +16,11 @@ indent_style = space
 indent_size = 4
 max_line_length = 100
 
-# C++ files
-[*.{cpp,hpp,cc,hh,cxx,hxx}]
-indent_style = space
+# Go files
+[*.go]
+indent_style = tab
 indent_size = 4
-max_line_length = 100
-
-# C files
-[*.{c,h}]
-indent_style = space
-indent_size = 4
-max_line_length = 100
-
-# TypeScript/JavaScript files
-[*.{ts,tsx,js,jsx}]
-indent_style = space
-indent_size = 2
-max_line_length = 100
+max_line_length = 120
 
 # Python files
 [*.py]
@@ -39,15 +28,8 @@ indent_style = space
 indent_size = 4
 max_line_length = 88
 
-# Markdown files
-[*.md]
-indent_style = space
-indent_size = 2
-max_line_length = off
-trim_trailing_whitespace = false
-
-# YAML files
-[*.{yml,yaml}]
+# TypeScript/JavaScript files
+[*.{ts,js,tsx,jsx}]
 indent_style = space
 indent_size = 2
 max_line_length = 100
@@ -56,56 +38,190 @@ max_line_length = 100
 [*.json]
 indent_style = space
 indent_size = 2
-max_line_length = 100
 
-# TOML files
-[*.toml]
+# YAML files
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# Markdown files
+[*.md]
+indent_style = space
+indent_size = 2
+max_line_length = 80
+trim_trailing_whitespace = false
+
+# Shell scripts (force LF)
+[*.sh]
+end_of_line = lf
+indent_style = space
+indent_size = 2
+
+# PowerShell scripts (allow CRLF on Windows)
+[*.ps1]
+end_of_line = crlf
+indent_style = space
+indent_size = 4
+
+# Makefile (tabs required)
+[Makefile]
+indent_style = tab
+indent_size = 4
+
+# C/C++ files
+[*.{c,cpp,h,hpp}]
 indent_style = space
 indent_size = 4
 max_line_length = 100
 
-# Protocol Buffer files
-[*.proto]
+# Header files
+[*.h]
+indent_style = space
+indent_size = 4
+
+# Assembly files
+[*.{s,S,asm}]
+indent_style = space
+indent_size = 4
+
+# Configuration files
+[*.{toml,ini,cfg}]
 indent_style = space
 indent_size = 2
-max_line_length = 100
 
-# Shell scripts
-[*.sh]
+# Docker files
+[Dockerfile*]
 indent_style = space
 indent_size = 2
-max_line_length = 100
 
-# Makefiles
-[Makefile]
+# Git files
+[.gitignore]
+indent_style = space
+indent_size = 2
+
+# CI/CD files
+[.github/**/*.yml]
+indent_style = space
+indent_size = 2
+
+[.github/**/*.yaml]
+indent_style = space
+indent_size = 2
+
+# Package files
+[package.json]
+indent_style = space
+indent_size = 2
+
+[package-lock.json]
+indent_style = space
+indent_size = 2
+
+[Cargo.toml]
+indent_style = space
+indent_size = 4
+
+[go.mod]
 indent_style = tab
+indent_size = 4
+
+[go.sum]
+indent_style = tab
+indent_size = 4
+
+# Requirements files
+[requirements*.txt]
+indent_style = space
+indent_size = 2
 
 # CMake files
 [CMakeLists.txt]
 indent_style = space
 indent_size = 2
-max_line_length = 100
 
-# Bazel files
-[BUILD]
-indent_style = space
-indent_size = 4
-max_line_length = 100
-
-[WORKSPACE]
-indent_style = space
-indent_size = 4
-max_line_length = 100
-
-# Configuration files
-[*.{cfg,conf,config}]
+[*.cmake]
 indent_style = space
 indent_size = 2
-max_line_length = 100
 
-# Documentation files
-[*.{txt,adoc,asciidoc}]
+# XML files
+[*.xml]
 indent_style = space
 indent_size = 2
-max_line_length = off
+
+# HTML files
+[*.html]
+indent_style = space
+indent_size = 2
+
+# CSS files
+[*.css]
+indent_style = space
+indent_size = 2
+
+# SCSS files
+[*.scss]
+indent_style = space
+indent_size = 2
+
+# SQL files
+[*.sql]
+indent_style = space
+indent_size = 2
+
+# Protocol buffer files
+[*.proto]
+indent_style = space
+indent_size = 2
+
+# CDDL files
+[*.cddl]
+indent_style = space
+indent_size = 2
+
+# License files
+[LICENSE*]
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = false
+
+# README files
+[README*]
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = false
+
+# CHANGELOG files
+[CHANGELOG*]
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = false
+
+# Binary files (no changes)
+[*.{png,jpg,jpeg,gif,ico,svg,pdf,zip,tar,gz,bz2,xz,7z,rar}]
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+# WebAssembly files
+[*.wasm]
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+# Executable files
+[*.{exe,bin,so,dylib,dll}]
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+# Font files
+[*.{ttf,otf,woff,woff2,eot}]
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+# Audio/Video files
+[*.{mp3,mp4,avi,mkv,flv,webm,ogg,wav}]
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+# Archive files
+[*.{tar,gz,bz2,xz,7z,rar,zip}]
+insert_final_newline = false
 trim_trailing_whitespace = false

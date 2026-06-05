@@ -1,0 +1,102 @@
+[
+  {
+    "title": "P5-A1: Multi-modal AI Orchestrator (vision+audio+text unification)",
+    "body": "## Overview\nImplement a unified AI orchestrator that can seamlessly coordinate between vision, audio, and text processing pipelines.\n\n## Goals\n- **Unified Interface**: Single API for multi-modal AI operations\n- **Pipeline Coordination**: Efficient resource sharing between modalities\n- **Context Awareness**: Cross-modal context sharing and fusion\n- **Performance**: <50ms end-to-end latency for multi-modal operations\n\n## Technical Requirements\n- **Architecture**: Microservice-based orchestrator\n- **Communication**: gRPC for inter-service communication\n- **Scheduling**: Priority-based task scheduling\n- **Memory**: Shared context pools for efficiency\n\n## Success Criteria\n- [ ] Single API endpoint for multi-modal requests\n- [ ] <50ms latency for vision+audio+text fusion\n- [ ] 95%+ accuracy on multi-modal tasks\n- [ ] Comprehensive test coverage\n\n## Dependencies\n- Phase 4 AI components\n- Vision processing pipeline\n- Audio processing pipeline\n- Text processing pipeline\n\n## Labels\n`phase5`, `ai-core`, `determinism`, `perf`",
+    "labels": [
+      "phase5",
+      "ai-core",
+      "determinism",
+      "perf"
+    ]
+  },
+  {
+    "title": "P5-A2: Assistant Kernel (task graph, memory, tool-use)",
+    "body": "## Overview\nDevelop an intelligent assistant kernel that can understand, plan, and execute complex tasks using a graph-based approach.\n\n## Goals\n- **Task Graph**: Visual representation of complex workflows\n- **Memory System**: Persistent and working memory for context\n- **Tool Integration**: Seamless integration with external tools\n- **Learning**: Ability to improve from user interactions\n\n## Technical Requirements\n- **Graph Engine**: Efficient task graph execution\n- **Memory Management**: Hierarchical memory system\n- **Tool Registry**: Dynamic tool discovery and integration\n- **State Management**: Robust state persistence and recovery\n\n## Success Criteria\n- [ ] Task graph visualization and editing\n- [ ] Memory persistence across sessions\n- [ ] Tool integration framework\n- [ ] Learning from user feedback\n\n## Dependencies\n- Multi-modal AI Orchestrator (P5-A1)\n- Tool registry system\n- Memory storage backend\n\n## Labels\n`phase5`, `ai-core`, `determinism`, `perf`",
+    "labels": [
+      "phase5",
+      "ai-core",
+      "determinism",
+      "perf"
+    ]
+  },
+  {
+    "title": "P5-A3: Model Loader w/ Signature Verification & Policy",
+    "body": "## Overview\nImplement a secure model loading system with cryptographic signature verification and policy-based access control.\n\n## Goals\n- **Security**: Cryptographic verification of model integrity\n- **Policy Engine**: Fine-grained access control for models\n- **Performance**: Fast model loading and caching\n- **Compliance**: Audit trail for model usage\n\n## Technical Requirements\n- **Signature Verification**: Ed25519/ECDSA model signatures\n- **Policy Engine**: Rule-based access control\n- **Model Registry**: Centralized model management\n- **Audit Logging**: Comprehensive usage tracking\n\n## Success Criteria\n- [ ] Cryptographic model verification\n- [ ] Policy-based access control\n- [ ] Model registry with metadata\n- [ ] Audit logging system\n\n## Dependencies\n- Cryptographic libraries\n- Policy engine framework\n- Model storage backend\n\n## Labels\n`phase5`, `ai-core`, `security`, `perf`",
+    "labels": [
+      "phase5",
+      "ai-core",
+      "security",
+      "perf"
+    ]
+  },
+  {
+    "title": "P5-A4: LoRA/Adapters (edge fine-tuning hooks)",
+    "body": "## Overview\nEnable on-device model fine-tuning using LoRA (Low-Rank Adaptation) and adapter techniques.\n\n## Goals\n- **Edge Training**: On-device model adaptation\n- **Efficiency**: Minimal computational overhead\n- **Flexibility**: Support for multiple adaptation techniques\n- **Privacy**: Keep training data on-device\n\n## Technical Requirements\n- **LoRA Implementation**: Low-rank matrix adaptation\n- **Adapter Framework**: Modular adaptation layers\n- **Training Pipeline**: Efficient on-device training\n- **Model Management**: Version control for adapted models\n\n## Success Criteria\n- [ ] LoRA adaptation implementation\n- [ ] Adapter framework\n- [ ] On-device training pipeline\n- [ ] Model versioning system\n\n## Dependencies\n- Model Loader (P5-A3)\n- Training infrastructure\n- Model storage system\n\n## Labels\n`phase5`, `ai-core`, `privacy`, `perf`",
+    "labels": [
+      "phase5",
+      "ai-core",
+      "privacy",
+      "perf"
+    ]
+  },
+  {
+    "title": "P5-A5: Deterministic+Adaptive Replay (delta-tolerances, canonicalization)",
+    "body": "## Overview\nEnhance the deterministic replay system with adaptive tolerances and canonicalization for improved reliability.\n\n## Goals\n- **Adaptive Tolerances**: Dynamic tolerance adjustment based on context\n- **Canonicalization**: Standardized data representation\n- **Reliability**: Improved replay accuracy\n- **Performance**: Minimal overhead for deterministic operations\n\n## Technical Requirements\n- **Tolerance Engine**: Dynamic tolerance calculation\n- **Canonicalization**: Data normalization pipeline\n- **Replay Engine**: Enhanced deterministic execution\n- **Monitoring**: Replay accuracy tracking\n\n## Success Criteria\n- [ ] Adaptive tolerance system\n- [ ] Data canonicalization pipeline\n- [ ] Enhanced replay accuracy\n- [ ] Performance monitoring\n\n## Dependencies\n- Phase 4 deterministic replay\n- Tolerance calculation algorithms\n- Data normalization libraries\n\n## Labels\n`phase5`, `ai-core`, `determinism`, `perf`",
+    "labels": [
+      "phase5",
+      "ai-core",
+      "determinism",
+      "perf"
+    ]
+  },
+  {
+    "title": "P5-A6: Perf & Memory Budgets (on-device schedules)",
+    "body": "## Overview\nImplement performance and memory budget management for on-device AI operations with intelligent scheduling.\n\n## Goals\n- **Budget Management**: CPU, memory, and power budgets\n- **Intelligent Scheduling**: Priority-based resource allocation\n- **Adaptive Scaling**: Dynamic resource adjustment\n- **Monitoring**: Real-time performance tracking\n\n## Technical Requirements\n- **Budget Engine**: Resource allocation and tracking\n- **Scheduler**: Priority-based task scheduling\n- **Scaling Logic**: Dynamic resource adjustment\n- **Metrics**: Comprehensive performance monitoring\n\n## Success Criteria\n- [ ] Resource budget management\n- [ ] Intelligent task scheduling\n- [ ] Adaptive resource scaling\n- [ ] Performance monitoring dashboard\n\n## Dependencies\n- Performance monitoring infrastructure\n- Resource management APIs\n- Scheduling algorithms\n\n## Labels\n`phase5`, `ai-core`, `perf`, `resource-management`",
+    "labels": [
+      "phase5",
+      "ai-core",
+      "perf",
+      "resource-management"
+    ]
+  },
+  {
+    "title": "P5-A7: Privacy: on-device first, redaction, PHI/PII guards",
+    "body": "## Overview\nImplement comprehensive privacy protection with on-device processing, data redaction, and PHI/PII detection.\n\n## Goals\n- **On-Device Processing**: Keep sensitive data local\n- **Data Redaction**: Automatic sensitive data removal\n- **PHI/PII Detection**: Identify and protect personal information\n- **Compliance**: Meet privacy regulations (GDPR, HIPAA, etc.)\n\n## Technical Requirements\n- **Redaction Engine**: Automatic data sanitization\n- **PHI/PII Detector**: ML-based sensitive data identification\n- **Privacy Policies**: Configurable privacy rules\n- **Audit System**: Privacy compliance tracking\n\n## Success Criteria\n- [ ] On-device processing pipeline\n- [ ] Automatic data redaction\n- [ ] PHI/PII detection system\n- [ ] Privacy compliance reporting\n\n## Dependencies\n- Privacy detection models\n- Data redaction libraries\n- Compliance frameworks\n\n## Labels\n`phase5`, `ai-core`, `privacy`, `security`",
+    "labels": [
+      "phase5",
+      "ai-core",
+      "privacy",
+      "security"
+    ]
+  },
+  {
+    "title": "P5-A8: Developer APIs (TS/Go/Rust/Python parity)",
+    "body": "## Overview\nProvide comprehensive developer APIs with feature parity across TypeScript, Go, Rust, and Python.\n\n## Goals\n- **API Parity**: Consistent functionality across languages\n- **Developer Experience**: Easy-to-use, well-documented APIs\n- **Performance**: Native performance for each language\n- **Ecosystem**: Rich ecosystem of tools and libraries\n\n## Technical Requirements\n- **API Design**: RESTful and gRPC APIs\n- **Language Bindings**: Native bindings for each language\n- **Documentation**: Comprehensive API documentation\n- **SDKs**: Language-specific SDKs\n\n## Success Criteria\n- [ ] Feature parity across all languages\n- [ ] Comprehensive API documentation\n- [ ] Language-specific SDKs\n- [ ] Developer tooling and examples\n\n## Dependencies\n- Core AI services\n- API gateway\n- Documentation system\n\n## Labels\n`phase5`, `ai-core`, `developer-experience`, `apis`",
+    "labels": [
+      "phase5",
+      "ai-core",
+      "developer-experience",
+      "apis"
+    ]
+  },
+  {
+    "title": "P5-A9: Observability (trace/metrics/events)",
+    "body": "## Overview\nImplement comprehensive observability with distributed tracing, metrics, and event logging for AI operations.\n\n## Goals\n- **Distributed Tracing**: End-to-end request tracing\n- **Metrics**: Comprehensive performance and business metrics\n- **Event Logging**: Structured event logging\n- **Dashboards**: Real-time monitoring dashboards\n\n## Technical Requirements\n- **Tracing**: OpenTelemetry-compatible tracing\n- **Metrics**: Prometheus-compatible metrics\n- **Logging**: Structured JSON logging\n- **Visualization**: Grafana dashboards\n\n## Success Criteria\n- [ ] Distributed tracing system\n- [ ] Comprehensive metrics collection\n- [ ] Structured event logging\n- [ ] Real-time monitoring dashboards\n\n## Dependencies\n- OpenTelemetry libraries\n- Metrics collection infrastructure\n- Logging aggregation system\n\n## Labels\n`phase5`, `ai-core`, `observability`, `monitoring`",
+    "labels": [
+      "phase5",
+      "ai-core",
+      "observability",
+      "monitoring"
+    ]
+  },
+  {
+    "title": "P5-A10: CI Gates for AI drift & perf",
+    "body": "## Overview\nImplement CI/CD gates to detect AI model drift and performance regressions automatically.\n\n## Goals\n- **Drift Detection**: Automatic detection of model performance drift\n- **Performance Gates**: Automated performance regression detection\n- **Quality Assurance**: Automated quality checks\n- **Continuous Monitoring**: Ongoing model health monitoring\n\n## Technical Requirements\n- **Drift Detection**: Statistical and ML-based drift detection\n- **Performance Testing**: Automated performance benchmarking\n- **Quality Metrics**: Automated quality assessment\n- **CI Integration**: GitHub Actions integration\n\n## Success Criteria\n- [ ] Automated drift detection\n- [ ] Performance regression gates\n- [ ] Quality assurance automation\n- [ ] CI/CD integration\n\n## Dependencies\n- Drift detection algorithms\n- Performance testing framework\n- CI/CD infrastructure\n\n## Labels\n`phase5`, `ai-core`, `ci-cd`, `quality-assurance`",
+    "labels": [
+      "phase5",
+      "ai-core",
+      "ci-cd",
+      "quality-assurance"
+    ]
+  }
+]

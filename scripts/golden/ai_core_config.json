@@ -1,0 +1,194 @@
+{
+  "seed": 42,
+  "prompts": [
+    {
+      "id": "simple_question",
+      "text": "What is the capital of France?",
+      "expected_response": {
+        "min_length": 10,
+        "max_length": 100,
+        "keywords": ["Paris", "France", "capital"],
+        "response_type": "Text"
+      },
+      "expected_tool_calls": []
+    },
+    {
+      "id": "math_problem",
+      "text": "What is 15 + 27?",
+      "expected_response": {
+        "min_length": 5,
+        "max_length": 50,
+        "keywords": ["42"],
+        "response_type": "Text"
+      },
+      "expected_tool_calls": []
+    },
+    {
+      "id": "code_generation",
+      "text": "Write a simple Python function to calculate the factorial of a number.",
+      "expected_response": {
+        "min_length": 50,
+        "max_length": 500,
+        "keywords": ["def", "factorial", "python", "function"],
+        "response_type": "Code"
+      },
+      "expected_tool_calls": []
+    },
+    {
+      "id": "file_operation",
+      "text": "Create a new file called 'test.txt' with the content 'Hello World'.",
+      "expected_response": {
+        "min_length": 20,
+        "max_length": 200,
+        "keywords": ["file", "created", "test.txt"],
+        "response_type": "ToolCall"
+      },
+      "expected_tool_calls": ["create_file"]
+    },
+    {
+      "id": "search_query",
+      "text": "Search for information about artificial intelligence.",
+      "expected_response": {
+        "min_length": 30,
+        "max_length": 300,
+        "keywords": ["artificial", "intelligence", "AI"],
+        "response_type": "ToolCall"
+      },
+      "expected_tool_calls": ["search_files"]
+    },
+    {
+      "id": "complex_reasoning",
+      "text": "Explain the difference between supervised and unsupervised machine learning, and provide examples of each.",
+      "expected_response": {
+        "min_length": 100,
+        "max_length": 800,
+        "keywords": ["supervised", "unsupervised", "machine learning", "examples"],
+        "response_type": "Text"
+      },
+      "expected_tool_calls": []
+    },
+    {
+      "id": "system_command",
+      "text": "Show me the current system time.",
+      "expected_response": {
+        "min_length": 10,
+        "max_length": 100,
+        "keywords": ["time", "current", "system"],
+        "response_type": "ToolCall"
+      },
+      "expected_tool_calls": ["get_system_time"]
+    },
+    {
+      "id": "memory_operation",
+      "text": "Remember that my favorite color is blue.",
+      "expected_response": {
+        "min_length": 15,
+        "max_length": 100,
+        "keywords": ["remembered", "favorite", "color", "blue"],
+        "response_type": "ToolCall"
+      },
+      "expected_tool_calls": ["mem.put"]
+    },
+    {
+      "id": "error_handling",
+      "text": "Divide by zero: 5 / 0",
+      "expected_response": {
+        "min_length": 20,
+        "max_length": 150,
+        "keywords": ["error", "division", "zero", "undefined"],
+        "response_type": "Text"
+      },
+      "expected_tool_calls": []
+    },
+    {
+      "id": "multimodal_request",
+      "text": "Describe what you see in this image: [IMAGE_PLACEHOLDER]",
+      "expected_response": {
+        "min_length": 30,
+        "max_length": 400,
+        "keywords": ["image", "see", "describe"],
+        "response_type": "Text"
+      },
+      "expected_tool_calls": []
+    }
+  ],
+  "model_config": {
+    "model_name": "gpt-3.5-turbo",
+    "temperature": 0.0,
+    "max_tokens": 1000,
+    "top_p": 1.0,
+    "stop_sequences": ["\n\n", "Human:", "Assistant:"]
+  },
+  "expected_outputs": {
+    "simple_question": {
+      "response_hash": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0",
+      "token_count": 25,
+      "processing_time_ms": 150,
+      "tool_calls": [],
+      "expected_error": null
+    },
+    "math_problem": {
+      "response_hash": "b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1",
+      "token_count": 15,
+      "processing_time_ms": 100,
+      "tool_calls": [],
+      "expected_error": null
+    },
+    "code_generation": {
+      "response_hash": "c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2",
+      "token_count": 120,
+      "processing_time_ms": 300,
+      "tool_calls": [],
+      "expected_error": null
+    },
+    "file_operation": {
+      "response_hash": "d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3",
+      "token_count": 45,
+      "processing_time_ms": 200,
+      "tool_calls": ["create_file"],
+      "expected_error": null
+    },
+    "search_query": {
+      "response_hash": "e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4",
+      "token_count": 80,
+      "processing_time_ms": 250,
+      "tool_calls": ["search_files"],
+      "expected_error": null
+    },
+    "complex_reasoning": {
+      "response_hash": "f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5",
+      "token_count": 200,
+      "processing_time_ms": 500,
+      "tool_calls": [],
+      "expected_error": null
+    },
+    "system_command": {
+      "response_hash": "g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6",
+      "token_count": 30,
+      "processing_time_ms": 120,
+      "tool_calls": ["get_system_time"],
+      "expected_error": null
+    },
+    "memory_operation": {
+      "response_hash": "h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7",
+      "token_count": 35,
+      "processing_time_ms": 180,
+      "tool_calls": ["mem.put"],
+      "expected_error": null
+    },
+    "error_handling": {
+      "response_hash": "i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8",
+      "token_count": 40,
+      "processing_time_ms": 110,
+      "tool_calls": [],
+      "expected_error": null
+    },
+    "multimodal_request": {
+      "response_hash": "j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9",
+      "token_count": 90,
+      "processing_time_ms": 400,
+      "tool_calls": [],
+      "expected_error": null
+    }
+  }
+}

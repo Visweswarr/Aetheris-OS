@@ -8,6 +8,7 @@ pub mod rendezvous;
 pub mod did;
 pub mod peerbook;
 pub mod mesh;
+pub mod overlay;
 pub mod tests;
 
 // Re-export main types for convenience
@@ -16,6 +17,7 @@ pub use rendezvous::{RendezvousService, RendezvousConfig, PeerInfo, PolynetBehav
 pub use did::DidPeerId;
 pub use peerbook::{PeerBook, PeerBookEntry, PeerBookStats};
 pub use mesh::{MeshNode, MeshNodeConfig, MeshConfig};
+pub use overlay::{OverlayNode, OverlayConfig, OverlayBehaviour, OverlayEvent, OverlayStats};
 
 // Re-export libp2p types that are commonly used
 pub use libp2p::{PeerId, Multiaddr};

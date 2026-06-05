@@ -4,8 +4,11 @@
 /// including sys_debug operations for key management, statistics, and
 /// administrative functions.
 
-use crate::{kprintln, klog, kprintln};
+use crate::{kprintln, klog, format};
 use crate::log::Level;
+use alloc::string::ToString;
+use alloc::string::String;
+use core::time::Duration;
 use super::keys::*;
 use super::audit::*;
 use super::cap_store::*;
@@ -132,12 +135,7 @@ fn handle_rotate_keys_now() -> Result<u64, String> {
     kprintln!("=== END KEY ROTATION ===");
     
     // Log audit entry
-    let audit_entry = AuditEntry::new(
-        ops::SEC_ADMIN_OP,
-        0, // No specific resource
-        "Forced immediate key rotation".to_string(),
-        Some(format!("{} keys rotated", rotated_count)),
-    );
+    let audit_entry = AuditEntry::new(0, ops::SEC_ADMIN_OP, 0);
     log_audit_entry(audit_entry);
     
     Ok(rotated_count as u64)
@@ -154,12 +152,7 @@ fn handle_purge_key_cache() -> Result<u64, String> {
     kprintln!("=== END KEY CACHE PURGE ===");
     
     // Log audit entry
-    let audit_entry = AuditEntry::new(
-        ops::SEC_ADMIN_OP,
-        0, // No specific resource
-        "Purged expired keys from cache".to_string(),
-        Some(format!("{} keys purged", purged_count)),
-    );
+    let audit_entry = AuditEntry::new(0, ops::SEC_ADMIN_OP, 0);
     log_audit_entry(audit_entry);
     
     Ok(purged_count as u64)
@@ -204,13 +197,7 @@ fn handle_set_rotation_policy(arg1: u64, arg2: u64, arg3: u64) -> Result<u64, St
     kprintln!("=== END ROTATION POLICY ===");
     
     // Log audit entry
-    let audit_entry = AuditEntry::new(
-        ops::SEC_ADMIN_OP,
-        0, // No specific resource
-        "Updated key rotation policy".to_string(),
-        Some(format!("interval={}s, threshold={}, auto={}", 
-                    rotation_interval.as_secs(), message_threshold, auto_rotation)),
-    );
+    let audit_entry = AuditEntry::new(0, ops::SEC_ADMIN_OP, 0);
     log_audit_entry(audit_entry);
     
     Ok(0)
@@ -264,8 +251,8 @@ fn handle_print_audit_entries(count: u64) -> Result<u64, String> {
     
     let count = count.min(100) as usize; // Limit to 100 entries
     
-    print_recent_audit_entries(count);
-    
+    crate::secman::audit::print_recent_audit_entries(count);
+
     Ok(count as u64)
 }
 
@@ -319,12 +306,7 @@ fn handle_reset_statistics() -> Result<u64, String> {
     kprintln!("=== END STATISTICS RESET ===");
     
     // Log audit entry
-    let audit_entry = AuditEntry::new(
-        ops::SEC_ADMIN_OP,
-        0, // No specific resource
-        "Reset all Security Manager statistics".to_string(),
-        None,
-    );
+    let audit_entry = AuditEntry::new(0, ops::SEC_ADMIN_OP, 0);
     log_audit_entry(audit_entry);
     
     Ok(0)
@@ -348,12 +330,7 @@ fn handle_perform_maintenance() -> Result<u64, String> {
     kprintln!("=== END MAINTENANCE ===");
     
     // Log audit entry
-    let audit_entry = AuditEntry::new(
-        ops::SEC_ADMIN_OP,
-        0, // No specific resource
-        "Performed Security Manager maintenance".to_string(),
-        None,
-    );
+    let audit_entry = AuditEntry::new(0, ops::SEC_ADMIN_OP, 0);
     log_audit_entry(audit_entry);
     
     Ok(0)
@@ -371,12 +348,7 @@ fn handle_emergency_purge() -> Result<u64, String> {
     kprintln!("=== END EMERGENCY PURGE ===");
     
     // Log audit entry
-    let audit_entry = AuditEntry::new(
-        ops::SEC_ADMIN_OP,
-        0, // No specific resource
-        "Emergency purge of all keys".to_string(),
-        Some(format!("{} keys purged", purged_count)),
-    );
+    let audit_entry = AuditEntry::new(0, ops::SEC_ADMIN_OP, 0);
     log_audit_entry(audit_entry);
     
     Ok(purged_count as u64)
@@ -457,6 +429,12 @@ fn reset_did_stats() {
 fn perform_audit_maintenance() {
     // TODO: Implement audit maintenance
     klog!(INFO, "[SECMAN-API] Performed audit maintenance");
+}
+
+/// Reset audit statistics
+fn reset_audit_stats() {
+    // TODO: Implement audit stats reset
+    klog!(INFO, "[SECMAN-API] Reset audit statistics");
 }
 
 /// Perform capability maintenance
@@ -592,7 +570,7 @@ fn handle_create_stream(sender_pid: u64, receiver_pid: u64) -> Result<u64, Strin
     
     klog!(INFO, "[SECMAN-API] Creating stream between processes {} and {}", sender_pid, receiver_pid);
     
-    match create_stream(sender_pid, receiver_pid) {
+    match create_stream(crate::ipc::ProcessId(sender_pid), crate::ipc::ProcessId(receiver_pid)) {
         Ok(stream_id) => {
             klog!(INFO, "[SECMAN-API] Created stream: {}", stream_id);
             Ok(stream_id.sequence)
@@ -640,6 +618,11 @@ pub fn test_secman_api() {
     let _ = handle_perform_maintenance();
     
     kprintln!("[SECMAN-API] API test completed");
+}
+
+/// Helper to log audit entry
+fn log_audit_entry(entry: AuditEntry) {
+    crate::kprintln!("[AUDIT] {:?}", entry);
 }
 
 #[cfg(test)]

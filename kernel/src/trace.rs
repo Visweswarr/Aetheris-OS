@@ -701,12 +701,12 @@ pub fn get_system_stats() -> SystemStats {
         ipc_mac_validations: 0, // Will be populated from IPC auth manager
         ipc_auth_avg_overhead_us: 0, // Will be populated from IPC auth manager
         jitter_budget_active: if crate::sched::tick::is_jitter_budget_active() { 1 } else { 0 },
-        jitter_budget_activations: crate::sched::tick::get_jitter_budget().budget_activations,
-        jitter_budget_current_ticks: crate::sched::tick::get_jitter_budget().current_budget_ticks,
-        jitter_budget_total_ticks: crate::sched::tick::get_jitter_budget().total_budget_ticks,
+        jitter_budget_activations: crate::sched::tick::get_jitter_budget().get_total_overruns(),
+        jitter_budget_current_ticks: crate::sched::tick::get_jitter_budget().get_boost_remaining_ms() as u64,
+        jitter_budget_total_ticks: crate::sched::tick::get_jitter_budget().get_total_overruns(),
         rt_task_boost_factor: (crate::sched::tick::get_rt_task_boost_factor() * 100.0) as u32,
-        consecutive_high_jitter: crate::sched::tick::get_jitter_budget().consecutive_high_jitter,
-        jitter_threshold_us: crate::sched::tick::get_jitter_budget().jitter_threshold_us,
+        consecutive_high_jitter: crate::sched::tick::get_jitter_budget().get_consecutive_overruns(),
+        jitter_threshold_us: crate::sched::tick::get_jitter_budget().get_max_jitter_us(),
     }
 }
 
@@ -923,4 +923,53 @@ pub fn test_trace() {
     
     kprintln!("=== TRACING SYSTEM TEST COMPLETE ===");
     kprintln!("");
+}
+
+/// IPC operation kind for fabric-level tracing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IpcOperation {
+    Send,
+    Receive,
+    CreateChannel,
+    DestroyChannel,
+    Poll,
+}
+
+/// Lightweight IPC trace event (sender, receiver, payload size, priority).
+#[inline]
+pub fn trace_ipc<S, D, P>(_sender: S, _dst: D, _payload_size: u32, _priority: P) {
+    trace_message_sent();
+}
+
+/// Generic IPC operation trace (used by extended tracing paths).
+#[inline]
+pub fn trace_ipc_operation<A, B, C, D>(
+    _op: IpcOperation,
+    _a: A,
+    _b: B,
+    _c: C,
+    _d: D,
+) {
+    trace_message_received();
+}
+
+/// Record a process switch event (stub – feeds the context-switch counter).
+#[inline]
+pub fn trace_process_switch<A, B>(_from: A, _to: B) {
+    trace_context_switch();
+}
+
+/// Dump the most recent process-switch records (stub).
+pub fn print_recent_process_switches() {
+    kprintln!("[trace] recent process switches: (none recorded)");
+}
+
+/// Dump the most recent IPC traces (stub).
+pub fn print_recent_ipc_traces() {
+    kprintln!("[trace] recent ipc traces: (none recorded)");
+}
+
+/// Print per-task statistics (stub).
+pub fn print_task_stats() {
+    kprintln!("[trace] task stats: (none recorded)");
 }

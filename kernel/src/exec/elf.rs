@@ -6,6 +6,9 @@
 
 use core::mem::size_of;
 use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::format;
+use alloc::vec;
 
 /// ELF magic number constants
 pub const ELF_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46]; // "\x7fELF"
@@ -40,7 +43,7 @@ pub enum ElfVersion {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElfOsAbi {
-    None = 0,
+    /// System V / None (both are 0 in ELF spec)
     SystemV = 0,
     HPUX = 1,
     NetBSD = 2,
@@ -51,6 +54,9 @@ pub enum ElfOsAbi {
     FreeBSD = 9,
     OpenBSD = 12,
 }
+
+/// Alias for SystemV (both are 0 in ELF spec)
+pub const ELF_OSABI_NONE: ElfOsAbi = ElfOsAbi::SystemV;
 
 /// ELF file type constants
 #[repr(u16)]
@@ -255,7 +261,7 @@ impl Elf64Header {
     /// Get the OS/ABI from the header
     pub fn get_os_abi(&self) -> ElfOsAbi {
         match self.e_ident[7] {
-            0 => ElfOsAbi::None,
+            0 => ElfOsAbi::SystemV,
             1 => ElfOsAbi::HPUX,
             2 => ElfOsAbi::NetBSD,
             3 => ElfOsAbi::Linux,
@@ -264,7 +270,7 @@ impl Elf64Header {
             8 => ElfOsAbi::IRIX,
             9 => ElfOsAbi::FreeBSD,
             12 => ElfOsAbi::OpenBSD,
-            _ => ElfOsAbi::None,
+            _ => ElfOsAbi::SystemV,
         }
     }
     

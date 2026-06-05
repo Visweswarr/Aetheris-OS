@@ -3,8 +3,7 @@
 //! This module provides comprehensive memory safety features for debug builds,
 //! including free-poison patterns, double-free detection, guard pages, and red zones.
 
-use crate::{kprintln, klog, klog};
-use crate::log::Level;
+use crate::{kprintln, klog};
 use crate::mm::{MemoryResult, MemoryError, VirtualAddress, PhysicalAddress, PageSize, MemoryFlags};
 use crate::mm::vm::VirtualMemoryManager;
 use core::sync::atomic::{AtomicU64, AtomicU32, AtomicBool, Ordering};
@@ -187,7 +186,7 @@ impl TrackedAllocation {
         if let Some(red_before) = self.red_zone_before {
             let red_before_addr = red_before as usize;
             let red_before_end = red_before_addr + RED_ZONE_SIZE;
-            if ptr as usize >= red_before_addr && ptr as usize < red_before_end {
+            if ptr as usize >= red_before_addr && (ptr as usize) < red_before_end {
                 return true;
             }
         }
@@ -195,7 +194,7 @@ impl TrackedAllocation {
         if let Some(red_after) = self.red_zone_after {
             let red_after_addr = red_after as usize;
             let red_after_end = red_after_addr + RED_ZONE_SIZE;
-            if ptr as usize >= red_after_addr && ptr as usize < red_after_end {
+            if ptr as usize >= red_after_addr && (ptr as usize) < red_after_end {
                 return true;
             }
         }
@@ -245,7 +244,7 @@ impl MemorySafetyManager {
         
         // Check if we're at capacity
         if allocations.len() >= MAX_TRACKED_ALLOCATIONS {
-            klog!(Level::WARN, "[MEMORY_SAFETY] Maximum tracked allocations reached, dropping oldest");
+            klog!(WARN, "[MEMORY_SAFETY] Maximum tracked allocations reached, dropping oldest");
             
             // Remove oldest allocation
             if let Some((&oldest_ptr, _)) = allocations.iter().next() {
@@ -271,7 +270,7 @@ impl MemorySafetyManager {
         
         self.stats.total_allocations.fetch_add(1, Ordering::Relaxed);
         
-        klog!(Level::TRACE, "[MEMORY_SAFETY] Tracking allocation {:p} ({} bytes)", ptr, size);
+        klog!(TRACE, "[MEMORY_SAFETY] Tracking allocation {:p} ({} bytes)", ptr, size);
         
         Ok(())
     }
@@ -288,7 +287,7 @@ impl MemorySafetyManager {
         if let Some(allocation) = allocations.get(&ptr) {
             if allocation.freed {
                 self.stats.double_free_attempts.fetch_add(1, Ordering::Relaxed);
-                klog!(Level::ERROR, "[MEMORY_SAFETY] Double-free detected for pointer {:p}", ptr);
+                klog!(ERROR, "[MEMORY_SAFETY] Double-free detected for pointer {:p}", ptr);
                 
                 // Log detailed information
                 self.log_violation_details("DOUBLE_FREE", ptr, allocation);
@@ -312,7 +311,7 @@ impl MemorySafetyManager {
             
             self.stats.total_deallocations.fetch_add(1, Ordering::Relaxed);
             
-            klog!(Level::TRACE, "[MEMORY_SAFETY] Deallocation tracked for {:p}", ptr);
+            klog!(TRACE, "[MEMORY_SAFETY] Deallocation tracked for {:p}", ptr);
         }
         
         Ok(())
@@ -331,7 +330,7 @@ impl MemorySafetyManager {
             if allocation.contains_pointer(ptr) {
                 if allocation.freed {
                     self.stats.use_after_free_violations.fetch_add(1, Ordering::Relaxed);
-                    klog!(Level::ERROR, "[MEMORY_SAFETY] Use-after-free detected for pointer {:p}", ptr);
+                    klog!(ERROR, "[MEMORY_SAFETY] Use-after-free detected for pointer {:p}", ptr);
                     
                     self.log_violation_details("USE_AFTER_FREE", ptr, allocation);
                     return Err(MemoryError::UseAfterFree);
@@ -343,7 +342,7 @@ impl MemorySafetyManager {
                 
                 if ptr_end > alloc_end {
                     self.stats.corruption_events.fetch_add(1, Ordering::Relaxed);
-                    klog!(Level::ERROR, "[MEMORY_SAFETY] Buffer overflow detected for pointer {:p}", ptr);
+                    klog!(ERROR, "[MEMORY_SAFETY] Buffer overflow detected for pointer {:p}", ptr);
                     
                     self.log_violation_details("BUFFER_OVERFLOW", ptr, allocation);
                     return Err(MemoryError::BufferOverflow);
@@ -355,7 +354,7 @@ impl MemorySafetyManager {
             // Check red zone violations
             if allocation.is_in_red_zone(ptr) {
                 self.stats.red_zone_violations.fetch_add(1, Ordering::Relaxed);
-                klog!(Level::ERROR, "[MEMORY_SAFETY] Red zone violation detected for pointer {:p}", ptr);
+                klog!(ERROR, "[MEMORY_SAFETY] Red zone violation detected for pointer {:p}", ptr);
                 
                 self.log_violation_details("RED_ZONE_VIOLATION", ptr, allocation);
                 return Err(MemoryError::RedZoneViolation);
@@ -363,7 +362,7 @@ impl MemorySafetyManager {
         }
         
         // Pointer not tracked - could be static or external memory
-        klog!(Level::TRACE, "[MEMORY_SAFETY] Untracked pointer access {:p}", ptr);
+        klog!(TRACE, "[MEMORY_SAFETY] Untracked pointer access {:p}", ptr);
         
         Ok(())
     }
@@ -407,11 +406,11 @@ impl MemorySafetyManager {
             
             // Guard page before allocation
             let guard_before_addr = (ptr_addr / GUARD_PAGE_SIZE) * GUARD_PAGE_SIZE;
-            let guard_before_vaddr = VirtualAddress::new(guard_before_addr as u64);
+            let guard_before_vaddr = guard_before_addr as u64;
             
             // Guard page after allocation
             let guard_after_addr = ((ptr_addr + allocation.size + GUARD_PAGE_SIZE - 1) / GUARD_PAGE_SIZE) * GUARD_PAGE_SIZE;
-            let guard_after_vaddr = VirtualAddress::new(guard_after_addr as u64);
+            let guard_after_vaddr = guard_after_addr as u64;
             
             // Map guard pages as not present (will cause page fault if accessed)
             // In a real implementation, you'd use the VM manager to create these
@@ -457,10 +456,10 @@ impl MemorySafetyManager {
             kprintln!("  Red zone after: {:p}", red_after);
         }
         if let Some(guard_before) = allocation.guard_page_before {
-            kprintln!("  Guard page before: 0x{:016x}", guard_before.as_u64());
+            kprintln!("  Guard page before: 0x{:016x}", guard_before);
         }
         if let Some(guard_after) = allocation.guard_page_after {
-            kprintln!("  Guard page after: 0x{:016x}", guard_after.as_u64());
+            kprintln!("  Guard page after: 0x{:016x}", guard_after);
         }
     }
     
@@ -498,7 +497,7 @@ impl MemorySafetyManager {
                 
                 if !poison_valid {
                     self.stats.poison_violations.fetch_add(1, Ordering::Relaxed);
-                    klog!(Level::ERROR, "[MEMORY_SAFETY] Poison pattern corrupted for freed allocation {:p}", ptr);
+                    klog!(ERROR, "[MEMORY_SAFETY] Poison pattern corrupted for freed allocation {:p}", ptr);
                 }
             }
         }

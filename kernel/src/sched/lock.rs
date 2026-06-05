@@ -6,7 +6,8 @@
 use core::sync::atomic::{AtomicU64, Ordering};
 use crate::sched::task_id::TaskId;
 use crate::sched::task::TaskPriority;
-use crate::log::{klog, Level, tags};
+use crate::klog;
+use crate::log::tags;
 
 /// Lock with priority inheritance
 pub struct PriorityInheritanceLock {
@@ -101,7 +102,7 @@ impl PriorityInheritanceLock {
         
         // Check if inheritance is needed (waiting task has higher priority)
         if waiting_priority > owner_priority {
-            klog!(Level::INFO, [tags::SCHED], 
+            klog!(INFO, [tags::SCHED], 
                 "Priority inheritance: boosting task {} from {:?} to {:?}",
                 owner_task_id.value(), owner_priority, waiting_priority);
             
@@ -116,7 +117,7 @@ impl PriorityInheritanceLock {
     fn boost_task_priority(&self, task_id: TaskId, new_priority: TaskPriority) {
         // This would integrate with the actual scheduler
         // For now, we just log the boost
-        klog!(Level::INFO, [tags::SCHED], 
+        klog!(INFO, [tags::SCHED], 
             "Boosting task {} priority to {:?}", task_id.value(), new_priority);
     }
     
@@ -124,7 +125,7 @@ impl PriorityInheritanceLock {
     fn restore_original_priority(&self, task_id: TaskId) {
         let original_priority = self.original_priority.load(Ordering::Relaxed);
         
-        klog!(Level::INFO, [tags::SCHED], 
+        klog!(INFO, [tags::SCHED], 
             "Restoring task {} to original priority {:?}", 
             task_id.value(), 
             TaskPriority::from_u64(original_priority));
@@ -179,8 +180,8 @@ pub enum LockError {
     InheritanceFailed,
 }
 
-impl std::fmt::Display for LockError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for LockError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             LockError::NotOwner => write!(f, "Task is not the owner of the lock"),
             LockError::OperationFailed => write!(f, "Lock operation failed"),

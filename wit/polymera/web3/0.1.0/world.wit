@@ -1,0 +1,58 @@
+package polymera:web3@0.1.0;
+
+/// Web3 anchoring surface for components. Service-to-service transport remains
+/// Protobuf-over-PolyBus; this WIT package is only for app/plugin boundaries.
+interface anchors {
+    enum web3-error {
+        invalid-did,
+        invalid-signature,
+        invalid-proof,
+        chain-unavailable,
+        policy-denied,
+        duplicate-anchor,
+        internal-error,
+    }
+
+    record hybrid-signature-envelope {
+        classical-algorithm: string,
+        classical-signature: list<u8>,
+        pqc-algorithm: string,
+        pqc-public-key-hash: list<u8>,
+        pqc-signature-hash: list<u8>,
+        payload-hash: list<u8>,
+    }
+
+    record zk-proof-receipt {
+        proof-system: string,
+        circuit-id: string,
+        circuit-version: string,
+        proof-hash: list<u8>,
+        public-inputs-hash: list<u8>,
+        verifier: string,
+    }
+
+    record anchor-request {
+        did: string,
+        snapshot-cid: string,
+        snapshot-hash: list<u8>,
+        chain: string,
+        signature: hybrid-signature-envelope,
+        proof: option<zk-proof-receipt>,
+    }
+
+    record anchor-receipt {
+        anchor-id: string,
+        chain: string,
+        tx-hash: string,
+        block-number: u64,
+        proof-hash: option<list<u8>>,
+        accepted-at-unix-nanos: u64,
+    }
+
+    submit-anchor: func(request: anchor-request) -> result<anchor-receipt, web3-error>;
+    get-anchor: func(anchor-id: string) -> result<anchor-receipt, web3-error>;
+}
+
+world web3-plugin {
+    export anchors;
+}

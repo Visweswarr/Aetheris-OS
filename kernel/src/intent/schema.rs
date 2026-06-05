@@ -1,10 +1,47 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-use std::collections::HashMap;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 pub const SCHEMA_VERSION: u16 = 1;
 pub const INTENT_MAX_SIZE: usize = 8192;
 pub const PLAN_PREVIEW_MAX_SIZE: usize = 16384;
+
+// Intent state lifecycle constants
+pub const INTENT_STATE_SUBMITTED: u8 = 0;
+pub const INTENT_STATE_RUNNING: u8 = 1;
+pub const INTENT_STATE_COMPLETED: u8 = 2;
+pub const INTENT_STATE_FAILED: u8 = 3;
+pub const INTENT_STATE_CANCELLED: u8 = 4;
+
+// Intent type tags
+pub const INTENT_TYPE_BACKUP: u16 = 1;
+pub const INTENT_TYPE_UPDATE: u16 = 2;
+pub const INTENT_TYPE_MONITOR: u16 = 3;
+pub const INTENT_TYPE_DEPLOY: u16 = 4;
+
+// Action kinds
+pub const ACTION_KIND_VALIDATE: u16 = 1;
+pub const ACTION_KIND_EXECUTE: u16 = 2;
+pub const ACTION_KIND_VERIFY: u16 = 3;
+pub const ACTION_KIND_SNAPSHOT: u16 = 4;
+pub const ACTION_KIND_MONITOR: u16 = 5;
+pub const ACTION_KIND_LOG: u16 = 6;
+
+// Constraint kinds
+pub const CONSTRAINT_TYPE_MAX_TIME: u16 = 1;
+pub const CONSTRAINT_TYPE_MAX_COST: u16 = 2;
+pub const CONSTRAINT_TYPE_SECURITY_LEVEL: u16 = 3;
+
+// Priority levels
+pub const PRIORITY_LOW: u8 = 0;
+pub const PRIORITY_NORMAL: u8 = 1;
+pub const PRIORITY_HIGH: u8 = 2;
+pub const PRIORITY_CRITICAL: u8 = 3;
+
+// Capacity limits for sub-collections
+pub const METADATA_MAX_ENTRIES: usize = 64;
+pub const CONSTRAINTS_MAX_COUNT: usize = 32;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[repr(C)]
@@ -25,6 +62,21 @@ pub struct IntentV1 {
 pub struct ConstraintV1 {
     pub kind: u16,
     pub value: ConstraintValue,
+    /// Denormalised cache of `value` when it is a `Scalar(_)`. Callers in the
+    /// planner read this directly instead of pattern-matching the enum.
+    /// Kept in sync by `ConstraintV1::new_scalar`.
+    #[serde(default)]
+    pub value_scalar: Option<u64>,
+}
+
+impl ConstraintV1 {
+    pub fn new_scalar(kind: u16, scalar: u64) -> Self {
+        Self {
+            kind,
+            value: ConstraintValue::Scalar(scalar),
+            value_scalar: Some(scalar),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -40,6 +92,34 @@ pub enum ConstraintValue {
 pub struct ActionV1 {
     pub kind: u16,
     pub params: BTreeMap<String, String>,
+    #[serde(default)]
+    pub cost_estimate: u64,
+    /// Planner-estimated wall-clock cost in milliseconds. Used by the
+    /// constraint-satisfaction loop to drop actions that violate a
+    /// CONSTRAINT_TYPE_MAX_TIME budget.
+    #[serde(default)]
+    pub time_estimate: u64,
+}
+
+impl ActionV1 {
+    pub fn new(kind: u16) -> Self {
+        Self { kind, params: BTreeMap::new(), cost_estimate: 0, time_estimate: 0 }
+    }
+
+    pub fn with_cost_estimate(mut self, cost: u64) -> Self {
+        self.cost_estimate = cost;
+        self
+    }
+
+    pub fn with_time_estimate(mut self, time_ms: u64) -> Self {
+        self.time_estimate = time_ms;
+        self
+    }
+
+    pub fn with_param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.params.insert(key.into(), value.into());
+        self
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -48,6 +128,18 @@ pub struct PlanV1 {
     pub intent_id: u128,
     pub actions: Vec<ActionV1>,
     pub cost: u64,
+    /// Sum of `actions[*].cost_estimate`, computed at plan-build time and
+    /// updated whenever the planner mutates `actions`.
+    #[serde(default)]
+    pub total_cost: u64,
+    /// Sum of `actions[*].time_estimate` in milliseconds, kept in sync with
+    /// `total_cost`. The constraint loop reads this to enforce time budgets.
+    #[serde(default)]
+    pub total_time: u64,
+    /// Constraints that were satisfied (and so applied) while building this
+    /// plan. Surfaced to whylog and the user-facing preview notes.
+    #[serde(default)]
+    pub constraints_applied: Vec<ConstraintV1>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -56,6 +148,8 @@ pub struct PlanPreviewV1 {
     pub plan: PlanV1,
     pub risks: Vec<String>,
     pub notes: Vec<String>,
+    #[serde(default)]
+    pub confidence: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -133,17 +227,29 @@ impl IntentV1 {
     pub fn serialized_size(&self) -> Result<usize, serde_json::Error> {
         serde_json::to_vec(self).map(|v| v.len())
     }
+
+    pub fn from_cbor(bytes: &[u8]) -> Result<Self, serde_cbor::Error> {
+        serde_cbor::from_slice(bytes)
+    }
 }
 
 impl ConstraintV1 {
+    /// Build a constraint from a `kind` and a `ConstraintValue`. Keeps
+    /// `value_scalar` in sync with the enum: if `value` is `Scalar(n)` we
+    /// cache it, otherwise the cache is `None`.
     pub fn new(kind: u16, value: ConstraintValue) -> Self {
-        Self { kind, value }
+        let value_scalar = match &value {
+            ConstraintValue::Scalar(n) => Some(*n),
+            _ => None,
+        };
+        Self { kind, value, value_scalar }
     }
 
     pub fn bytes(kind: u16, data: Vec<u8>) -> Self {
         Self {
             kind,
             value: ConstraintValue::Bytes(data),
+            value_scalar: None,
         }
     }
 
@@ -151,6 +257,7 @@ impl ConstraintV1 {
         Self {
             kind,
             value: ConstraintValue::Scalar(value),
+            value_scalar: Some(value),
         }
     }
 
@@ -158,23 +265,15 @@ impl ConstraintV1 {
         Self {
             kind,
             value: ConstraintValue::String(value),
+            value_scalar: None,
         }
     }
 }
 
+// (impl ActionV1 with `new`/`with_cost_estimate`/`with_time_estimate`/`with_param`
+// lives at the top of this file alongside the struct definition.)
+
 impl ActionV1 {
-    pub fn new(kind: u16) -> Self {
-        Self {
-            kind,
-            params: BTreeMap::new(),
-        }
-    }
-
-    pub fn with_param(mut self, key: String, value: String) -> Self {
-        self.params.insert(key, value);
-        self
-    }
-
     pub fn with_params(mut self, params: BTreeMap<String, String>) -> Self {
         self.params = params;
         self
@@ -187,6 +286,9 @@ impl PlanV1 {
             intent_id,
             actions: Vec::new(),
             cost: 0,
+            total_cost: 0,
+            total_time: 0,
+            constraints_applied: Vec::new(),
         }
     }
 
@@ -207,6 +309,7 @@ impl PlanPreviewV1 {
             plan,
             risks: Vec::new(),
             notes: Vec::new(),
+            confidence: 100,
         }
     }
 
@@ -394,5 +497,69 @@ mod tests {
 
         assert!(intent.serialized_size().unwrap() <= INTENT_MAX_SIZE);
         assert!(preview.serialized_size().unwrap() <= PLAN_PREVIEW_MAX_SIZE);
+    }
+}
+
+// ============================================================================
+// Additional types for compatibility
+// ============================================================================
+
+/// Intent status snapshot returned to userspace.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[repr(C)]
+pub struct IntentStatusV1 {
+    pub intent_id: u128,
+    pub state: u8,
+    pub last_why_log_hash: [u8; 32],
+    pub progress: u32,
+    pub last_update: u64,
+    pub error_code: i32,
+}
+
+impl Default for IntentStatusV1 {
+    fn default() -> Self {
+        Self {
+            intent_id: 0,
+            state: INTENT_STATE_SUBMITTED,
+            last_why_log_hash: [0u8; 32],
+            progress: 0,
+            last_update: 0,
+            error_code: 0,
+        }
+    }
+}
+
+/// Why record for audit trail
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WhyRecordV1 {
+    /// Timestamp of the record
+    pub timestamp: u64,
+    /// Intent ID this record relates to
+    pub intent_id: u128,
+    /// Vector clock for ordering
+    pub vclock: u64,
+    /// Justification text
+    pub justification: String,
+    /// Evidence supporting the decision
+    pub evidence: Vec<EvidenceV1>,
+    /// Hash of the record for integrity
+    pub hash: [u8; 32],
+}
+
+impl WhyRecordV1 {
+    pub fn new(intent_id: u128, vclock: u64, justification: String) -> Self {
+        Self {
+            timestamp: crate::log::get_current_time_ms(),
+            intent_id,
+            vclock,
+            justification,
+            evidence: Vec::new(),
+            hash: [0u8; 32],
+        }
+    }
+    
+    pub fn with_evidence(mut self, evidence: Vec<EvidenceV1>) -> Self {
+        self.evidence = evidence;
+        self
     }
 }

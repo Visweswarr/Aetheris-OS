@@ -5,7 +5,7 @@ use crate::{
     manifest::{DirManifestBuilder, FileManifestBuilder},
     enc::NgfsEncryption,
 };
-use alloc::{string::String, vec::Vec, collections::BTreeMap};
+use std::{string::String, vec::Vec, collections::BTreeMap};
 use core::cmp::Ordering;
 use serde_cbor;
 

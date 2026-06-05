@@ -56,10 +56,10 @@ pub fn syscall_entry(syscall_num: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u6
     let current_tid = current_pid; // TODO: Implement thread ID tracking
     
     // Record syscall entry audit event
-    crate::secman::audit_codes::audit_syscall_entry!(syscall_num, current_pid, current_tid);
-    
+    crate::audit_syscall_entry!(syscall_num, current_pid as u32, current_tid as u32);
+
     // Record start time for duration tracking
-    let start_time = core::time::Instant::now();
+    let start_time = crate::time::Instant::now();
     
     klog!(TRACE, "[SYSCALL] Entry: num={}, args=({}, {}, {}, {})", 
           syscall_num, arg0, arg1, arg2, arg3);
@@ -72,7 +72,7 @@ pub fn syscall_entry(syscall_num: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u6
     let duration_ns = duration.as_nanos() as u64;
     
     // Record syscall exit audit event
-    crate::secman::audit_codes::audit_syscall_exit!(syscall_num, current_pid, current_tid, result, duration_ns);
+    crate::audit_syscall_exit!(syscall_num, current_pid as u32, current_tid as u32, result, duration_ns);
     
     if result == u64::MAX {
         // Invalid syscall

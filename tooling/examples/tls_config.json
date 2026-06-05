@@ -1,0 +1,30 @@
+{
+  "id": "production_tls_config",
+  "name": "Production TLS Configuration",
+  "tls_version": "TLSv13",
+  "cipher_suites": [
+    "TLS_AES_256_GCM_SHA384",
+    "TLS_CHACHA20_POLY1305_SHA256",
+    "TLS_AES_128_GCM_SHA256"
+  ],
+  "enable_pqc": true,
+  "pqc_algorithms": [
+    "Kyber512",
+    "Dilithium2"
+  ],
+  "enable_mtls": true,
+  "cert_file": "/etc/ssl/certs/server.crt",
+  "key_file": "/etc/ssl/private/server.key",
+  "ca_file": "/etc/ssl/certs/ca.crt",
+  "sni_hostname": "example.com",
+  "verify_peer": true,
+  "session_timeout": 3600,
+  "zero_copy": true,
+  "max_early_data": 16384,
+  "alpn_protocols": [
+    "h2",
+    "http/1.1"
+  ],
+  "session_resumption": true,
+  "ocsp_stapling": true
+}

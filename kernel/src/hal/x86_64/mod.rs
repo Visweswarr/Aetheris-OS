@@ -3,6 +3,7 @@ pub mod idt;
 pub mod timer;
 pub mod apic;
 pub mod hpet;
+pub mod msr;
 pub mod tss;
 
 #[cfg(debug_assertions)]
@@ -14,10 +15,10 @@ pub mod timer_test;
 pub struct X64Hal;
 
 impl crate::hal::Hal for X64Hal {
-    fn init_cpu() -> Result<(), &'static str> { 
-        let _selectors = gdt::init(); 
+    fn init_cpu() -> Result<(), &'static str> {
+        let _selectors = gdt::init();
         tss::init();
-        idt::init(); 
+        idt::init_idt();
         Ok(())
     }
     fn init_timer() -> Result<(), &'static str> { 
@@ -161,9 +162,6 @@ impl X64Hal {
         timer::init();
         crate::kprintln!("[HAL] PIT timer: INITIALIZED");
     }
-            crate::kprintln!("[HAL] APIC timer not available");
-        }
-    }
     
     /// Print APIC timer statistics
     #[allow(dead_code)]
@@ -174,7 +172,7 @@ impl X64Hal {
     /// Get APIC timer metrics
     #[allow(dead_code)]
     pub fn get_apic_timer_metrics() -> Option<apic::TimerMetrics> {
-        apic::get_apic_timer_metrics().cloned()
+        apic::get_apic_timer_metrics()
     }
     
     /// Run APIC preemption demo

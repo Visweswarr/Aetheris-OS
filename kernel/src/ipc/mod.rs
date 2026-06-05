@@ -10,6 +10,7 @@ pub mod pqc_helpers;
 pub mod queues;
 pub mod sys;
 pub mod stream;
+pub mod shmem;
 
 #[cfg(test)]
 pub mod pqc_ipc_tests;
@@ -61,6 +62,17 @@ impl IpcStats {
             bytes_transferred: 0,
         }
     }
+}
+
+impl Default for IpcStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Shortcut alias for the dashboard / external callers.
+pub fn get_stats() -> IpcStats {
+    get_ipc_stats()
 }
 
 /// Global IPC statistics

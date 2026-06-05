@@ -1,0 +1,38 @@
+package polymera:identity@0.1.0;
+
+interface identity {
+    enum id-error {
+        no-such-identity,
+        signature-invalid,
+        algorithm-unsupported,
+        permission-denied,
+    }
+
+    /// Algorithm tag. Mirrors the algorithms registered in services/identity.
+    enum sig-algorithm {
+        ed25519,
+        secp256k1,
+        sr25519,
+        dilithium2,
+        dilithium3,
+        dilithium5,
+    }
+
+    record signature {
+        algorithm: sig-algorithm,
+        bytes: list<u8>,
+    }
+
+    /// Return the public key of the calling component's bound identity, if any.
+    own-public-key: func(alg: sig-algorithm) -> result<list<u8>, id-error>;
+
+    /// Sign a message with the calling component's bound identity.
+    sign: func(alg: sig-algorithm, message: list<u8>) -> result<signature, id-error>;
+
+    /// Verify a signature against an arbitrary public key.
+    verify: func(public-key: list<u8>, message: list<u8>, sig: signature) -> result<bool, id-error>;
+}
+
+world identity-host {
+    export identity;
+}

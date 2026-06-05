@@ -1,16 +1,25 @@
+pub mod schema;
+pub mod session;
+pub mod backend;
+
 use alloc::vec::Vec;
 use alloc::string::String;
+use alloc::format;
 use alloc::collections::BTreeMap;
 use core::sync::atomic::{AtomicU64, Ordering};
-use spin::Mutex;
+use spin::{Mutex, Once};
+use crate::kprintln;
 
-use crate::llm::schema::{
-    PromptV1, CompletionChunkV1, AdapterConfigV1, SessionHandle,
-    serialize_prompt, deserialize_prompt, serialize_chunk, deserialize_chunk,
-    serialize_config, deserialize_config
-};
-use crate::llm::session::{LlmSession, SessionInfo, LlmStats};
-use crate::llm::backend::{BackendFactory, BackendRegistry};
+use self::schema::{PromptV1, CompletionChunkV1, AdapterConfigV1, SessionHandle};
+use self::session::{LlmSession, SessionInfo, LlmStats};
+use self::backend::{BackendFactory, BackendRegistry};
+
+/// Stub for crate::logging::info! macro - redirects to kprintln
+macro_rules! logging_info {
+    ($($arg:tt)*) => {
+        crate::kprintln!($($arg)*)
+    };
+}
 
 /// LLM service for managing sessions and operations
 pub struct LlmService {
@@ -66,7 +75,7 @@ impl LlmService {
         }
         
         // Publish event
-        self.publish_session_event("llm.session.open", session_id, &config)?;
+        self.publish_session_event("llm.session.open", session_id, "opened")?;
         
         Ok(SessionHandle(session_id))
     }
@@ -74,21 +83,20 @@ impl LlmService {
     /// Send a prompt to a session
     pub fn send_prompt(&self, session_handle: SessionHandle, prompt: &mut PromptV1) -> Result<(), &'static str> {
         let session_id = session_handle.0;
+        let chunks = {
+            let mut sessions = self.sessions.lock();
+            let session = sessions.get_mut(&session_id)
+                .ok_or("Session not found")?;
+            
+            if !session.active {
+                return Err("Session not active");
+            }
+            
+            session.send_prompt(prompt)?;
+            session.ring.get_all()
+        };
         
-        // Get session
-        let mut sessions = self.sessions.lock();
-        let session = sessions.get_mut(&session_id)
-            .ok_or("Session not found")?;
-        
-        if !session.active {
-            return Err("Session not active");
-        }
-        
-        // Send prompt
-        session.send_prompt(prompt)?;
-        
-        // Publish token events
-        self.publish_token_events(session_id, &session.ring.get_all())?;
+        self.publish_token_events(session_id, &chunks)?;
         
         Ok(())
     }
@@ -182,7 +190,7 @@ impl LlmService {
     fn publish_session_event(&self, topic: &str, session_id: u64, payload: &str) -> Result<(), &'static str> {
         // In a real implementation, this would publish to Event Fabric
         // For now, we'll just log it
-        crate::logging::info!("LLM Event: {} session={} payload={}", topic, session_id, payload);
+        kprintln!("LLM Event: {} session={} payload={}", topic, session_id, payload);
         Ok(())
     }
     
@@ -218,26 +226,23 @@ impl LlmService {
 }
 
 /// Global LLM service instance
-static LLM_SERVICE: Mutex<Option<LlmService>> = Mutex::new(None);
+static LLM_SERVICE: Once<LlmService> = Once::new();
 
 /// Initialize the LLM service
 pub fn init_llm_service() -> Result<(), &'static str> {
-    let mut service_guard = LLM_SERVICE.lock();
-    if service_guard.is_some() {
+    if LLM_SERVICE.get().is_some() {
         return Err("LLM service already initialized");
     }
     
-    let service = LlmService::new();
-    *service_guard = Some(service);
+    LLM_SERVICE.call_once(LlmService::new);
     
-    crate::logging::info!("LLM Adapter v0 service initialized");
+    kprintln!("LLM Adapter v0 service initialized");
     Ok(())
 }
 
 /// Get the LLM service instance
 pub fn get_llm_service() -> Result<&'static LlmService, &'static str> {
-    let service_guard = LLM_SERVICE.lock();
-    service_guard.as_ref().ok_or("LLM service not initialized")
+    LLM_SERVICE.get().ok_or("LLM service not initialized")
 }
 
 /// Check if LLM service is available
@@ -313,31 +318,26 @@ impl Default for LlmServiceConfig {
 
 /// Initialize LLM service with configuration
 pub fn init_llm_service_with_config(config: LlmServiceConfig) -> Result<(), &'static str> {
-    let mut service_guard = LLM_SERVICE.lock();
-    if service_guard.is_some() {
+    if LLM_SERVICE.get().is_some() {
         return Err("LLM service already initialized");
     }
-    
-    let mut service = LlmService::new();
     
     // Apply configuration
     if config.enable_dev_backends {
         // In a real implementation, this would enable dev backends
-        crate::logging::info!("LLM dev backends enabled");
+        kprintln!("LLM dev backends enabled");
     }
     
-    *service_guard = Some(service);
+    LLM_SERVICE.call_once(LlmService::new);
     
-    crate::logging::info!("LLM Adapter v0 service initialized with config: max_sessions={}, default_backend={}", 
+    kprintln!("LLM Adapter v0 service initialized with config: max_sessions={}, default_backend={}", 
         config.max_sessions, config.default_backend);
     Ok(())
 }
 
 /// Cleanup LLM service (for testing)
 pub fn cleanup_llm_service() {
-    let mut service_guard = LLM_SERVICE.lock();
-    *service_guard = None;
-    crate::logging::info!("LLM service cleaned up");
+    kprintln!("LLM service cleanup requested (Once-backed service remains initialized)");
 }
 
 #[cfg(test)]

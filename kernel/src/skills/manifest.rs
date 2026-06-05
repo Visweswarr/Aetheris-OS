@@ -1,11 +1,12 @@
 use serde::{Serialize, Deserialize};
+use alloc::string::ToString;
 use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::intent::schema::CapRef;
 
 pub const SKILL_SCHEMA_VERSION: u16 = 1;
-pub const SKILL_SCHEMA_HASH: &[u8; 32] = &[/* TODO: computed at build time */];
+pub const SKILL_SCHEMA_HASH: &[u8; 32] = &[0u8; 32];
 
 pub const SKILL_MANIFEST_MAX_SIZE: usize = 32 * 1024; // 32 KiB
 pub const SKILL_NAME_MAX_LEN: usize = 64;

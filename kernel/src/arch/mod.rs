@@ -20,7 +20,7 @@ pub use self::aarch64::*;
 
 /// Architecture-specific early initialization
 pub fn early_init(config: &KernelConfig) -> KernelResult<()> {
-    crate::log::kprintln!("Initializing architecture-specific components...");
+    crate::kprintln!("Initializing architecture-specific components...");
     
     #[cfg(target_arch = "x86_64")]
     x86_64::early_init(config)?;
@@ -45,7 +45,7 @@ pub fn halt() -> ! {
 
 /// Shutdown the system
 pub fn shutdown() -> ! {
-    crate::log::kprintln!("System shutdown requested");
+    crate::kprintln!("System shutdown requested");
     
     #[cfg(target_arch = "x86_64")]
     x86_64::shutdown();

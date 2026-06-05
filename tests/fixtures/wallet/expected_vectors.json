@@ -1,0 +1,34 @@
+{
+  "key_vectors": [
+    {
+      "seed": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "derivation_path": "m/44'/60'/0'/0/0",
+      "expected_public_key": "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456",
+      "expected_address": "0x1234567890123456789012345678901234567890",
+      "key_type": "secp256k1"
+    },
+    {
+      "seed": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "derivation_path": "m/44'/501'/0'/0/0",
+      "expected_public_key": "f1e2d3c4b5a6978012345678901234567890abcdef1234567890abcdef123456",
+      "expected_address": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+      "key_type": "ed25519"
+    }
+  ],
+  "did_vectors": [
+    {
+      "did": "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
+      "method": "key",
+      "expected_verification_methods": [
+        {
+          "id": "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK#key-1",
+          "type": "Ed25519VerificationKey2020",
+          "controller": "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
+          "publicKeyMultibase": "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"
+        }
+      ],
+      "expected_authentication": ["did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK#key-1"],
+      "expected_assertion_method": ["did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK#key-1"]
+    }
+  ]
+}

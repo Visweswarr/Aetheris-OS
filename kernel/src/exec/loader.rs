@@ -3,7 +3,7 @@
 /// This module provides functionality for loading and validating user task images,
 /// creating user task contexts with syscall gates, and managing the user/kernel boundary.
 
-use crate::{kprintln, klog, kprintln};
+use crate::{kprintln, klog, format, lazy_static};
 use crate::log::Level;
 use crate::secman::cap_v2::{CapTokenV2, CapValidationResult, CapValidationFailure};
 use crate::secman::audit::{AuditEntry, ops};
@@ -11,6 +11,7 @@ use crate::mm::{MemoryResult, MemoryError, VirtualAddress, PhysicalAddress, Page
 use crate::mm::vm::VirtualMemoryManager;
 use super::header::{UserTaskHeader, ImageFormat, HeaderParseResult, create_test_header, create_invalid_header};
 use core::sync::atomic::{AtomicU64, Ordering};
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
 use spin::Mutex;
@@ -232,22 +233,26 @@ impl UserTaskLoader {
         // Verify required capabilities
         let cap_verification = self.verify_required_capabilities(&header, capabilities);
         if !cap_verification.success {
+            let cap_error = cap_verification
+                .error
+                .clone()
+                .unwrap_or_else(|| "Unknown capability verification error".to_string());
             klog!(ERROR, "[LOADER] Capability verification failed: {}", 
-                  cap_verification.error.as_ref().unwrap());
+                  cap_error);
             
             // Audit the failure
-            self.audit_exec_verify_fail(&cap_verification.error.unwrap());
+            self.audit_exec_verify_fail(&cap_error);
             
             return LoaderResult {
                 success: false,
                 pid: None,
-                error: cap_verification.error,
+                error: Some(cap_error),
                 warnings: header_result.warnings,
             };
         }
         
         // Create user task context
-        let task_context = self.create_user_task_context(&header, capabilities);
+        let mut task_context = self.create_user_task_context(&header, capabilities);
         
         // Allocate memory for the task
         if let Err(memory_error) = self.allocate_user_memory(&mut task_context) {
@@ -309,9 +314,9 @@ impl UserTaskLoader {
             let mut cap_found = false;
             
             for available_cap in available_caps {
-                if available_cap.header.cap_type == required_cap.cap_type {
+                if available_cap.header.cap_type.to_string() == required_cap.cap_type {
                     // Verify capability permissions
-                    if available_cap.header.permission_level >= required_cap.permission_level {
+                    if available_cap.header.permissions >= required_cap.permission_level {
                         cap_found = true;
                         break;
                     } else {
@@ -445,22 +450,13 @@ impl UserTaskLoader {
     /// # Returns
     /// `MemoryFlags` - Converted flags
     fn convert_memory_protection(&self, protection: &super::header::MemoryProtection) -> MemoryFlags {
-        let mut flags = MemoryFlags::empty();
-        
-        if protection.read {
-            flags.insert(MemoryFlags::READ);
+        MemoryFlags {
+            readable: protection.read,
+            writable: protection.write,
+            executable: protection.execute,
+            user_accessible: protection.shared,
+            cached: true,
         }
-        if protection.write {
-            flags.insert(MemoryFlags::WRITE);
-        }
-        if protection.execute {
-            flags.insert(MemoryFlags::EXECUTE);
-        }
-        if protection.shared {
-            flags.insert(MemoryFlags::SHARED);
-        }
-        
-        flags
     }
     
     /// Get user task by PID
@@ -529,7 +525,7 @@ impl UserTaskLoader {
     /// * `reason` - Failure reason
     fn audit_exec_verify_fail(&self, reason: &str) {
         // Create audit entry for execution verification failure
-        let audit_entry = AuditEntry::exec_verify_fail(0, reason.to_string());
+        let audit_entry = AuditEntry::new(0, ops::SEC_AUTH_FAIL, reason.len() as u64);
         klog!(WARN, "[AUDIT] EXEC_VERIFY_FAIL: {}", audit_entry);
         
         // TODO: Send audit entry to audit system
@@ -676,8 +672,9 @@ pub fn test_user_task_loading() {
     let test_caps = Vec::new(); // Empty for now
     
     // Test loading
-    match load_user_task(&image_data, &test_caps) {
-        Ok(pid) => {
+    let load_result = load_user_task(&image_data, &test_caps);
+    if load_result.success {
+        if let Some(pid) = load_result.pid {
             kprintln!("[LOADER] Successfully loaded user task with PID {}", pid);
             
             // Test getting the task
@@ -700,23 +697,32 @@ pub fn test_user_task_loading() {
             } else {
                 kprintln!("[LOADER] Failed to retrieve loaded task");
             }
+        } else {
+            kprintln!("[LOADER] Load reported success without a PID");
         }
-        Err(e) => {
-            kprintln!("[LOADER] Failed to load user task: {}", e);
-        }
+    } else {
+        kprintln!(
+            "[LOADER] Failed to load user task: {}",
+            load_result.error.unwrap_or_else(|| "unknown error".to_string())
+        );
     }
     
     // Test invalid header
     let invalid_header = create_invalid_header();
     let invalid_image_data = invalid_header.serialize();
     
-    match load_user_task(&invalid_image_data, &test_caps) {
-        Ok(pid) => {
+    let invalid_result = load_user_task(&invalid_image_data, &test_caps);
+    if invalid_result.success {
+        if let Some(pid) = invalid_result.pid {
             kprintln!("[LOADER] Unexpectedly loaded invalid task with PID {}", pid);
+        } else {
+            kprintln!("[LOADER] Invalid task reported success without a PID");
         }
-        Err(e) => {
-            kprintln!("[LOADER] Correctly rejected invalid task: {}", e);
-        }
+    } else {
+        kprintln!(
+            "[LOADER] Correctly rejected invalid task: {}",
+            invalid_result.error.unwrap_or_else(|| "unknown error".to_string())
+        );
     }
 }
 

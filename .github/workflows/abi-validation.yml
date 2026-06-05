@@ -1,0 +1,178 @@
+name: ABI Validation
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'abi/**'
+      - 'kernel/src/syscall/**'
+      - 'userland-stubs/src/**'
+      - 'docs/abi/**'
+      - 'include/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'abi/**'
+      - 'kernel/src/syscall/**'
+      - 'userland-stubs/src/**'
+      - 'docs/abi/**'
+      - 'include/**'
+
+jobs:
+  abi-validation:
+    name: ABI Schema Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+          
+      - name: Build ABI generator
+        run: |
+          cd tooling/abi
+          cargo build --release
+          
+      - name: Generate ABI artifacts
+        run: |
+          cd tooling/abi
+          ./target/release/gen ../../abi/syscalls.yaml ../../
+          
+      - name: Check for generated file changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "❌ Generated files are out of sync with schema!"
+            echo "Please run: cd tooling/abi && cargo run -- ../../abi/syscalls.yaml ../../"
+            echo "Modified files:"
+            git status --porcelain
+            exit 1
+          else
+            echo "✅ Generated files are in sync with schema"
+          fi
+          
+      - name: Validate schema hash
+        run: |
+          cd kernel/src/syscall
+          cargo check --features schema_validation
+          
+      - name: Run conformance tests
+        run: |
+          cd kernel/src/syscall
+          cargo test conformance_test --features schema_validation
+          
+  abi-diff-check:
+    name: ABI Diff Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          
+      - name: Checkout base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          
+      - name: Build ABI generator
+        run: |
+          cd tooling/abi
+          cargo build --release
+          
+      - name: Generate ABI artifacts from base
+        run: |
+          cd tooling/abi
+          ./target/release/gen ../../base/abi/syscalls.yaml ../../base/
+          
+      - name: Generate ABI artifacts from PR
+        run: |
+          cd tooling/abi
+          ./target/release/gen ../../abi/syscalls.yaml ../../
+          
+      - name: Check for breaking changes
+        run: |
+          echo "Checking for ABI breaking changes..."
+          
+          # Check if any syscall numbers changed
+          if diff -r base/kernel/src/syscall/table.rs kernel/src/syscall/table.rs | grep -E "^[<>].*SYS_.*:"; then
+            echo "❌ ABI breaking change detected: syscall numbers changed!"
+            echo "This is not allowed in stable ABI versions."
+            exit 1
+          fi
+          
+          # Check if any syscall signatures changed
+          if diff -r base/userland-stubs/src/lib.rs userland-stubs/src/lib.rs | grep -E "^[<>].*pub fn sys_"; then
+            echo "❌ ABI breaking change detected: syscall signatures changed!"
+            echo "This is not allowed in stable ABI versions."
+            exit 1
+          fi
+          
+          echo "✅ No ABI breaking changes detected"
+          
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('ABI Validation')
+            );
+            
+            const commentBody = `## 🔍 ABI Validation Results
+            
+            ✅ **Schema Consistency**: Generated files match the current schema
+            ✅ **No Breaking Changes**: ABI remains stable
+            ✅ **Conformance Tests**: All syscalls pass validation
+            
+            **Schema Hash**: \`${process.env.SCHEMA_HASH || 'N/A'}\`
+            
+            **Generated Files**:
+            - Kernel dispatch table: \`kernel/src/syscall/table.rs\`
+            - Kernel handlers: \`kernel/src/syscall/handlers.rs\`
+            - Userland stubs: \`userland-stubs/src/lib.rs\`
+            - C header: \`include/polymera_syscalls.h\`
+            - Documentation: \`docs/abi/SYSCALLS.md\`
+            
+            ---
+            *This comment was automatically generated by the ABI validation workflow.*`;
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                comment_id: botComment.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: commentBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: commentBody,
+              });
+            }

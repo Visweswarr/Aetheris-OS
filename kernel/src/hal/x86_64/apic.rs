@@ -4,6 +4,7 @@
 /// with higher precision timing, reduced jitter, and better preemption granularity.
 
 use core::arch::x86_64::*;
+use crate::hal::x86_64::msr::{rdmsr as __rdmsr, wrmsr as __wrmsr};
 use core::sync::atomic::{AtomicU64, AtomicU32, Ordering};
 use core::ptr;
 use alloc::vec::Vec;
@@ -23,7 +24,7 @@ pub struct ApicTimerConfig {
 }
 
 /// APIC timer modes
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ApicTimerMode {
     OneShot,
     Periodic,
@@ -55,26 +56,26 @@ impl ApicTimer {
     /// Initialize the APIC timer
     pub fn init(&mut self) -> Result<(), HalError> {
         // Check if LAPIC is present
-        if !self::is_lapic_present() {
+        if !Self::is_lapic_present() {
             return Err(HalError::DeviceNotFound("LAPIC not present"));
         }
 
         // Enable LAPIC
-        self::enable_lapic()?;
+        Self::enable_lapic()?;
 
         // Configure timer vector
-        self::set_timer_vector(self.config.vector)?;
+        Self::set_timer_vector(self.config.vector)?;
 
         // Configure timer divide
-        self::set_timer_divide(self.config.divide_config)?;
+        Self::set_timer_divide(self.config.divide_config)?;
 
         // Set initial count for periodic mode
         if self.config.mode == ApicTimerMode::Periodic {
-            self::set_timer_initial_count(self.config.initial_count)?;
+            Self::set_timer_initial_count(self.config.initial_count)?;
         }
 
         // Enable timer
-        self::enable_timer()?;
+        Self::enable_timer()?;
 
         // Calibrate against TSC
         self.calibrate()?;
@@ -93,7 +94,7 @@ impl ApicTimer {
 
         // Collect TSC samples over calibration window
         while start_time.elapsed() < target_duration && samples.len() < MIN_SAMPLES {
-            let tsc1 = self::read_tsc();
+            let tsc1 = Self::read_tsc();
             
             // Wait for next timer tick
             let tick_start = self.tick_count.load(Ordering::Relaxed);
@@ -101,7 +102,7 @@ impl ApicTimer {
                 core::hint::spin_loop();
             }
             
-            let tsc2 = self::read_tsc();
+            let tsc2 = Self::read_tsc();
             let tsc_delta = tsc2.wrapping_sub(tsc1);
             
             if tsc_delta > 0 {
@@ -152,50 +153,42 @@ impl ApicTimer {
         // Map jitter to histogram bin (0-63, each bin represents ~4us)
         let bin = (jitter_us / 4).min(63) as usize;
         
-        if let Ok(mut histogram) = self.jitter_histogram.lock() {
-            histogram[bin] = histogram[bin].saturating_add(1);
-        }
+        let mut histogram = self.jitter_histogram.lock();
+        histogram[bin] = histogram[bin].saturating_add(1);
     }
 
     /// Get jitter statistics
     pub fn get_jitter_stats(&self) -> JitterStats {
-        if let Ok(histogram) = self.jitter_histogram.lock() {
-            let mut total_samples = 0;
-            let mut cumulative_jitter = 0u64;
+        let histogram = self.jitter_histogram.lock();
+        let mut total_samples = 0;
+        let mut cumulative_jitter = 0u64;
+        
+        for (bin, &count) in histogram.iter().enumerate() {
+            total_samples += count;
+            let jitter_us = (bin as u32 * 4) + 2; // Center of bin
+            cumulative_jitter += (jitter_us as u64) * (count as u64);
+        }
+
+        if total_samples > 0 {
+            let mean_jitter = cumulative_jitter / (total_samples as u64);
+            
+            // Calculate p95 (simplified - find 95th percentile)
+            let p95_index = (total_samples * 95) / 100;
+            let mut current_count = 0;
+            let mut p95_jitter = 0u32;
             
             for (bin, &count) in histogram.iter().enumerate() {
-                total_samples += count;
-                let jitter_us = (bin as u32 * 4) + 2; // Center of bin
-                cumulative_jitter += (jitter_us as u64) * (count as u64);
+                current_count += count;
+                if current_count >= p95_index {
+                    p95_jitter = (bin as u32 * 4) + 2;
+                    break;
+                }
             }
 
-            if total_samples > 0 {
-                let mean_jitter = cumulative_jitter / total_samples;
-                
-                // Calculate p95 (simplified - find 95th percentile)
-                let p95_index = (total_samples * 95) / 100;
-                let mut current_count = 0;
-                let mut p95_jitter = 0u32;
-                
-                for (bin, &count) in histogram.iter().enumerate() {
-                    current_count += count;
-                    if current_count >= p95_index {
-                        p95_jitter = (bin as u32 * 4) + 2;
-                        break;
-                    }
-                }
-
-                JitterStats {
-                    mean_us: mean_jitter as u32,
-                    p95_us: p95_jitter,
-                    total_samples,
-                }
-            } else {
-                JitterStats {
-                    mean_us: 0,
-                    p95_us: 0,
-                    total_samples: 0,
-                }
+            JitterStats {
+                mean_us: mean_jitter as u32,
+                p95_us: p95_jitter,
+                total_samples,
             }
         } else {
             JitterStats {
@@ -220,7 +213,7 @@ impl ApicTimer {
         }
 
         // Acknowledge interrupt
-        self::send_eoi();
+        Self::send_eoi();
     }
 
     /// Set timer mode
@@ -229,11 +222,11 @@ impl ApicTimer {
         
         match mode {
             ApicTimerMode::OneShot => {
-                self::set_timer_mode_oneshot()?;
+                Self::set_timer_mode_oneshot()?;
             }
             ApicTimerMode::Periodic => {
-                self::set_timer_mode_periodic()?;
-                self::set_timer_initial_count(self.config.initial_count)?;
+                Self::set_timer_mode_periodic()?;
+                Self::set_timer_initial_count(self.config.initial_count)?;
             }
         }
 
@@ -247,13 +240,13 @@ impl ApicTimer {
         }
 
         // Calculate initial count based on frequency
-        let apic_freq = self::get_apic_frequency()?;
+        let apic_freq = Self::get_apic_frequency()?;
         let initial_count = apic_freq / freq_hz;
         
         self.config.initial_count = initial_count;
         
         if self.config.mode == ApicTimerMode::Periodic {
-            self::set_timer_initial_count(initial_count)?;
+            Self::set_timer_initial_count(initial_count)?;
         }
 
         Ok(())
@@ -406,7 +399,7 @@ impl ApicTimer {
         unsafe {
             // Serialize instruction execution
             _mm_lfence();
-            let tsc = __rdtsc();
+            let tsc = _rdtsc();
             _mm_lfence();
             tsc
         }
@@ -434,6 +427,42 @@ impl Default for ApicTimerConfig {
             initial_count: 62500, // 1000Hz timer (assuming 100MHz APIC)
             mode: ApicTimerMode::Periodic,
         }
+    }
+}
+
+/// Timer metrics exposed to the HAL.
+#[derive(Debug, Clone)]
+pub struct TimerMetrics {
+    pub tick_count: u64,
+    pub overrun_count: u32,
+    pub tsc_per_ms: u64,
+}
+
+/// Detect whether an APIC timer is usable on this CPU.
+pub fn is_apic_timer_available() -> bool {
+    let cpuid_result = unsafe { __cpuid(1) };
+    (cpuid_result.edx & (1 << 9)) != 0
+}
+
+/// Initialize the APIC timer subsystem (stub – uses default configuration).
+pub fn init_apic_timer() -> Result<(), &'static str> {
+    if !is_apic_timer_available() {
+        return Err("APIC timer not available");
+    }
+    Ok(())
+}
+
+/// Print APIC timer statistics (stub).
+pub fn print_apic_timer_stats() {
+    crate::kprintln!("[APIC] timer stats: stub");
+}
+
+/// Get APIC timer metrics if available.
+pub fn get_apic_timer_metrics() -> Option<TimerMetrics> {
+    if is_apic_timer_available() {
+        Some(TimerMetrics { tick_count: 0, overrun_count: 0, tsc_per_ms: 0 })
+    } else {
+        None
     }
 }
 

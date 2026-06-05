@@ -1,0 +1,31 @@
+[package]
+name = "wasm-driver-host"
+version = "0.1.0"
+edition = "2021"
+description = "WASM Driver Host Service for Polymera OS (Component Model)"
+
+[dependencies]
+# Wasmtime with Component Model support.
+#
+# Version: 28.0 — chosen per the polyglot roadmap (Initiative 3). If your toolchain
+# requires a different version, change this in one place and re-run the workspace build.
+# All features below are required for the Component Model host wired in src/host.rs.
+wasmtime      = { version = "28.0", features = ["component-model", "async", "cranelift"] }
+wasmtime-wasi = { version = "28.0" }
+wit-bindgen   = { version = "0.34" }
+
+anyhow      = "1"
+thiserror   = "1"
+tokio       = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+async-trait = "0.1"
+tracing     = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+wat = "1.249"
+
+[features]
+default = []
+# When `mock` is on, src/host.rs uses an in-process stub instead of wasmtime —
+# convenient for unit tests that should not link against the wasmtime engine.
+mock = []

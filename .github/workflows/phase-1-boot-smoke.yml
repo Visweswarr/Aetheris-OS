@@ -1,0 +1,138 @@
+name: phase-1-boot-smoke
+
+on: 
+  push:
+    paths:
+      - 'kernel/**'
+      - 'tooling/qemu/**'
+      - '.github/workflows/phase-1-boot-smoke.yml'
+  pull_request:
+    paths:
+      - 'kernel/**' 
+      - 'tooling/qemu/**'
+      - '.github/workflows/phase-1-boot-smoke.yml'
+
+jobs:
+  qemu-smoke:
+    name: QEMU Boot Smoke Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+          targets: x86_64-unknown-none
+          components: rust-src
+          
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 build-essential
+          
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            kernel/target
+          key: ${{ runner.os }}-cargo-kernel-${{ hashFiles('kernel/Cargo.lock', 'kernel/Cargo.toml') }}
+          
+      - name: Install Bazel
+        uses: bazelbuild/setup-bazelisk@v2
+        
+      - name: Build kernel image
+        working-directory: kernel
+        run: |
+          echo "Building kernel with Cargo (Bazel integration coming later)"
+          cargo build --target x86_64-unknown-none --release
+          
+          # Create the expected output directory structure
+          mkdir -p ../bazel-bin/kernel/
+          cp target/x86_64-unknown-none/release/polymera-kernel ../bazel-bin/kernel/polymera-kernel.bin
+          
+      - name: Verify kernel image
+        run: |
+          if [ -f "bazel-bin/kernel/polymera-kernel.bin" ]; then
+            echo "✅ Kernel image built successfully"
+            file bazel-bin/kernel/polymera-kernel.bin
+            ls -lh bazel-bin/kernel/polymera-kernel.bin
+          else
+            echo "❌ Kernel image not found"
+            exit 1
+          fi
+          
+      - name: Make QEMU script executable
+        run: chmod +x tooling/qemu/run_x86_64.sh
+        
+      - name: Run QEMU smoke test (3s timeout)
+        run: |
+          echo "🚀 Starting QEMU boot smoke test..."
+          
+          # Run QEMU with 3 second timeout
+          timeout 3s bash tooling/qemu/run_x86_64.sh bazel-bin/kernel/polymera-kernel.bin || true
+          
+          echo "📋 QEMU smoke test completed"
+          
+      - name: Check boot output
+        run: |
+          echo "🔍 Checking boot output..."
+          
+          if [ -f serial.log ]; then
+            echo "📄 Serial output found:"
+            cat serial.log
+            echo ""
+            
+            # Check for expected boot messages
+            if grep -q "PolymeraCore" serial.log; then
+              echo "✅ Found PolymeraCore boot message"
+              SUCCESS=true
+            else
+              echo "❌ PolymeraCore boot message not found"
+              SUCCESS=false
+            fi
+            
+            if grep -q "PHASE1 PASS" serial.log; then
+              echo "✅ Found PHASE1 PASS message"
+              SUCCESS=true
+            else
+              echo "⚠️  PHASE1 PASS message not found (may be normal for quick test)"
+            fi
+            
+            if grep -q "build=" serial.log; then
+              echo "✅ Found build version message"
+              BUILD_MSG=$(grep "build=" serial.log | head -1)
+              echo "   Build info: $BUILD_MSG"
+              SUCCESS=true
+            else
+              echo "❌ Build version message not found"
+              SUCCESS=false
+            fi
+            
+            # Summary
+            echo ""
+            echo "=== Boot Smoke Test Summary ==="
+            if [ "$SUCCESS" = true ]; then
+              echo "🎉 SMOKE TEST PASSED - Kernel boots and produces expected output"
+            else
+              echo "❌ SMOKE TEST FAILED - Expected boot messages not found"
+              exit 1
+            fi
+            
+          else
+            echo "❌ No serial output file found"
+            echo "QEMU may not have started properly or no output was captured"
+            exit 1
+          fi
+          
+      - name: Upload boot logs
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: qemu-boot-logs
+          path: serial.log
+          retention-days: 7

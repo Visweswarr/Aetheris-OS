@@ -1,0 +1,36 @@
+{
+  "id": "search_files",
+  "name": "Search Files",
+  "description": "Search for files in the filesystem",
+  "version": "1.0.0",
+  "parameters_schema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Search query (filename pattern or content)"
+      },
+      "directory": {
+        "type": "string",
+        "description": "Directory to search in (default: current directory)"
+      },
+      "recursive": {
+        "type": "boolean",
+        "description": "Whether to search recursively"
+      },
+      "file_types": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "File extensions to include"
+      }
+    },
+    "required": ["query"]
+  },
+  "required_capabilities": ["filesystem.read"],
+  "category": "filesystem",
+  "tags": ["search", "files"],
+  "implementation_type": "builtin",
+  "timeout_seconds": 60,
+  "requires_confirmation": false,
+  "metadata": {}
+}

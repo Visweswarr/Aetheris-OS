@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use alloc::string::String;
-use alloc::vec::Vec;
-use alloc::collections::BTreeMap;
+use std::string::String;
+use std::vec::Vec;
+use std::collections::BTreeMap;
 
 /// NGFS v1 Schema - Content-Addressed Filesystem with DID-Bound Encryption
 /// 

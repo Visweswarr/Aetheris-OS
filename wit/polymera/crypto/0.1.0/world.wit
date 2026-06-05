@@ -1,0 +1,47 @@
+package polymera:crypto@0.1.0;
+
+/// Component-facing cryptography facade. Native services should call
+/// `polymera-crypto` traits directly; components use this WIT boundary.
+interface pqc {
+    enum crypto-error {
+        unsupported-algorithm,
+        invalid-key,
+        invalid-signature,
+        entropy-unavailable,
+        policy-denied,
+        internal-error,
+    }
+
+    record keypair {
+        public-key: list<u8>,
+        secret-key: list<u8>,
+    }
+
+    record kem-encapsulation {
+        ciphertext: list<u8>,
+        shared-secret: list<u8>,
+    }
+
+    record hybrid-signature-envelope {
+        classical-algorithm: string,
+        classical-signature: list<u8>,
+        pqc-algorithm: string,
+        pqc-public-key-hash: list<u8>,
+        pqc-signature-hash: list<u8>,
+        payload-hash: list<u8>,
+    }
+
+    generate-kem-keypair: func(algorithm: string) -> result<keypair, crypto-error>;
+    kem-encapsulate: func(algorithm: string, public-key: list<u8>) -> result<kem-encapsulation, crypto-error>;
+    kem-decapsulate: func(algorithm: string, secret-key: list<u8>, ciphertext: list<u8>) -> result<list<u8>, crypto-error>;
+
+    generate-signature-keypair: func(algorithm: string) -> result<keypair, crypto-error>;
+    sign: func(algorithm: string, secret-key: list<u8>, message: list<u8>) -> result<list<u8>, crypto-error>;
+    verify: func(algorithm: string, public-key: list<u8>, message: list<u8>, signature: list<u8>) -> result<bool, crypto-error>;
+
+    fill-random: func(length: u32) -> result<list<u8>, crypto-error>;
+}
+
+world crypto-plugin {
+    export pqc;
+}

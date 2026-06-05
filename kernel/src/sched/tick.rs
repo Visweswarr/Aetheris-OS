@@ -4,14 +4,14 @@
 /// for preemptive multitasking and time accounting. It provides a tick source
 /// abstraction that supports both PIT and APIC timers with jitter monitoring.
 
-use crate::{klog, kprintln};
+use crate::{klog, kprintln, lazy_static};
 use super::{TaskId, get_current_task_id, set_current_task_id, schedule, enqueue_task};
-use core::sync::atomic::{AtomicU64, Ordering};
-use core::time::Duration;
+use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use alloc::format;
 use alloc::vec::Vec;
 
-use crate::time::{Instant, Duration as PolymeraDuration};
-use crate::hal::x86_64::timer::{get_timer_kind, TimerKind, record_jitter, get_jitter_stats};
+use crate::time::{Duration, Instant};
+use crate::hal::x86_64::timer::{get_timer_kind, TimerKind, record_jitter as timer_record_jitter, get_jitter_stats};
 use crate::sync::Mutex;
 
 /// Global tick counter for scheduler timing
@@ -68,9 +68,21 @@ pub struct JitterBudgetConfig {
     pub rt_quantum_boost: u32,
 }
 
+impl Default for JitterBudgetConfig {
+    fn default() -> Self {
+        Self {
+            max_jitter_us: 250,
+            consecutive_threshold: 3,
+            boost_duration_ms: 100,
+            rt_quantum_boost: 2,
+        }
+    }
+}
+
 /// Jitter budget state
 pub struct JitterBudget {
     config: JitterBudgetConfig,
+    last_tick_time_ms: AtomicU64,
     consecutive_overruns: AtomicU32,
     total_overruns: AtomicU64,
     boost_active_until: AtomicU64,
@@ -91,11 +103,18 @@ pub struct JitterBudgetStats {
     pub jitter_samples: u32,
 }
 
+impl JitterBudgetStats {
+    pub fn is_jitter_acceptable(&self) -> bool {
+        self.consecutive_overruns == 0 && self.jitter_p95_us <= 250
+    }
+}
+
 impl JitterBudget {
     /// Create a new jitter budget
     pub fn new(config: JitterBudgetConfig) -> Self {
         Self {
             config,
+            last_tick_time_ms: AtomicU64::new(0),
             consecutive_overruns: AtomicU32::new(0),
             total_overruns: AtomicU64::new(0),
             boost_active_until: AtomicU64::new(0),
@@ -103,6 +122,19 @@ impl JitterBudget {
             recent_jitter_samples: Mutex::new(Vec::new()),
             max_recent_samples: 1000, // Keep last 1000 samples for p95
         }
+    }
+
+    fn get_last_tick_time(&self) -> Option<Instant> {
+        let last_ms = self.last_tick_time_ms.load(Ordering::Relaxed);
+        if last_ms == 0 {
+            None
+        } else {
+            Some(Instant::from_millis_since_boot(last_ms))
+        }
+    }
+
+    fn set_last_tick_time(&self, instant: Instant) {
+        self.last_tick_time_ms.store(instant.as_millis(), Ordering::Relaxed);
     }
 
     /// Process a timer tick with jitter measurement
@@ -122,7 +154,7 @@ impl JitterBudget {
             };
             
             // Record jitter for the timer system
-            record_jitter(jitter);
+            timer_record_jitter(jitter);
             
             // Update jitter budget
             self.update_jitter_budget(jitter);
@@ -143,19 +175,17 @@ impl JitterBudget {
     /// Update jitter budget with new measurement
     fn update_jitter_budget(&self, jitter_us: u32) {
         // Update histogram
-        if let Ok(mut histogram) = self.jitter_histogram.lock() {
-            let bin = (jitter_us / 4).min(63) as usize;
-            histogram[bin] = histogram[bin].saturating_add(1);
-        }
+        let mut histogram = self.jitter_histogram.lock();
+        let bin = (jitter_us / 4).min(63) as usize;
+        histogram[bin] = histogram[bin].saturating_add(1);
         
         // Update recent samples
-        if let Ok(mut samples) = self.recent_jitter_samples.lock() {
-            samples.push(jitter_us);
-            
-            // Keep only the most recent samples
-            if samples.len() > self.max_recent_samples {
-                samples.remove(0);
-            }
+        let mut samples = self.recent_jitter_samples.lock();
+        samples.push(jitter_us);
+        
+        // Keep only the most recent samples
+        if samples.len() > self.max_recent_samples {
+            samples.remove(0);
         }
     }
 
@@ -223,6 +253,18 @@ impl JitterBudget {
         }
     }
 
+    pub fn get_consecutive_overruns(&self) -> u32 {
+        self.consecutive_overruns.load(Ordering::Relaxed)
+    }
+
+    pub fn get_total_overruns(&self) -> u64 {
+        self.total_overruns.load(Ordering::Relaxed)
+    }
+
+    pub fn get_max_jitter_us(&self) -> u32 {
+        self.config.max_jitter_us
+    }
+
     /// Get jitter budget statistics
     pub fn get_stats(&self) -> JitterBudgetStats {
         let consecutive_overruns = self.consecutive_overruns.load(Ordering::Relaxed);
@@ -246,27 +288,24 @@ impl JitterBudget {
 
     /// Calculate jitter statistics from recent samples
     fn calculate_jitter_stats(&self) -> (u32, u32, u32) {
-        if let Ok(samples) = self.recent_jitter_samples.lock() {
-            if samples.is_empty() {
-                return (0, 0, 0);
-            }
-            
-            let total_samples = samples.len();
-            
-            // Calculate mean
-            let sum: u64 = samples.iter().map(|&x| x as u64).sum();
-            let mean = (sum / total_samples as u64) as u32;
-            
-            // Calculate p95
-            let mut sorted_samples = samples.clone();
-            sorted_samples.sort_unstable();
-            let p95_index = (total_samples * 95) / 100;
-            let p95 = sorted_samples[p95_index.min(total_samples - 1)];
-            
-            (mean, p95, total_samples as u32)
-        } else {
-            (0, 0, 0)
+        let samples = self.recent_jitter_samples.lock();
+        if samples.is_empty() {
+            return (0, 0, 0);
         }
+        
+        let total_samples = samples.len();
+        
+        // Calculate mean
+        let sum: u64 = samples.iter().map(|&x| x as u64).sum();
+        let mean = (sum / total_samples as u64) as u32;
+        
+        // Calculate p95
+        let mut sorted_samples = samples.clone();
+        sorted_samples.sort_unstable();
+        let p95_index = (total_samples * 95) / 100;
+        let p95 = sorted_samples[p95_index.min(total_samples - 1)];
+        
+        (mean, p95, total_samples as u32)
     }
 
     /// Reset jitter budget statistics
@@ -275,22 +314,16 @@ impl JitterBudget {
         self.total_overruns.store(0, Ordering::Relaxed);
         self.boost_active_until.store(0, Ordering::Relaxed);
         
-        if let Ok(mut histogram) = self.jitter_histogram.lock() {
-            *histogram = [0; 64];
-        }
+        let mut histogram = self.jitter_histogram.lock();
+        *histogram = [0; 64];
         
-        if let Ok(mut samples) = self.recent_jitter_samples.lock() {
-            samples.clear();
-        }
+        let mut samples = self.recent_jitter_samples.lock();
+        samples.clear();
     }
 
     /// Get jitter histogram for debugging
     pub fn get_jitter_histogram(&self) -> [u32; 64] {
-        if let Ok(histogram) = self.jitter_histogram.lock() {
-            *histogram
-        } else {
-            [0; 64]
-        }
+        *self.jitter_histogram.lock()
     }
 
     /// Check if jitter is within acceptable limits
@@ -333,11 +366,14 @@ pub struct JitterBudgetManager {
     pub budget_duration_ticks: u64,
 }
 
-/// Global jitter metrics
-static JITTER_METRICS: spin::Mutex<JitterMetrics> = spin::Mutex::new(JitterMetrics::default());
+lazy_static! {
+    /// Global jitter metrics.
+    static ref JITTER_METRICS: spin::Mutex<JitterMetrics> = spin::Mutex::new(JitterMetrics::default());
 
-/// Global jitter budget manager
-static JITTER_BUDGET: spin::Mutex<JitterBudget> = spin::Mutex::new(JitterBudget::new(JitterBudgetConfig::default()));
+    /// Global jitter budget manager.
+    static ref JITTER_BUDGET: spin::Mutex<JitterBudget> =
+        spin::Mutex::new(JitterBudget::new(JitterBudgetConfig::default()));
+}
 
 /// Current task's remaining time slice
 static CURRENT_TIME_SLICE: AtomicU64 = AtomicU64::new(DEFAULT_TIME_SLICE as u64);
@@ -414,9 +450,7 @@ pub fn record_jitter(jitter_us: u32) {
     }
     
     // Update jitter budget
-    if let Some(budget) = get_jitter_budget() {
-        budget.update_jitter_budget(jitter_us);
-    }
+    get_jitter_budget().update_jitter_budget(jitter_us);
 }
 
 /// Get jitter metrics
@@ -441,25 +475,31 @@ pub fn print_jitter_stats() {
     kprintln!("P99 Jitter: {}µs", metrics.p99_jitter_us);
     kprintln!("Jitter Histogram:");
     for (i, count) in metrics.histogram.iter().enumerate() {
-        let range = if i == 9 { "900+µs" } else { &format!("{}-{}µs", i * 100, (i + 1) * 100) };
-        kprintln!("  {}: {} measurements", range, count);
+        if i == 9 {
+            kprintln!("  900+µs: {} measurements", count);
+        } else {
+            kprintln!("  {}-{}µs: {} measurements", i * 100, (i + 1) * 100, count);
+        }
     }
     kprintln!("=== END JITTER STATISTICS ===");
     kprintln!("");
     
     // Print jitter budget status
-    let budget = get_jitter_budget().map(|b| b.get_stats());
-    if let Some(stats) = budget {
-        kprintln!("=== JITTER BUDGET STATUS ===");
-        kprintln!("Budget Active: {}", stats.boost_active);
-        kprintln!("Consecutive Overruns: {}/{}", stats.consecutive_overruns, stats.config.consecutive_threshold);
-        kprintln!("Boost Remaining: {}ms", stats.boost_remaining_ms);
-        kprintln!("Jitter Mean: {}µs", stats.jitter_mean_us);
-        kprintln!("Jitter P95: {}µs", stats.jitter_p95_us);
-        kprintln!("Acceptable: {}", stats.is_jitter_acceptable());
-        kprintln!("=== END JITTER BUDGET STATUS ===");
-        kprintln!("");
-    }
+    let budget = get_jitter_budget();
+    let stats = budget.get_stats();
+    kprintln!("=== JITTER BUDGET STATUS ===");
+    kprintln!("Budget Active: {}", stats.boost_active);
+    kprintln!(
+        "Consecutive Overruns: {}/{}",
+        stats.consecutive_overruns,
+        budget.get_config().consecutive_threshold
+    );
+    kprintln!("Boost Remaining: {}ms", stats.boost_remaining_ms);
+    kprintln!("Jitter Mean: {}µs", stats.jitter_mean_us);
+    kprintln!("Jitter P95: {}µs", stats.jitter_p95_us);
+    kprintln!("Acceptable: {}", stats.is_jitter_acceptable());
+    kprintln!("=== END JITTER BUDGET STATUS ===");
+    kprintln!("");
 }
 
 /// Scheduler tick handler
@@ -471,7 +511,7 @@ pub fn print_jitter_stats() {
 /// * `tick_count` - Current system tick count from timer
 pub fn scheduler_tick(tick_count: u64) {
     // Measure tick timing for jitter analysis
-    let tick_start = x86_64::instructions::read_tsc();
+    let tick_start = unsafe { core::arch::x86_64::_rdtsc() };
     
     // Increment scheduler tick counter
     SCHEDULER_TICKS.store(tick_count, Ordering::Relaxed);
@@ -495,7 +535,7 @@ pub fn scheduler_tick(tick_count: u64) {
     }
     
     // Measure tick completion time and record jitter
-    let tick_end = x86_64::instructions::read_tsc();
+    let tick_end = unsafe { core::arch::x86_64::_rdtsc() };
     let tick_duration_cycles = tick_end - tick_start;
     
     // Convert to microseconds (approximate)
@@ -598,8 +638,8 @@ fn simulate_rt_wake_request() {
     kprintln!("[SCHED] Simulating RT wake request...");
     
     // Simulate some processing time
-    let start = x86_64::instructions::read_tsc();
-    while x86_64::instructions::read_tsc() - start < 1000 { // ~1µs delay
+    let start = unsafe { core::arch::x86_64::_rdtsc() };
+    while unsafe { core::arch::x86_64::_rdtsc() } - start < 1000 { // ~1µs delay
         core::hint::spin_loop();
     }
 }
@@ -609,21 +649,21 @@ fn simulate_rt_wake_request() {
 /// # Returns
 /// Latency in microseconds
 fn measure_wake_to_run_latency() -> u32 {
-    let start = x86_64::instructions::read_tsc();
+    let start = unsafe { core::arch::x86_64::_rdtsc() };
     
     // Simulate wake-to-run processing
     // In a real implementation, this would measure actual task wake latency
     
     // Simulate some processing time
-    while x86_64::instructions::read_tsc() - start < 1000 { // ~1µs delay
+    while unsafe { core::arch::x86_64::_rdtsc() } - start < 1000 { // ~1µs delay
         core::hint::spin_loop();
     }
     
-    let end = x86_64::instructions::read_tsc();
+    let end = unsafe { core::arch::x86_64::_rdtsc() };
     let latency_cycles = end - start;
     
     // Convert to microseconds (approximate)
-    (latency_cycles * 1_000_000) / 2_400_000_000 // Assuming 2.4GHz
+    ((latency_cycles * 1_000_000) / 2_400_000_000) as u32 // Assuming 2.4GHz
 }
 
 /// Preempt the current task
@@ -704,6 +744,11 @@ pub fn handle_voluntary_yield() {
 /// 
 /// Performs periodic housekeeping tasks like load balancing,
 /// garbage collection, and performance monitoring.
+/// Get the current scheduler tick count (monotonically increasing).
+pub fn get_scheduler_tick_count() -> u64 {
+    SCHEDULER_TICKS.load(Ordering::Relaxed)
+}
+
 fn scheduler_maintenance() {
     let tick_count = SCHEDULER_TICKS.load(Ordering::Relaxed);
     
@@ -1038,8 +1083,8 @@ fn update_jitter_budget(jitter_us: u32) {
 /// 
 /// # Returns
 /// Copy of current jitter budget manager state
-pub fn get_jitter_budget() -> Option<&'static JitterBudget> {
-    unsafe { JITTER_BUDGET.as_ref() }
+pub fn get_jitter_budget() -> spin::MutexGuard<'static, JitterBudget> {
+    JITTER_BUDGET.lock()
 }
 
 /// Check if jitter budget is currently active
@@ -1047,7 +1092,7 @@ pub fn get_jitter_budget() -> Option<&'static JitterBudget> {
 /// # Returns
 /// `true` if jitter budget is active, `false` otherwise
 pub fn is_jitter_budget_active() -> bool {
-    get_jitter_budget().map(|budget| budget.is_boost_active()).unwrap_or(false)
+    get_jitter_budget().is_boost_active()
 }
 
 /// Get current boost factor for RT tasks
@@ -1055,7 +1100,7 @@ pub fn is_jitter_budget_active() -> bool {
 /// # Returns
 /// Current boost factor (1.0 = no boost, >1.0 = boosted)
 pub fn get_rt_task_boost_factor() -> f32 {
-    get_jitter_budget().map(|budget| budget.get_rt_quantum_boost() as f32).unwrap_or(1.0)
+    get_jitter_budget().get_rt_quantum_boost() as f32
 }
 
 /// Configure jitter budget parameters
@@ -1092,7 +1137,7 @@ pub fn reset_jitter_budget_stats() {
 /// * `jitter_us` - Jitter value to inject in microseconds
 /// * `count` - Number of consecutive jitter events to inject
 pub fn inject_test_jitter(jitter_us: u32, count: u32) {
-    klog!(INFO, "[SCHED] Injecting test jitter: {}µs for {} consecutive events", jitter_us, jitter_us, count);
+    klog!(INFO, "[SCHED] Injecting test jitter: {}µs for {} consecutive events", jitter_us, count);
     
     for _ in 0..count {
         update_jitter_budget(jitter_us);

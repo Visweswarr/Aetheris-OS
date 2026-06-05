@@ -3,9 +3,9 @@
 //! This module provides authoritative manifest builders for directories and files,
 //! with canonical ordering and deterministic Merkle root computation.
 
-use alloc::string::String;
-use alloc::vec::Vec;
-use alloc::collections::BTreeMap;
+use std::string::String;
+use std::vec::Vec;
+use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use blake3::Hasher;
 

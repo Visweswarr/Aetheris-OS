@@ -181,8 +181,8 @@ pub fn test_elf_enum_constants() -> Result<(), &'static str> {
     assert_eq!(ElfMachine::RiscV as u16, 243, "ElfMachine::RiscV should be 243");
     kprintln!("  ✅ ELF machine constants correct");
     
-    // Test ELF OS/ABI values
-    assert_eq!(ElfOsAbi::None as u8, 0, "ElfOsAbi::None should be 0");
+    // Test ELF OS/ABI values (SystemV is the same as None in ELF spec, both = 0)
+    assert_eq!(ElfOsAbi::SystemV as u8, 0, "ElfOsAbi::SystemV should be 0");
     assert_eq!(ElfOsAbi::Linux as u8, 3, "ElfOsAbi::Linux should be 3");
     assert_eq!(ElfOsAbi::FreeBSD as u8, 9, "ElfOsAbi::FreeBSD should be 9");
     assert_eq!(ElfOsAbi::OpenBSD as u8, 12, "ElfOsAbi::OpenBSD should be 12");

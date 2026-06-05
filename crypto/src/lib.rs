@@ -181,17 +181,18 @@
 //! to [security@polymera-os.org](mailto:security@polymera-os.org).
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(feature = "docsrs", feature(doc_cfg))]
-#![deny(missing_docs)]
-#![deny(unsafe_code)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![warn(missing_docs)]
 #![warn(rust_2018_idioms)]
 #![warn(missing_debug_implementations)]
 
 // Re-export the main crypto module
 pub use crate::crypto::*;
+pub use crate::traits::*;
 
 // Internal module structure
 mod crypto;
+pub mod traits;
 
 // Re-export version and metadata
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

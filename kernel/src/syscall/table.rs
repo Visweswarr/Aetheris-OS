@@ -68,8 +68,47 @@ pub const SYS_SETPRIORITY: u64 = 20;
 /// System call: get kernel feature flags
 pub const SYS_GET_FEATURES: u64 = 21;
 
+// ============================================================================
+// Polyglot Runtime System Calls (100-109)
+// ============================================================================
+
+/// System call: create a new polyglot sandbox
+/// Args: manifest_ptr, manifest_len, flags
+/// Returns: sandbox_id on success, error code on failure
+pub const SYS_POLYGLOT_CREATE: u64 = 100;
+
+/// System call: execute code in a polyglot sandbox
+/// Args: sandbox_id, entry_point_ptr, entry_point_len, args_ptr
+/// Returns: 0 on success, error code on failure
+pub const SYS_POLYGLOT_EXEC: u64 = 101;
+
+/// System call: terminate a polyglot sandbox
+/// Args: sandbox_id, flags
+/// Returns: 0 on success, error code on failure
+pub const SYS_POLYGLOT_TERMINATE: u64 = 102;
+
+/// System call: get polyglot sandbox status
+/// Args: sandbox_id, status_ptr, status_len
+/// Returns: 0 on success, error code on failure
+pub const SYS_POLYGLOT_STATUS: u64 = 103;
+
+/// System call: send message via polyglot bridge
+/// Args: sandbox_id, dest_id, msg_ptr, msg_len
+/// Returns: 0 on success, error code on failure
+pub const SYS_POLYGLOT_SEND: u64 = 104;
+
+/// System call: receive message via polyglot bridge
+/// Args: sandbox_id, buf_ptr, buf_len, timeout_ms
+/// Returns: bytes received on success, error code on failure
+pub const SYS_POLYGLOT_RECV: u64 = 105;
+
+/// System call: get polyglot runtime metrics
+/// Args: metrics_ptr, metrics_len
+/// Returns: 0 on success, error code on failure
+pub const SYS_POLYGLOT_METRICS: u64 = 106;
+
 /// Maximum system call number (for validation)
-pub const SYS_MAX: u64 = 21;
+pub const SYS_MAX: u64 = 106;
 
 /// System call information structure
 #[derive(Debug, Clone, Copy)]
@@ -168,6 +207,56 @@ pub const SYSCALL_TABLE: &[SyscallInfo] = &[
         arg_count: 0,
         implemented: true,
         description: "Get kernel feature flags bitset",
+    },
+    // Polyglot Runtime System Calls
+    SyscallInfo {
+        number: SYS_POLYGLOT_CREATE,
+        name: "polyglot_create",
+        arg_count: 3,
+        implemented: true,
+        description: "Create a new polyglot sandbox from manifest",
+    },
+    SyscallInfo {
+        number: SYS_POLYGLOT_EXEC,
+        name: "polyglot_exec",
+        arg_count: 4,
+        implemented: true,
+        description: "Execute code in a polyglot sandbox",
+    },
+    SyscallInfo {
+        number: SYS_POLYGLOT_TERMINATE,
+        name: "polyglot_terminate",
+        arg_count: 2,
+        implemented: true,
+        description: "Terminate a polyglot sandbox",
+    },
+    SyscallInfo {
+        number: SYS_POLYGLOT_STATUS,
+        name: "polyglot_status",
+        arg_count: 3,
+        implemented: true,
+        description: "Get polyglot sandbox status",
+    },
+    SyscallInfo {
+        number: SYS_POLYGLOT_SEND,
+        name: "polyglot_send",
+        arg_count: 4,
+        implemented: true,
+        description: "Send message via polyglot bridge",
+    },
+    SyscallInfo {
+        number: SYS_POLYGLOT_RECV,
+        name: "polyglot_recv",
+        arg_count: 4,
+        implemented: true,
+        description: "Receive message via polyglot bridge",
+    },
+    SyscallInfo {
+        number: SYS_POLYGLOT_METRICS,
+        name: "polyglot_metrics",
+        arg_count: 2,
+        implemented: true,
+        description: "Get polyglot runtime metrics",
     },
 ];
 

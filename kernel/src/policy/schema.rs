@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_cbor;
+// Note: serde_cbor not available in no_std, using stub serialization
 use alloc::vec::Vec;
 use alloc::string::String;
 use alloc::collections::BTreeMap;

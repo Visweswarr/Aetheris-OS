@@ -5,10 +5,11 @@
 /// The header includes magic validation, entry point, capability requirements,
 /// stack size, and data region integrity hashes.
 
-use crate::{kprintln, klog, kprintln};
+use crate::{kprintln, klog, format};
 use crate::log::Level;
 use crate::secman::cap_v2::{CapTokenV2, CapValidationResult};
 use core::mem;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
 

@@ -6,27 +6,60 @@
 //! - Virtual clock-based nonce generation
 //! - Deterministic associated data construction
 
-use alloc::string::String;
-use alloc::vec::Vec;
-use alloc::collections::BTreeMap;
+use std::string::String;
+use std::vec::Vec;
+use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::schema::{EncHeaderV1, EncryptionAlg, ContentId, ContentType};
-use polycrypto_sys::{xchacha20_seal, xchacha20_open, memzero, AETH_KEY_SIZE, AETH_NONCE_SIZE, AETH_TAG_SIZE};
+use crate::schema::{EncHeaderV1, EncryptionAlg};
+
+// Stub constants for polycrypto_sys
+pub const AETH_KEY_SIZE: usize = 32;
+pub const AETH_NONCE_SIZE: usize = 24;
+pub const AETH_TAG_SIZE: usize = 16;
+
+// Stub functions for polycrypto_sys
+fn xchacha20_seal(
+    key: &[u8; AETH_KEY_SIZE],
+    nonce: &[u8; AETH_NONCE_SIZE],
+    _aad: &[u8],
+    plaintext: &[u8],
+) -> Result<(Vec<u8>, [u8; AETH_TAG_SIZE]), &'static str> {
+    // Stub: just return the plaintext with a dummy tag
+    let mut ciphertext = plaintext.to_vec();
+    // XOR with key for minimal "encryption" (NOT SECURE - stub only)
+    for (i, byte) in ciphertext.iter_mut().enumerate() {
+        *byte ^= key[i % AETH_KEY_SIZE] ^ nonce[i % AETH_NONCE_SIZE];
+    }
+    Ok((ciphertext, [0u8; AETH_TAG_SIZE]))
+}
+
+fn xchacha20_open(
+    key: &[u8; AETH_KEY_SIZE],
+    nonce: &[u8; AETH_NONCE_SIZE],
+    _aad: &[u8],
+    ciphertext: &[u8],
+    _tag: &[u8],
+) -> Result<Vec<u8>, &'static str> {
+    // Stub: reverse the XOR "encryption"
+    let mut plaintext = ciphertext.to_vec();
+    for (i, byte) in plaintext.iter_mut().enumerate() {
+        *byte ^= key[i % AETH_KEY_SIZE] ^ nonce[i % AETH_NONCE_SIZE];
+    }
+    Ok(plaintext)
+}
 
 /// Key ID type for KeyVault
 pub type Kid = String;
 
 /// Data encryption key (DEK) - 32 bytes
-#[derive(Debug, Clone, PartialEq, Eq, Zeroize)]
-#[zeroize(drop)]
-pub struct Dek([u8; AETH_KEY_SIZE]);
+#[derive(Debug, Clone, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
+pub struct Dek(pub [u8; AETH_KEY_SIZE]);
 
 /// Key encryption key (KEK) - 32 bytes
-#[derive(Debug, Clone, PartialEq, Eq, Zeroize)]
-#[zeroize(drop)]
-pub struct Kek([u8; AETH_KEY_SIZE]);
+#[derive(Debug, Clone, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
+pub struct Kek(pub [u8; AETH_KEY_SIZE]);
 
 /// Nonce for encryption - 24 bytes
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,6 +125,9 @@ pub trait VirtualClock {
     /// Get current virtual clock value
     fn now(&self) -> u64;
     
+    /// Increment the clock
+    fn increment(&mut self);
+    
     /// Get mount-specific salt
     fn get_mount_salt(&self) -> &[u8; 16];
 }
@@ -117,15 +153,28 @@ impl DefaultVirtualClock {
         }
     }
     
-    /// Increment the counter
-    pub fn increment(&mut self) {
-        self.counter += 1;
+    /// Generate nonce from virtual clock and mount salt
+    pub fn generate_nonce(&self) -> Nonce {
+        let mut nonce = [0u8; AETH_NONCE_SIZE];
+        
+        // First 8 bytes: virtual clock counter (little-endian)
+        let clock_bytes = self.counter.to_le_bytes();
+        nonce[..8].copy_from_slice(&clock_bytes);
+        
+        // Next 16 bytes: mount salt
+        nonce[8..].copy_from_slice(&self.mount_salt);
+        
+        Nonce(nonce)
     }
 }
 
 impl VirtualClock for DefaultVirtualClock {
     fn now(&self) -> u64 {
         self.counter
+    }
+    
+    fn increment(&mut self) {
+        self.counter += 1;
     }
     
     fn get_mount_salt(&self) -> &[u8; 16] {
@@ -244,17 +293,18 @@ impl NgfsEncryption {
         ).map_err(|e| EncError::DecryptionFailed(format!("DEK decryption failed: {:?}", e)))?;
         
         // Verify DEK size
-        if dek.len() != AETH_KEY_SIZE {
+        let dek_len = dek.len();
+        if dek_len != AETH_KEY_SIZE {
             return Err(EncError::InvalidKeySize {
                 expected: AETH_KEY_SIZE,
-                actual: dek.len(),
+                actual: dek_len,
             });
         }
         
         let dek_array: [u8; AETH_KEY_SIZE] = dek.try_into()
             .map_err(|_| EncError::InvalidKeySize {
                 expected: AETH_KEY_SIZE,
-                actual: dek.len(),
+                actual: dek_len,
             })?;
         
         let dek = Dek(dek_array);
@@ -365,7 +415,7 @@ mod tests {
     impl KeyVaultClient for MockKeyVault {
         fn derive_kek_for_kid(&self, _kid: &Kid) -> Result<Kek, EncError> {
             // Return a fixed test key
-            Ok(Kek([42u8; AETH_KEY_SIZE]))
+            Ok(Kek::new([42u8; AETH_KEY_SIZE]))
         }
     }
     

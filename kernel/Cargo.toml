@@ -4,15 +4,40 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-uart_16550 = "0.2"
+# Core no_std compatible dependencies
+serde = { version = "1.0", features = ["derive", "alloc"], default-features = false }
 spin = "0.9"
 x86_64 = "0.14"
-lazy_static = "1.4"
-serde = { version = "1.0", features = ["derive"] }
+lazy_static = { version = "1.4", features = ["spin_no_std"] }
+linked_list_allocator = "0.10"
+bootloader = { version = "0.9", features = ["map_physical_memory"] }
+uart_16550 = "0.2"
+# LZ4 compression for memory page compression (Requirement 1.2)
+lz4_flex = { version = "0.11.3", default-features = false, features = ["safe-encode", "safe-decode"] }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+serde_cbor = { version = "0.11", default-features = false, features = ["alloc"] }
+postcard = { version = "1", default-features = false, features = ["alloc"] }
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
+blake3 = { version = "1", default-features = false }
+# Optional dependencies for std builds
+[target.'cfg(not(target_os = "none"))'.dependencies]
+coset = "0.3"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+lru = "0.12"
+ciborium = "0.2"
 
 [features]
+default = []
 uefi = []
 deterministic = []
 debug = []
 dev-keyvault = []
+mm_stats = []
+insecure-toy-crypto = []
 
+# Cargo configuration for no_std kernel
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

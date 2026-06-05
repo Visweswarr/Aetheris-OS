@@ -1,0 +1,127 @@
+name: Buf Lint
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'proto/**/*.proto'
+      - 'proto/buf.*'
+      - '.github/workflows/buf-lint.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'proto/**/*.proto'
+      - 'proto/buf.*'
+      - '.github/workflows/buf-lint.yml'
+
+jobs:
+  buf-lint:
+    name: Protocol Buffer Linting
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for breaking change detection
+      
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      
+      - name: Install Buf
+        run: |
+          # Install Buf CLI
+          curl -sSL \
+            "https://github.com/bufbuild/buf/releases/download/v1.28.1/buf-$(uname -s)-$(uname -m)" \
+            -o "buf"
+          chmod +x buf
+          sudo mv buf /usr/local/bin/
+          
+          # Verify installation
+          buf --version
+      
+      - name: Cache Buf modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/buf
+          key: ${{ runner.os }}-buf-${{ hashFiles('proto/buf.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-buf-
+      
+      - name: Buf lint
+        run: |
+          cd proto
+          echo "🔍 Running Buf lint check..."
+          buf lint
+          echo "✅ Lint check passed"
+      
+      - name: Buf format check
+        run: |
+          cd proto
+          echo "🎨 Checking proto file formatting..."
+          buf format --diff
+          echo "✅ Format check passed"
+      
+      - name: Buf breaking change check
+        run: |
+          cd proto
+          echo "🚨 Checking for breaking changes..."
+          
+          # Get the base commit for comparison
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_COMMIT="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_COMMIT="HEAD~1"
+          fi
+          
+          # Check for breaking changes
+          buf breaking --against ".git#subdir=proto,ref=$BASE_COMMIT"
+          echo "✅ No breaking changes detected"
+      
+      - name: Buf generate (dry run)
+        run: |
+          cd proto
+          echo "⚙️ Testing code generation..."
+          buf generate --dry-run
+          echo "✅ Code generation test passed"
+      
+      - name: Upload Buf results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: buf-results
+          path: |
+            proto/buf.lock
+            proto/gen/
+          retention-days: 7
+      
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            let comment = '## 🔍 Buf Lint Results\n\n';
+            comment += '✅ **Lint Check**: Passed\n';
+            comment += '✅ **Format Check**: Passed\n';
+            comment += '✅ **Breaking Change Check**: Passed\n';
+            comment += '✅ **Code Generation**: Tested\n\n';
+            
+            comment += '### 📋 Summary\n\n';
+            comment += '- All Protocol Buffer files passed style checks\n';
+            comment += '- No breaking changes detected\n';
+            comment += '- Files are properly formatted\n';
+            comment += '- Code generation is working correctly\n\n';
+            
+            comment += '### 🚀 Next Steps\n\n';
+            comment += 'Your proto changes are ready for review!';
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

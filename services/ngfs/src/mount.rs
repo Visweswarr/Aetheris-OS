@@ -1,7 +1,10 @@
-use crate::schema::{Cid, MountOptionsV1};
+use crate::schema::MountOptionsV1;
 use std::collections::HashMap;
 use std::path::Path;
 use thiserror::Error;
+
+/// CID type alias for mount points (string-based for simplicity)
+pub type Cid = String;
 
 #[derive(Debug, Clone)]
 pub struct Mount {

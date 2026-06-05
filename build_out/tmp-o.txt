@@ -1,0 +1,103 @@
+{
+  "ai_plans_generated_total": 3,
+  "dashboard_metric": "C:\\polymera-os\\ui\\dashboard\\ai_metrics.js",
+  "plan": {
+    "created_at": "deterministic-cognitive-v1",
+    "metadata": {},
+    "original_intent": "test",
+    "plan_id": "cognitive-1b91fab28544feae",
+    "steps": [
+      {
+        "depends_on": [],
+        "description": "analyze goal",
+        "estimated_time_secs": 2,
+        "is_destructive": false,
+        "parameters": {
+          "cognitive_step": "analyze goal",
+          "group": 0,
+          "message": "understand input",
+          "order_in_group": 0,
+          "requires_remote": false
+        },
+        "required_capabilities": [
+          "ai.plan.generate"
+        ],
+        "requires_approval": false,
+        "step_id": "step-001",
+        "tool_name": "echo"
+      },
+      {
+        "depends_on": [
+          "step-001"
+        ],
+        "description": "plan steps",
+        "estimated_time_secs": 2,
+        "is_destructive": false,
+        "parameters": {
+          "cognitive_step": "plan steps",
+          "group": 0,
+          "message": "structure tasks",
+          "order_in_group": 1,
+          "requires_remote": false
+        },
+        "required_capabilities": [
+          "ai.plan.generate"
+        ],
+        "requires_approval": false,
+        "step_id": "step-002",
+        "tool_name": "echo"
+      },
+      {
+        "depends_on": [
+          "step-002"
+        ],
+        "description": "execute plan",
+        "estimated_time_secs": 2,
+        "is_destructive": false,
+        "parameters": {
+          "cognitive_step": "execute plan",
+          "group": 0,
+          "message": "run actions",
+          "order_in_group": 2,
+          "requires_remote": false
+        },
+        "required_capabilities": [
+          "ai.plan.generate"
+        ],
+        "requires_approval": false,
+        "step_id": "step-003",
+        "tool_name": "echo"
+      }
+    ],
+    "total_estimated_time_secs": 6
+  },
+  "projection": {
+    "goal": "test",
+    "learned_backup_drive_unavailable": false,
+    "plan_id": "cognitive-1b91fab28544feae",
+    "replay_hash": "4bae57aed91683bd38cdb26c34171e7c1cfbe96fa04d76964420effcb83b7377",
+    "steps": [
+      {
+        "description": "understand input",
+        "group": 0,
+        "name": "analyze goal",
+        "order_in_group": 0,
+        "step_id": "step-001"
+      },
+      {
+        "description": "structure tasks",
+        "group": 0,
+        "name": "plan steps",
+        "order_in_group": 1,
+        "step_id": "step-002"
+      },
+      {
+        "description": "run actions",
+        "group": 0,
+        "name": "execute plan",
+        "order_in_group": 2,
+        "step_id": "step-003"
+      }
+    ]
+  }
+}

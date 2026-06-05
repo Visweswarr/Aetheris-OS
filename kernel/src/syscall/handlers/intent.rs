@@ -18,6 +18,15 @@ pub fn get_intent_kernel() -> &'static IntentKernel {
     }
 }
 
+#[derive(serde::Deserialize)]
+struct IntentEnvelopeV1<'a> {
+    v: u8,
+    #[serde(borrow)]
+    captoken: &'a [u8],
+    #[serde(borrow)]
+    payload: &'a [u8],
+}
+
 // SYS_INTENT_SUBMIT: Submit an intent and get a preview
 pub fn sys_intent_submit(ctx: &mut SyscallContext) -> Result<isize, Errno> {
     let kernel = get_intent_kernel();
@@ -36,12 +45,42 @@ pub fn sys_intent_submit(ctx: &mut SyscallContext) -> Result<isize, Errno> {
         return Err(Errno::E2BIG);
     }
     
-    // Copy intent data from user space
-    let mut intent_data = vec![0u8; buffer_size];
-    user_buffer.copy_to(&mut intent_data)?;
-    
+// Copy data from user space
+    let mut in_bytes = vec![0u8; buffer_size];
+    user_buffer.copy_to(&mut in_bytes)?;
+
+    // Try envelope first
+    let (token_opt, intent_bytes): (Option<alloc::vec::Vec<u8>>, alloc::vec::Vec<u8>) = match serde_cbor::from_slice::<IntentEnvelopeV1>(&in_bytes) {
+        Ok(env) if env.v == 1 => (Some(env.captoken.to_vec()), env.payload.to_vec()),
+        _ => (None, in_bytes.clone()),
+    };
+
+    // Verify token if present or required
+    if let Some(tok) = token_opt.clone() {
+        let pe = crate::policy::engine::caps::CapVerifier::from_env();
+        match pe.verify(&tok) {
+            Ok(claims) => {
+                if let Err(_) = pe.require(&claims.scopes, "intent.emit") {
+                    let _ = crate::policy::audit::write(&crate::policy::audit::AuditEntry{
+                        ts90k: crate::time::get_time_90khz(), action: "intent.submit".into(), result: "deny".into(), reason: Some("scope".into()),
+                        iss: claims.iss, sub: claims.sub, aud: claims.aud, jti_hex: hex::encode(claims.jti), scopes: claims.scopes, endpoint: None,
+                    });
+                    return Err(Errno::EPERM);
+                }
+                let _ = crate::policy::audit::write(&crate::policy::audit::AuditEntry{
+                    ts90k: crate::time::get_time_90khz(), action: "intent.submit".into(), result: "allow".into(), reason: None,
+                    iss: claims.iss, sub: claims.sub, aud: claims.aud, jti_hex: hex::encode(claims.jti), scopes: claims.scopes, endpoint: None,
+                });
+            }
+            Err(_) => { return Err(Errno::EPERM); }
+        }
+    } else {
+        // legacy path: allow only if AETHERIS_REQUIRE_TOKEN != 1
+        if core::option_env!("AETHERIS_REQUIRE_TOKEN") == Some("1") { return Err(Errno::EPERM); }
+    }
+
     // Parse CBOR intent
-    let intent = match IntentV1::from_cbor(&intent_data) {
+    let intent = match IntentV1::from_cbor(&intent_bytes) {
         Ok(intent) => intent,
         Err(_) => {
             crate::audit::emit(
@@ -85,12 +124,32 @@ pub fn sys_intent_preview(ctx: &mut SyscallContext) -> Result<isize, Errno> {
         return Err(Errno::E2BIG);
     }
     
-    // Copy intent data from user space
-    let mut intent_data = vec![0u8; buffer_size];
-    user_buffer.copy_to(&mut intent_data)?;
-    
+// Copy user bytes
+    let mut in_bytes = vec![0u8; buffer_size];
+    user_buffer.copy_to(&mut in_bytes)?;
+
+    // Try envelope
+    let (token_opt, intent_bytes): (Option<alloc::vec::Vec<u8>>, alloc::vec::Vec<u8>) = match serde_cbor::from_slice::<IntentEnvelopeV1>(&in_bytes) {
+        Ok(env) if env.v == 1 => (Some(env.captoken.to_vec()), env.payload.to_vec()),
+        _ => (None, in_bytes.clone()),
+    };
+
+    if let Some(tok) = token_opt.clone() {
+        let pe = crate::policy::engine::caps::CapVerifier::from_env();
+        match pe.verify(&tok) {
+            Ok(claims) => {
+                if let Err(_) = pe.require(&claims.scopes, "intent.emit") { return Err(Errno::EPERM); }
+                let _ = crate::policy::audit::write(&crate::policy::audit::AuditEntry{
+                    ts90k: crate::time::get_time_90khz(), action: "intent.preview".into(), result: "allow".into(), reason: None,
+                    iss: claims.iss, sub: claims.sub, aud: claims.aud, jti_hex: hex::encode(claims.jti), scopes: claims.scopes, endpoint: None,
+                });
+            }
+            Err(_) => { return Err(Errno::EPERM); }
+        }
+    } else { if core::option_env!("AETHERIS_REQUIRE_TOKEN") == Some("1") { return Err(Errno::EPERM); } }
+
     // Generate preview
-    let preview = kernel.preview(&intent_data)?;
+    let preview = kernel.preview(&intent_bytes)?;
     
     // Log audit event
     crate::audit::emit(

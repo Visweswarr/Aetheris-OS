@@ -3,7 +3,7 @@
 /// This module provides HPET support as a fallback when Local APIC timer is not available.
 /// HPET offers high precision timing with low jitter for robust timer functionality.
 
-use core::arch::x86_64::*;
+use core::arch::{asm, x86_64::*};
 use core::sync::atomic::{AtomicU64, AtomicU32, Ordering};
 use core::ptr;
 use alloc::vec::Vec;
@@ -21,7 +21,7 @@ pub struct HpetTimerConfig {
 }
 
 /// HPET timer modes
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HpetTimerMode {
     OneShot,
     Periodic,
@@ -55,19 +55,19 @@ impl HpetTimer {
     /// Initialize the HPET timer
     pub fn init(&mut self) -> Result<(), HalError> {
         // Check if HPET is present
-        if !self::is_hpet_present() {
+        if !Self::is_hpet_present() {
             return Err(HalError::DeviceNotFound("HPET not present"));
         }
 
         // Map HPET MMIO
-        let base_address = self::map_hpet_mmio()?;
+        let base_address = Self::map_hpet_mmio()?;
         self.base_address = base_address;
 
         // Verify HPET capabilities
-        self::verify_hpet_capabilities(base_address)?;
+        Self::verify_hpet_capabilities(base_address)?;
 
         // Configure timer
-        self::configure_timer(base_address, &self.config)?;
+        Self::configure_timer(base_address, &self.config)?;
 
         // Calibrate against TSC
         self.calibrate()?;
@@ -86,7 +86,7 @@ impl HpetTimer {
 
         // Collect TSC samples over calibration window
         while start_time.elapsed() < target_duration && samples.len() < MIN_SAMPLES {
-            let tsc1 = self::read_tsc();
+            let tsc1 = Self::read_tsc();
             
             // Wait for next timer tick
             let tick_start = self.tick_count.load(Ordering::Relaxed);
@@ -94,7 +94,7 @@ impl HpetTimer {
                 core::hint::spin_loop();
             }
             
-            let tsc2 = self::read_tsc();
+            let tsc2 = Self::read_tsc();
             let tsc_delta = tsc2.wrapping_sub(tsc1);
             
             if tsc_delta > 0 {
@@ -111,7 +111,7 @@ impl HpetTimer {
         let median_tsc_per_tick = samples[samples.len() / 2];
 
         // Convert to nanoseconds per tick
-        let tsc_freq = self::get_tsc_frequency();
+        let tsc_freq = Self::get_tsc_frequency();
         let ns_per_tick = (median_tsc_per_tick * 1_000_000_000) / tsc_freq;
 
         self.ns_per_tick.store(ns_per_tick, Ordering::Relaxed);
@@ -145,50 +145,42 @@ impl HpetTimer {
         // Map jitter to histogram bin (0-63, each bin represents ~4us)
         let bin = (jitter_us / 4).min(63) as usize;
         
-        if let Ok(mut histogram) = self.jitter_histogram.lock() {
-            histogram[bin] = histogram[bin].saturating_add(1);
-        }
+        let mut histogram = self.jitter_histogram.lock();
+        histogram[bin] = histogram[bin].saturating_add(1);
     }
 
     /// Get jitter statistics
     pub fn get_jitter_stats(&self) -> JitterStats {
-        if let Ok(histogram) = self.jitter_histogram.lock() {
-            let mut total_samples = 0;
-            let mut cumulative_jitter = 0u64;
+        let histogram = self.jitter_histogram.lock();
+        let mut total_samples = 0;
+        let mut cumulative_jitter = 0u64;
+        
+        for (bin, &count) in histogram.iter().enumerate() {
+            total_samples += count;
+            let jitter_us = (bin as u32 * 4) + 2; // Center of bin
+            cumulative_jitter += (jitter_us as u64) * (count as u64);
+        }
+
+        if total_samples > 0 {
+            let mean_jitter = cumulative_jitter / total_samples as u64;
+            
+            // Calculate p95 (simplified - find 95th percentile)
+            let p95_index = (total_samples * 95) / 100;
+            let mut current_count = 0;
+            let mut p95_jitter = 0u32;
             
             for (bin, &count) in histogram.iter().enumerate() {
-                total_samples += count;
-                let jitter_us = (bin as u32 * 4) + 2; // Center of bin
-                cumulative_jitter += (jitter_us as u64) * (count as u64);
+                current_count += count;
+                if current_count >= p95_index {
+                    p95_jitter = (bin as u32 * 4) + 2;
+                    break;
+                }
             }
 
-            if total_samples > 0 {
-                let mean_jitter = cumulative_jitter / total_samples;
-                
-                // Calculate p95 (simplified - find 95th percentile)
-                let p95_index = (total_samples * 95) / 100;
-                let mut current_count = 0;
-                let mut p95_jitter = 0u32;
-                
-                for (bin, &count) in histogram.iter().enumerate() {
-                    current_count += count;
-                    if current_count >= p95_index {
-                        p95_jitter = (bin as u32 * 4) + 2;
-                        break;
-                    }
-                }
-
-                JitterStats {
-                    mean_us: mean_jitter as u32,
-                    p95_us: p95_jitter,
-                    total_samples,
-                }
-            } else {
-                JitterStats {
-                    mean_us: 0,
-                    p95_us: 0,
-                    total_samples: 0,
-                }
+            JitterStats {
+                mean_us: mean_jitter as u32,
+                p95_us: p95_jitter,
+                total_samples,
             }
         } else {
             JitterStats {
@@ -213,7 +205,7 @@ impl HpetTimer {
         }
 
         // Acknowledge interrupt
-        self::acknowledge_interrupt(self.base_address);
+        Self::acknowledge_interrupt(self.base_address);
     }
 
     /// Set timer mode
@@ -222,10 +214,10 @@ impl HpetTimer {
         
         match mode {
             HpetTimerMode::OneShot => {
-                self::set_timer_mode_oneshot(self.base_address)?;
+                Self::set_timer_mode_oneshot(self.base_address)?;
             }
             HpetTimerMode::Periodic => {
-                self::set_timer_mode_periodic(self.base_address)?;
+                Self::set_timer_mode_periodic(self.base_address)?;
             }
         }
 
@@ -241,10 +233,10 @@ impl HpetTimer {
         self.config.frequency_hz = freq_hz;
         
         // Calculate comparator value
-        let main_counter_freq = self::get_main_counter_frequency(self.base_address);
+        let main_counter_freq = Self::get_main_counter_frequency(self.base_address);
         let comparator_value = main_counter_freq / freq_hz;
         
-        self::set_timer_comparator(self.base_address, comparator_value)?;
+        Self::set_timer_comparator(self.base_address, comparator_value)?;
 
         Ok(())
     }
@@ -259,13 +251,13 @@ pub struct JitterStats {
 }
 
 // HPET register offsets
-const HPET_CAPABILITIES: u64 = 0x000;
-const HPET_CONFIG: u64 = 0x010;
-const HPET_ISR: u64 = 0x020;
-const HPET_MAIN_COUNTER: u64 = 0x0F0;
-const HPET_TIMER0_CONFIG: u64 = 0x100;
-const HPET_TIMER0_COMPARATOR: u64 = 0x108;
-const HPET_TIMER0_FSB: u64 = 0x110;
+const HPET_CAPABILITIES: usize = 0x000;
+const HPET_CONFIG: usize = 0x010;
+const HPET_ISR: usize = 0x020;
+const HPET_MAIN_COUNTER: usize = 0x0F0;
+const HPET_TIMER0_CONFIG: usize = 0x100;
+const HPET_TIMER0_COMPARATOR: usize = 0x108;
+const HPET_TIMER0_FSB: usize = 0x110;
 
 // Low-level HPET operations
 impl HpetTimer {
@@ -413,9 +405,16 @@ impl HpetTimer {
         unsafe {
             // Serialize instruction execution
             _mm_lfence();
-            let tsc = __rdtsc();
+            let low: u32;
+            let high: u32;
+            asm!(
+                "rdtsc",
+                out("eax") low,
+                out("edx") high,
+                options(nomem, nostack, preserves_flags),
+            );
             _mm_lfence();
-            tsc
+            ((high as u64) << 32) | low as u64
         }
     }
 
@@ -435,6 +434,24 @@ impl Default for HpetTimerConfig {
             mode: HpetTimerMode::Periodic,
         }
     }
+}
+
+/// Detect HPET presence (stub: returns false – HPET requires ACPI table parsing).
+pub fn is_hpet_available() -> bool {
+    false
+}
+
+/// Initialize HPET (stub).
+pub fn init_hpet() -> Result<(), &'static str> {
+    if !is_hpet_available() {
+        return Err("HPET not available");
+    }
+    Ok(())
+}
+
+/// Print HPET statistics (stub).
+pub fn print_hpet_stats() {
+    crate::kprintln!("[HPET] stats: stub");
 }
 
 #[cfg(test)]

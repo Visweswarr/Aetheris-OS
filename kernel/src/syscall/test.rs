@@ -66,7 +66,7 @@ fn test_syscall_dispatch() {
 fn test_argument_validation() {
     kprintln!("Test 2: Argument validation");
     
-    use handlers::validation::*;
+    use super::handlers::validation::*;
     
     // Test pointer validation
     assert!(!validate_pointer(0), "Null pointer should be invalid");
@@ -296,7 +296,7 @@ pub fn stress_test() {
             }
             4 => {
                 // Test validation functions
-                use handlers::validation::*;
+                use super::handlers::validation::*;
                 let _ptr_valid = validate_pointer(0x10000);
                 let _buf_valid = validate_buffer(0x10000, 1024);
                 valid_calls += 1;

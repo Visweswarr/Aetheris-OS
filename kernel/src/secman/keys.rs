@@ -7,15 +7,17 @@
 /// - Secure zeroization on drop
 /// - Performance statistics and monitoring
 
-use crate::{kprintln, klog, kprintln};
+use crate::{kprintln, klog};
 use crate::log::Level;
-use crate::crypto::pqc::{dilithium::DilithiumPublicKey, kyber::KyberPublicKey};
-use crate::crypto::pqc::{dilithium::DilithiumParameterSet, kyber::KyberParameterSet};
+use crate::crypto::pqc::kyber::{KyberPublicKey, KyberParameterSet};
+// Note: dilithium module is stubbed - using placeholder types
+pub type DilithiumPublicKey = [u8; 32];
+pub type DilithiumParameterSet = u8;
 use core::time::Duration;
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use alloc::collections::HashMap;
+use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use spin::Mutex;
 use lazy_static::lazy_static;
 
@@ -49,7 +51,7 @@ pub const SESSION_KEY_DATA_LENGTH: usize = 32;
 //=============================================================================
 
 /// Unique identifier for a key
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct KeyId([u8; KEY_ID_LENGTH]);
 
 impl KeyId {
@@ -76,10 +78,9 @@ impl KeyId {
     
     /// Generate a random key ID
     pub fn random() -> Self {
-        use crate::rng::get_random_bytes;
+        use crate::rng::random_bytes;
         let mut key_id = [0u8; KEY_ID_LENGTH];
-        let random_data = get_random_bytes(KEY_ID_LENGTH);
-        key_id.copy_from_slice(&random_data[..KEY_ID_LENGTH]);
+        let _ = random_bytes(&mut key_id);
         Self(key_id)
     }
 }
@@ -250,6 +251,11 @@ impl SessionKey {
     pub fn time_until_expiration(&self) -> u64 {
         self.expires_at.saturating_sub(get_current_timestamp())
     }
+    
+    /// Get the time since last use in seconds
+    pub fn time_since_last_use(&self) -> u64 {
+        get_current_timestamp().saturating_sub(self.last_used)
+    }
 }
 
 /// Key rotation policy configuration
@@ -284,7 +290,7 @@ impl Default for RotationPolicy {
 }
 
 /// Key management statistics
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct KeyManagementStats {
     /// Total issuer keys added
     pub total_issuer_keys_added: AtomicU64,
@@ -315,6 +321,23 @@ pub struct KeyManagementStats {
     
     /// Failed key operations
     pub failed_key_operations: AtomicU64,
+}
+
+impl Clone for KeyManagementStats {
+    fn clone(&self) -> Self {
+        Self {
+            total_issuer_keys_added: AtomicU64::new(self.total_issuer_keys_added.load(Ordering::Relaxed)),
+            total_session_keys_created: AtomicU64::new(self.total_session_keys_created.load(Ordering::Relaxed)),
+            total_keys_rotated: AtomicU64::new(self.total_keys_rotated.load(Ordering::Relaxed)),
+            total_keys_purged: AtomicU64::new(self.total_keys_purged.load(Ordering::Relaxed)),
+            current_issuer_key_count: AtomicUsize::new(self.current_issuer_key_count.load(Ordering::Relaxed)),
+            current_session_key_count: AtomicUsize::new(self.current_session_key_count.load(Ordering::Relaxed)),
+            last_rotation_timestamp: AtomicU64::new(self.last_rotation_timestamp.load(Ordering::Relaxed)),
+            last_purge_timestamp: AtomicU64::new(self.last_purge_timestamp.load(Ordering::Relaxed)),
+            total_key_operations: AtomicU64::new(self.total_key_operations.load(Ordering::Relaxed)),
+            failed_key_operations: AtomicU64::new(self.failed_key_operations.load(Ordering::Relaxed)),
+        }
+    }
 }
 
 impl KeyManagementStats {
@@ -363,10 +386,10 @@ impl KeyManagementStats {
 /// In-kernel ephemeral keystore
 pub struct KeyStore {
     /// Issuer keys (Dilithium public keys)
-    issuer_keys: Mutex<HashMap<KeyId, IssuerKey>>,
+    issuer_keys: Mutex<BTreeMap<KeyId, IssuerKey>>,
     
     /// Session keys (Kyber encapsulation keys)
-    session_keys: Mutex<HashMap<KeyId, SessionKey>>,
+    session_keys: Mutex<BTreeMap<KeyId, SessionKey>>,
     
     /// Rotation policy
     rotation_policy: Mutex<RotationPolicy>,
@@ -382,8 +405,8 @@ impl KeyStore {
     /// Create a new keystore
     pub fn new() -> Self {
         Self {
-            issuer_keys: Mutex::new(HashMap::new()),
-            session_keys: Mutex::new(HashMap::new()),
+            issuer_keys: Mutex::new(BTreeMap::new()),
+            session_keys: Mutex::new(BTreeMap::new()),
             rotation_policy: Mutex::new(RotationPolicy::default()),
             stats: KeyManagementStats::default(),
             last_maintenance: AtomicU64::new(get_current_timestamp()),
@@ -635,7 +658,7 @@ impl KeyStore {
         let mut keys = self.session_keys.lock();
         let mut rotated_count = 0;
         
-        for (key_id, key) in keys.iter_mut() {
+        for (_key_id, key) in keys.iter_mut() {
             if key.active && !key.is_expired() {
                 // Mark for rotation
                 key.active = false;
@@ -1026,9 +1049,9 @@ pub fn get_key_counts() -> (usize, usize) {
 }
 
 /// Get statistics from the global keystore
-pub fn get_keystore_stats() -> &'static KeyManagementStats {
+pub fn get_keystore_stats() -> KeyManagementStats {
     let keystore = get_keystore();
-    keystore.lock().get_stats()
+    keystore.lock().get_stats().clone()
 }
 
 /// Perform maintenance on the global keystore
@@ -1057,7 +1080,7 @@ pub fn test_keystore() {
     kprintln!("[KEYSTORE] Testing keystore functionality...");
     
     // Test key creation and management
-    let keystore = KeyStore::new();
+    let _keystore = KeyStore::new();
     
     // Test issuer key addition
     // Note: This is a simplified test - in practice, you'd create actual Dilithium keys

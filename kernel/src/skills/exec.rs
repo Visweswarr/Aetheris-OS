@@ -1,6 +1,7 @@
-use crate::{kprintln, klog};
+use crate::{kprintln, klog, vec};
 use alloc::vec::Vec;
 use alloc::string::String;
+use alloc::format;
 use core::sync::atomic::{AtomicU64, Ordering};
 use spin::Mutex;
 
@@ -119,6 +120,9 @@ impl Skill {
                         intent_id: 0, // Will be set by caller
                         actions: context.plan_actions,
                         cost: metrics.instructions_executed as u64,
+                        total_cost: metrics.instructions_executed as u64,
+                        total_time: execution_time / 1000,
+                        constraints_applied: Vec::new(),
                     },
                     risks: Vec::new(),
                     notes: vec![
@@ -126,6 +130,7 @@ impl Skill {
                         format!("Used {} bytes of memory", self.memory.len()),
                         format!("Executed {} instructions", metrics.instructions_executed),
                     ],
+                    confidence: 100,
                 };
                 
                 let bundle = PreviewBundle::new(preview, context.evidence, metrics);
@@ -228,7 +233,7 @@ impl Skill {
             0x02 => self.op_block(pc),
             0x03 => self.op_loop(pc),
             0x04 => self.op_if(pc),
-            0x05 => self.op_else(pc),
+            0x05 => self.op_else(),
             0x0B => self.op_end(),
             0x0C => self.op_br(pc),
             0x0D => self.op_br_if(pc),
@@ -250,31 +255,31 @@ impl Skill {
             0x70 => self.op_i32_rem_u(),
             0xFC => self.op_call_host(pc),
             _ => {
-                klog!("[SKILL-{}] Unknown opcode: 0x{:02X}", self.id, opcode);
+                klog!(ERROR, "[SKILL-{}] Unknown opcode: 0x{:02X}", self.id, opcode);
                 return Err(ExecutionError::UnknownOpcode(opcode));
             }
         }
     }
     
-    fn op_unreachable(&self) -> Result<(), ExecutionError> {
+    fn op_unreachable(&mut self) -> Result<(), ExecutionError> {
         Err(ExecutionError::Unreachable)
     }
     
-    fn op_nop(&self) -> Result<(), ExecutionError> {
+    fn op_nop(&mut self) -> Result<(), ExecutionError> {
         Ok(())
     }
     
-    fn op_block(&self, _pc: &mut usize) -> Result<(), ExecutionError> {
+    fn op_block(&mut self, _pc: &mut usize) -> Result<(), ExecutionError> {
         self.stack.push(0); // Block marker
         Ok(())
     }
     
-    fn op_loop(&self, _pc: &mut usize) -> Result<(), ExecutionError> {
+    fn op_loop(&mut self, _pc: &mut usize) -> Result<(), ExecutionError> {
         self.stack.push(1); // Loop marker
         Ok(())
     }
     
-    fn op_if(&self, _pc: &mut usize) -> Result<(), ExecutionError> {
+    fn op_if(&mut self, _pc: &mut usize) -> Result<(), ExecutionError> {
         if let Some(condition) = self.stack.pop() {
             if condition != 0 {
                 self.stack.push(2); // If marker
@@ -285,7 +290,7 @@ impl Skill {
         Ok(())
     }
     
-    fn op_else(&self) -> Result<(), ExecutionError> {
+    fn op_else(&mut self) -> Result<(), ExecutionError> {
         if let Some(marker) = self.stack.pop() {
             if marker == 2 {
                 self.stack.push(3); // Convert if to else
@@ -294,7 +299,7 @@ impl Skill {
         Ok(())
     }
     
-    fn op_end(&self) -> Result<(), ExecutionError> {
+    fn op_end(&mut self) -> Result<(), ExecutionError> {
         while let Some(marker) = self.stack.pop() {
             if marker < 2 {
                 break;
@@ -303,14 +308,14 @@ impl Skill {
         Ok(())
     }
     
-    fn op_br(&self, _pc: &mut usize) -> Result<(), ExecutionError> {
+    fn op_br(&mut self, _pc: &mut usize) -> Result<(), ExecutionError> {
         if let Some(_depth) = self.stack.pop() {
             // Simplified branch implementation
         }
         Ok(())
     }
     
-    fn op_br_if(&self, _pc: &mut usize) -> Result<(), ExecutionError> {
+    fn op_br_if(&mut self, _pc: &mut usize) -> Result<(), ExecutionError> {
         if let (Some(_depth), Some(condition)) = (self.stack.pop(), self.stack.pop()) {
             if condition != 0 {
                 // Simplified conditional branch
@@ -319,46 +324,46 @@ impl Skill {
         Ok(())
     }
     
-    fn op_local_get(&self, _pc: &mut usize) -> Result<(), ExecutionError> {
+    fn op_local_get(&mut self, _pc: &mut usize) -> Result<(), ExecutionError> {
         self.stack.push(0); // Simplified local variable access
         Ok(())
     }
     
-    fn op_local_set(&self, _pc: &mut usize) -> Result<(), ExecutionError> {
+    fn op_local_set(&mut self, _pc: &mut usize) -> Result<(), ExecutionError> {
         self.stack.pop(); // Simplified local variable assignment
         Ok(())
     }
     
-    fn op_local_tee(&self, _pc: &mut usize) -> Result<(), ExecutionError> {
+    fn op_local_tee(&mut self, _pc: &mut usize) -> Result<(), ExecutionError> {
         if let Some(value) = self.stack.last().copied() {
             self.stack.push(value);
         }
         Ok(())
     }
     
-    fn op_global_get(&self, _pc: &mut usize) -> Result<(), ExecutionError> {
+    fn op_global_get(&mut self, _pc: &mut usize) -> Result<(), ExecutionError> {
         self.stack.push(0); // Simplified global variable access
         Ok(())
     }
     
-    fn op_global_set(&self, _pc: &mut usize) -> Result<(), ExecutionError> {
+    fn op_global_set(&mut self, _pc: &mut usize) -> Result<(), ExecutionError> {
         self.stack.pop(); // Simplified global variable assignment
         Ok(())
     }
     
-    fn op_i32_const(&self, pc: &mut usize) -> Result<(), ExecutionError> {
+    fn op_i32_const(&mut self, pc: &mut usize) -> Result<(), ExecutionError> {
         let value = self.read_leb128_u32(pc)?;
         self.stack.push(value);
         Ok(())
     }
     
-    fn op_i64_const(&self, pc: &mut usize) -> Result<(), ExecutionError> {
+    fn op_i64_const(&mut self, pc: &mut usize) -> Result<(), ExecutionError> {
         let value = self.read_leb128_u64(pc)?;
         self.stack.push((value & 0xFFFFFFFF) as u32);
         Ok(())
     }
     
-    fn op_f32_const(&self, pc: &mut usize) -> Result<(), ExecutionError> {
+    fn op_f32_const(&mut self, pc: &mut usize) -> Result<(), ExecutionError> {
         if *pc + 4 > self.wasm_bytes.len() {
             return Err(ExecutionError::UnexpectedEnd);
         }
@@ -374,7 +379,7 @@ impl Skill {
         Ok(())
     }
     
-    fn op_f64_const(&self, pc: &mut usize) -> Result<(), ExecutionError> {
+    fn op_f64_const(&mut self, pc: &mut usize) -> Result<(), ExecutionError> {
         if *pc + 8 > self.wasm_bytes.len() {
             return Err(ExecutionError::UnexpectedEnd);
         }
@@ -394,28 +399,28 @@ impl Skill {
         Ok(())
     }
     
-    fn op_i32_add(&self) -> Result<(), ExecutionError> {
+    fn op_i32_add(&mut self) -> Result<(), ExecutionError> {
         if let (Some(b), Some(a)) = (self.stack.pop(), self.stack.pop()) {
             self.stack.push(a.wrapping_add(b));
         }
         Ok(())
     }
     
-    fn op_i32_sub(&self) -> Result<(), ExecutionError> {
+    fn op_i32_sub(&mut self) -> Result<(), ExecutionError> {
         if let (Some(b), Some(a)) = (self.stack.pop(), self.stack.pop()) {
             self.stack.push(a.wrapping_sub(b));
         }
         Ok(())
     }
     
-    fn op_i32_mul(&self) -> Result<(), ExecutionError> {
+    fn op_i32_mul(&mut self) -> Result<(), ExecutionError> {
         if let (Some(b), Some(a)) = (self.stack.pop(), self.stack.pop()) {
             self.stack.push(a.wrapping_mul(b));
         }
         Ok(())
     }
     
-    fn op_i32_div_s(&self) -> Result<(), ExecutionError> {
+    fn op_i32_div_s(&mut self) -> Result<(), ExecutionError> {
         if let (Some(b), Some(a)) = (self.stack.pop(), self.stack.pop()) {
             if b == 0 {
                 return Err(ExecutionError::DivisionByZero);
@@ -425,7 +430,7 @@ impl Skill {
         Ok(())
     }
     
-    fn op_i32_div_u(&self) -> Result<(), ExecutionError> {
+    fn op_i32_div_u(&mut self) -> Result<(), ExecutionError> {
         if let (Some(b), Some(a)) = (self.stack.pop(), self.stack.pop()) {
             if b == 0 {
                 return Err(ExecutionError::DivisionByZero);
@@ -435,7 +440,7 @@ impl Skill {
         Ok(())
     }
     
-    fn op_i32_rem_s(&self) -> Result<(), ExecutionError> {
+    fn op_i32_rem_s(&mut self) -> Result<(), ExecutionError> {
         if let (Some(b), Some(a)) = (self.stack.pop(), self.stack.pop()) {
             if b == 0 {
                 return Err(ExecutionError::DivisionByZero);
@@ -445,7 +450,7 @@ impl Skill {
         Ok(())
     }
     
-    fn op_i32_rem_u(&self) -> Result<(), ExecutionError> {
+    fn op_i32_rem_u(&mut self) -> Result<(), ExecutionError> {
         if let (Some(b), Some(a)) = (self.stack.pop(), self.stack.pop()) {
             if b == 0 {
                 return Err(ExecutionError::DivisionByZero);
@@ -455,7 +460,7 @@ impl Skill {
         Ok(())
     }
     
-    fn op_call_host(&self, pc: &mut usize) -> Result<(), ExecutionError> {
+    fn op_call_host(&mut self, pc: &mut usize) -> Result<(), ExecutionError> {
         let hostcall_id = self.read_leb128_u32(pc)?;
         let param_count = self.read_leb128_u32(pc)?;
         
@@ -473,7 +478,7 @@ impl Skill {
                 self.stack.push(result);
             }
             Err(e) => {
-                klog!("[SKILL-{}] Hostcall failed: {:?}", self.id, e);
+                klog!(ERROR, "[SKILL-{}] Hostcall failed: {:?}", self.id, e);
                 self.stack.push(0xFFFFFFFF); // Error indicator
             }
         }

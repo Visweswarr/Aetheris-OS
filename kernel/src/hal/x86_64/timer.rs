@@ -1,19 +1,15 @@
 use crate::{kprintln, klog};
 use lazy_static::lazy_static;
 use spin::Mutex;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use x86_64::structures::idt::InterruptStackFrame;
 use x86_64::instructions::port::Port;
 
-use core::sync::atomic::{AtomicU8, Ordering};
-use alloc::string::String;
-
 use crate::hal::HalError;
-use crate::time::{Duration, Instant};
-use crate::sync::Mutex;
+use crate::time::Duration;
 
-use super::apic::{ApicTimer, ApicTimerConfig, ApicTimerMode};
-use super::hpet::{HpetTimer, HpetTimerConfig, HpetTimerMode};
+use super::apic::{ApicTimer, ApicTimerConfig};
+use super::hpet::{HpetTimer, HpetTimerConfig};
 
 /// Timer frequency in Hz (1000 Hz = 1ms per tick)
 const TIMER_FREQUENCY: u32 = 1000;
@@ -107,20 +103,17 @@ impl TimerSelector {
     /// Select and initialize the best available timer
     pub fn select_timer(&mut self) -> Result<TimerKind, HalError> {
         // Try APIC first (preferred)
-        if let Ok(apic_timer) = self::try_init_apic() {
-            let mut apic_guard = self.apic_timer.lock().map_err(|_| {
-                HalError::LockError("Failed to acquire APIC timer lock")
-            })?;
+        if let Ok(apic_timer) = Self::try_init_apic() {
+            let mut apic_guard = self.apic_timer.lock();
             
             *apic_guard = Some(apic_timer);
             
             // Store calibration data
-            if let Ok(mut cal_data) = self.calibration_data.lock() {
-                cal_data.timer_kind = TimerKind::APIC;
-                cal_data.vector = 32; // APIC timer vector
-                cal_data.tsc_per_ms = apic_guard.as_ref().map(|t| t.get_tsc_per_ms());
-                cal_data.calibration_time = Duration::from_millis(10);
-            }
+            let mut cal_data = self.calibration_data.lock();
+            cal_data.timer_kind = TimerKind::APIC;
+            cal_data.vector = 32; // APIC timer vector
+            cal_data.tsc_per_ms = apic_guard.as_ref().map(|t| t.get_tsc_per_ms());
+            cal_data.calibration_time = Duration::from_millis(10);
             
             self.selected_timer.store(1, Ordering::Relaxed);
             
@@ -131,20 +124,17 @@ impl TimerSelector {
         }
 
         // Fallback to HPET
-        if let Ok(hpet_timer) = self::try_init_hpet() {
-            let mut hpet_guard = self.hpet_timer.lock().map_err(|_| {
-                HalError::LockError("Failed to acquire HPET timer lock")
-            })?;
+        if let Ok(hpet_timer) = Self::try_init_hpet() {
+            let mut hpet_guard = self.hpet_timer.lock();
             
             *hpet_guard = Some(hpet_timer);
             
             // Store calibration data
-            if let Ok(mut cal_data) = self.calibration_data.lock() {
-                cal_data.timer_kind = TimerKind::HPET;
-                cal_data.vector = 33; // HPET timer vector
-                cal_data.ns_per_tick = hpet_guard.as_ref().map(|t| t.get_ns_per_tick());
-                cal_data.calibration_time = Duration::from_millis(10);
-            }
+            let mut cal_data = self.calibration_data.lock();
+            cal_data.timer_kind = TimerKind::HPET;
+            cal_data.vector = 33; // HPET timer vector
+            cal_data.ns_per_tick = hpet_guard.as_ref().map(|t| t.get_ns_per_tick());
+            cal_data.calibration_time = Duration::from_millis(10);
             
             self.selected_timer.store(2, Ordering::Relaxed);
             
@@ -167,84 +157,36 @@ impl TimerSelector {
         }
     }
 
-    /// Get the APIC timer (if selected)
-    pub fn get_apic_timer(&self) -> Option<&ApicTimer> {
-        if self.selected_timer.load(Ordering::Relaxed) == 1 {
-            if let Ok(guard) = self.apic_timer.lock() {
-                guard.as_ref()
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-
-    /// Get the HPET timer (if selected)
-    pub fn get_hpet_timer(&self) -> Option<&HpetTimer> {
-        if self.selected_timer.load(Ordering::Relaxed) == 2 {
-            if let Ok(guard) = self.hpet_timer.lock() {
-                guard.as_ref()
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-
-    /// Get the active timer (either APIC or HPET)
-    pub fn get_active_timer(&self) -> Option<ActiveTimer> {
-        match self.get_timer_kind() {
-            Some(TimerKind::APIC) => {
-                if let Some(apic) = self.get_apic_timer() {
-                    Some(ActiveTimer::APIC(apic))
-                } else {
-                    None
-                }
-            }
-            Some(TimerKind::HPET) => {
-                if let Some(hpet) = self.get_hpet_timer() {
-                    Some(ActiveTimer::HPET(hpet))
-                } else {
-                    None
-                }
-            }
-            None => None,
-        }
-    }
-
     /// Print boot banner with timer selection and calibration info
     fn print_boot_banner(&self, timer_kind: TimerKind) -> Result<(), HalError> {
-        if let Ok(cal_data) = self.calibration_data.lock() {
-            match timer_kind {
-                TimerKind::APIC => {
-                    if let Some(tsc_per_ms) = cal_data.tsc_per_ms {
-                        crate::kprintln!(
-                            "[TIMER] selected=APIC cal_tsc_per_ms={} vector={}",
-                            tsc_per_ms,
-                            cal_data.vector
-                        );
-                    } else {
-                        crate::kprintln!(
-                            "[TIMER] selected=APIC cal_tsc_per_ms=unknown vector={}",
-                            cal_data.vector
-                        );
-                    }
+        let cal_data = self.calibration_data.lock();
+        match timer_kind {
+            TimerKind::APIC => {
+                if let Some(tsc_per_ms) = cal_data.tsc_per_ms {
+                    crate::kprintln!(
+                        "[TIMER] selected=APIC cal_tsc_per_ms={} vector={}",
+                        tsc_per_ms,
+                        cal_data.vector
+                    );
+                } else {
+                    crate::kprintln!(
+                        "[TIMER] selected=APIC cal_tsc_per_ms=unknown vector={}",
+                        cal_data.vector
+                    );
                 }
-                TimerKind::HPET => {
-                    if let Some(ns_per_tick) = cal_data.ns_per_tick {
-                        crate::kprintln!(
-                            "[TIMER] selected=HPET cal_ns_per_tick={} vector={}",
-                            ns_per_tick,
-                            cal_data.vector
-                        );
-                    } else {
-                        crate::kprintln!(
-                            "[TIMER] selected=HPET cal_ns_per_tick=unknown vector={}",
-                            cal_data.vector
-                        );
-                    }
+            }
+            TimerKind::HPET => {
+                if let Some(ns_per_tick) = cal_data.ns_per_tick {
+                    crate::kprintln!(
+                        "[TIMER] selected=HPET cal_ns_per_tick={} vector={}",
+                        ns_per_tick,
+                        cal_data.vector
+                    );
+                } else {
+                    crate::kprintln!(
+                        "[TIMER] selected=HPET cal_ns_per_tick=unknown vector={}",
+                        cal_data.vector
+                    );
                 }
             }
         }
@@ -254,11 +196,7 @@ impl TimerSelector {
 
     /// Get calibration data for metrics
     pub fn get_calibration_data(&self) -> Option<CalibrationData> {
-        if let Ok(cal_data) = self.calibration_data.lock() {
-            Some(cal_data.clone())
-        } else {
-            None
-        }
+        Some(self.calibration_data.lock().clone())
     }
 
     /// Check if timer is available and working
@@ -268,8 +206,10 @@ impl TimerSelector {
 
     /// Get timer statistics for the active timer
     pub fn get_timer_stats(&self) -> Option<TimerStats> {
-        match self.get_active_timer() {
-            Some(ActiveTimer::APIC(apic)) => {
+        match self.get_timer_kind()? {
+            TimerKind::APIC => {
+                let guard = self.apic_timer.lock();
+                let apic = guard.as_ref()?;
                 let jitter_stats = apic.get_jitter_stats();
                 Some(TimerStats {
                     timer_kind: TimerKind::APIC,
@@ -280,7 +220,9 @@ impl TimerSelector {
                     jitter_samples: jitter_stats.total_samples,
                 })
             }
-            Some(ActiveTimer::HPET(hpet)) => {
+            TimerKind::HPET => {
+                let guard = self.hpet_timer.lock();
+                let hpet = guard.as_ref()?;
                 let jitter_stats = hpet.get_jitter_stats();
                 Some(TimerStats {
                     timer_kind: TimerKind::HPET,
@@ -291,59 +233,64 @@ impl TimerSelector {
                     jitter_samples: jitter_stats.total_samples,
                 })
             }
-            None => None,
         }
     }
 
     /// Handle timer interrupt (delegates to active timer)
     pub fn handle_timer_interrupt(&self) {
-        if let Some(active_timer) = self.get_active_timer() {
-            match active_timer {
-                ActiveTimer::APIC(apic) => {
+        match self.get_timer_kind() {
+            Some(TimerKind::APIC) => {
+                if let Some(apic) = self.apic_timer.lock().as_ref() {
                     apic.handle_interrupt();
                 }
-                ActiveTimer::HPET(hpet) => {
+            }
+            Some(TimerKind::HPET) => {
+                if let Some(hpet) = self.hpet_timer.lock().as_ref() {
                     hpet.handle_interrupt();
                 }
             }
+            None => {}
         }
     }
 
     /// Record jitter measurement for the active timer
     pub fn record_jitter(&self, jitter_us: u32) {
-        if let Some(active_timer) = self.get_active_timer() {
-            match active_timer {
-                ActiveTimer::APIC(apic) => {
+        match self.get_timer_kind() {
+            Some(TimerKind::APIC) => {
+                if let Some(apic) = self.apic_timer.lock().as_ref() {
                     apic.record_jitter(jitter_us);
                 }
-                ActiveTimer::HPET(hpet) => {
+            }
+            Some(TimerKind::HPET) => {
+                if let Some(hpet) = self.hpet_timer.lock().as_ref() {
                     hpet.record_jitter(jitter_us);
                 }
             }
+            None => {}
         }
     }
 
     /// Get jitter statistics for the active timer
     pub fn get_jitter_stats(&self) -> Option<JitterStats> {
-        if let Some(active_timer) = self.get_active_timer() {
-            match active_timer {
-                ActiveTimer::APIC(apic) => {
-                    Some(apic.get_jitter_stats())
+        match self.get_timer_kind()? {
+            TimerKind::APIC => self.apic_timer.lock().as_ref().map(|apic| {
+                let stats = apic.get_jitter_stats();
+                JitterStats {
+                    mean_us: stats.mean_us,
+                    p95_us: stats.p95_us,
+                    total_samples: stats.total_samples,
                 }
-                ActiveTimer::HPET(hpet) => {
-                    Some(hpet.get_jitter_stats())
+            }),
+            TimerKind::HPET => self.hpet_timer.lock().as_ref().map(|hpet| {
+                let stats = hpet.get_jitter_stats();
+                JitterStats {
+                    mean_us: stats.mean_us,
+                    p95_us: stats.p95_us,
+                    total_samples: stats.total_samples,
                 }
-            }
-        } else {
-            None
+            }),
         }
     }
-}
-
-/// Active timer reference
-pub enum ActiveTimer<'a> {
-    APIC(&'a ApicTimer),
-    HPET(&'a HpetTimer),
 }
 
 /// Timer statistics
@@ -675,7 +622,7 @@ fn on_tick(tick_count: u64) {
     }
     
     // Update logging timestamp for rate limiting (convert ticks to milliseconds)
-    crate::log::update_timestamp_ms(tick_count * (1000 / TIMER_FREQUENCY_HZ));
+    crate::log::update_timestamp_ms(tick_count * (1000 / TIMER_FREQUENCY as u64));
     
     // Trace the tick for statistics
     crate::trace::trace_tick();

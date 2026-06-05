@@ -6,6 +6,9 @@
 
 use super::table::{SYSCALL_TABLE, is_valid_syscall, is_syscall_implemented, get_syscall_name};
 use super::schema_validation::get_current_schema_hash;
+use alloc::format;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 
 /// Test result for syscall conformance
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,7 +47,7 @@ impl ConformanceTestSuite {
     }
     
     /// Run all conformance tests
-    pub fn run_all_tests(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn run_all_tests(&mut self) -> Result<(), &'static str> {
         println!("🧪 Running syscall conformance tests...");
         println!("Schema hash: {}", self.schema_hash);
         
@@ -68,7 +71,7 @@ impl ConformanceTestSuite {
     }
     
     /// Test conformance for a specific syscall
-    fn test_syscall_conformance(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_syscall_conformance(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), &'static str> {
         println!("  Testing syscall {}: {}", syscall_info.number, syscall_info.name);
         
         // Test 1: Valid arguments (should succeed)
@@ -84,7 +87,7 @@ impl ConformanceTestSuite {
     }
     
     /// Test syscall with valid arguments
-    fn test_valid_arguments(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_valid_arguments(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), &'static str> {
         let test_description = format!("Valid arguments test for {}", syscall_info.name);
         
         // This would call the actual syscall handler with valid arguments
@@ -109,7 +112,7 @@ impl ConformanceTestSuite {
     }
     
     /// Test syscall with invalid arguments
-    fn test_invalid_arguments(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_invalid_arguments(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), &'static str> {
         let test_description = format!("Invalid arguments test for {}", syscall_info.name);
         
         // Test various invalid argument scenarios based on syscall type
@@ -170,7 +173,7 @@ impl ConformanceTestSuite {
     }
     
     /// Test exit syscall with invalid arguments
-    fn test_exit_invalid_args(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_exit_invalid_args(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), &'static str> {
         // Test exit with extremely large exit codes
         let test_description = "Exit with large exit code".to_string();
         
@@ -189,7 +192,7 @@ impl ConformanceTestSuite {
     }
     
     /// Test send syscall with invalid arguments
-    fn test_send_invalid_args(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_send_invalid_args(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), &'static str> {
         // Test 1: Invalid destination PID
         let test_description = "Send with invalid destination PID".to_string();
         
@@ -224,7 +227,7 @@ impl ConformanceTestSuite {
     }
     
     /// Test recv syscall with invalid arguments
-    fn test_recv_invalid_args(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_recv_invalid_args(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), &'static str> {
         // Test with invalid output buffer
         let test_description = "Recv with invalid output buffer".to_string();
         
@@ -243,7 +246,7 @@ impl ConformanceTestSuite {
     }
     
     /// Test stats syscall with invalid arguments
-    fn test_stats_invalid_args(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_stats_invalid_args(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), &'static str> {
         // Test with invalid buffer
         let test_description = "Stats with invalid buffer".to_string();
         
@@ -262,7 +265,7 @@ impl ConformanceTestSuite {
     }
     
     /// Test debug syscall with invalid arguments
-    fn test_debug_invalid_args(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_debug_invalid_args(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), &'static str> {
         // Test with invalid operation code
         let test_description = "Debug with invalid operation code".to_string();
         
@@ -281,7 +284,7 @@ impl ConformanceTestSuite {
     }
     
     /// Test sleep syscall with invalid arguments
-    fn test_sleep_invalid_args(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_sleep_invalid_args(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), &'static str> {
         // Test with invalid duration
         let test_description = "Sleep with invalid duration".to_string();
         
@@ -300,7 +303,7 @@ impl ConformanceTestSuite {
     }
     
     /// Test boundary conditions for a syscall
-    fn test_boundary_conditions(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_boundary_conditions(&mut self, syscall_info: &super::table::SyscallInfo) -> Result<(), &'static str> {
         let test_description = format!("Boundary conditions test for {}", syscall_info.name);
         
         // Test various boundary conditions
@@ -324,7 +327,7 @@ impl ConformanceTestSuite {
     }
     
     /// Test invalid syscall numbers
-    fn test_invalid_syscalls(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_invalid_syscalls(&mut self) -> Result<(), &'static str> {
         println!("  Testing invalid syscall numbers...");
         
         // Test syscall number 0 (invalid)
@@ -362,7 +365,7 @@ impl ConformanceTestSuite {
     }
     
     /// Test validation functions
-    fn test_validation_functions(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_validation_functions(&mut self) -> Result<(), &'static str> {
         println!("  Testing validation functions...");
         
         // Test is_valid_syscall
@@ -449,7 +452,7 @@ impl ConformanceTestSuite {
 }
 
 /// Run the complete conformance test suite
-pub fn run_conformance_tests() -> Result<bool, Box<dyn std::error::Error>> {
+pub fn run_conformance_tests() -> Result<bool, &'static str> {
     let mut test_suite = ConformanceTestSuite::new();
     test_suite.run_all_tests()?;
     

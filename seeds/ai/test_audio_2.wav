@@ -1,0 +1,8 @@
+# Placeholder for test_audio_2.wav
+# This is a placeholder file representing a 3-second audio file
+# Content: "One two three, turn on the light" (English, 16kHz, mono)
+# Expected SHA256: d4e5f6789012345678901234567890abcdef1234567890abcdef1234567890ab
+# 
+# In a real implementation, this would be a binary WAV file
+# For testing purposes, this placeholder allows the golden test to run
+# and verify the test infrastructure without requiring actual audio files

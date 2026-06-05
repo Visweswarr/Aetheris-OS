@@ -1,19 +1,10 @@
 use crate::intent::schema::{ActionV1, ConstraintV1, IntentV1, PlanV1, PlanPreviewV1};
 use crate::intent::whylog::WhyLog;
-use std::collections::HashMap;
-
-// Evidence structure for why-log entries
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct EvidenceV1 {
-    pub key: String,
-    pub value: String,
-}
-
-impl EvidenceV1 {
-    pub fn new(key: String, value: String) -> Self {
-        Self { key, value }
-    }
-}
+use alloc::collections::BTreeMap;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use alloc::vec;
+use alloc::format;
 
 pub trait Planner: Send + Sync {
     fn preview(
@@ -26,15 +17,15 @@ pub trait Planner: Send + Sync {
 }
 
 pub struct EchoPlanner {
-    intent_type_actions: HashMap<u16, Vec<ActionV1>>,
-    constraint_handlers: HashMap<u16, Box<dyn Fn(&ConstraintV1, &mut PlanV1) + Send + Sync>>,
+    intent_type_actions: BTreeMap<u16, Vec<ActionV1>>,
+    constraint_handlers: BTreeMap<u16, fn(&ConstraintV1, &mut PlanV1)>,
 }
 
 impl EchoPlanner {
     pub fn new() -> Self {
         let mut planner = Self {
-            intent_type_actions: HashMap::new(),
-            constraint_handlers: HashMap::new(),
+            intent_type_actions: BTreeMap::new(),
+            constraint_handlers: BTreeMap::new(),
         };
         
         planner.setup_default_actions();
@@ -106,59 +97,67 @@ impl EchoPlanner {
         // MAX_COST constraint handler
         self.constraint_handlers.insert(
             crate::intent::schema::CONSTRAINT_TYPE_MAX_COST,
-            Box::new(|constraint, plan| {
-                if let Some(value) = constraint.value_scalar {
-                    if plan.total_cost > value {
-                        // Filter out actions that exceed cost limit
-                        plan.actions.retain(|action| action.cost_estimate <= value);
-                        plan.total_cost = plan.actions.iter().map(|a| a.cost_estimate).sum();
-                    }
-                }
-            }),
+            handle_max_cost_constraint,
         );
         
         // MAX_TIME constraint handler
         self.constraint_handlers.insert(
             crate::intent::schema::CONSTRAINT_TYPE_MAX_TIME,
-            Box::new(|constraint, plan| {
-                if let Some(value) = constraint.value_scalar {
-                    if plan.total_time > value {
-                        // Filter out actions that exceed time limit
-                        plan.actions.retain(|action| action.time_estimate <= value);
-                        plan.total_time = plan.actions.iter().map(|a| a.time_estimate).sum();
-                    }
-                }
-            }),
+            handle_max_time_constraint,
         );
         
         // SECURITY_LEVEL constraint handler
         self.constraint_handlers.insert(
             crate::intent::schema::CONSTRAINT_TYPE_SECURITY_LEVEL,
-            Box::new(|constraint, plan| {
-                if let Some(security_level) = constraint.value_scalar {
-                    if security_level >= 3 {
-                        // Add security validation action for high security levels
-                        let security_action = ActionV1::new(crate::intent::schema::ACTION_KIND_VALIDATE)
-                            .with_param("security_scan".to_string(), "enabled".to_string())
-                            .with_cost_estimate(15)
-                            .with_time_estimate(1500);
-                        plan.actions.push(security_action);
-                        plan.total_cost += 15;
-                        plan.total_time += 1500;
-                    }
-                }
-            }),
+            handle_security_level_constraint,
         );
     }
-    
+}
+
+// Constraint handler functions
+fn handle_max_cost_constraint(constraint: &ConstraintV1, plan: &mut PlanV1) {
+    if let Some(value) = constraint.value_scalar {
+        if plan.total_cost > value {
+            plan.actions.retain(|action| action.cost_estimate <= value);
+            plan.total_cost = plan.actions.iter().map(|a| a.cost_estimate).sum();
+        }
+    }
+}
+
+fn handle_max_time_constraint(constraint: &ConstraintV1, plan: &mut PlanV1) {
+    if let Some(value) = constraint.value_scalar {
+        if plan.total_time > value {
+            plan.actions.retain(|action| action.time_estimate <= value);
+            plan.total_time = plan.actions.iter().map(|a| a.time_estimate).sum();
+        }
+    }
+}
+
+fn handle_security_level_constraint(constraint: &ConstraintV1, plan: &mut PlanV1) {
+    if let Some(security_level) = constraint.value_scalar {
+        if security_level >= 3 {
+            let security_action = ActionV1::new(crate::intent::schema::ACTION_KIND_VALIDATE)
+                .with_param("security_scan".to_string(), "enabled".to_string())
+                .with_cost_estimate(15)
+                .with_time_estimate(1500);
+            plan.actions.push(security_action);
+            plan.total_cost += 15;
+            plan.total_time += 1500;
+        }
+    }
+}
+
+impl EchoPlanner {
+    /// Register new actions for an intent type (used by tests/extensions)
     pub fn register_intent_type(&mut self, intent_type: u16, actions: Vec<ActionV1>) {
         self.intent_type_actions.insert(intent_type, actions);
     }
     
+    /// Register a custom constraint handler
     pub fn register_constraint_handler(
         &mut self,
         constraint_type: u16,
-        handler: Box<dyn Fn(&ConstraintV1, &mut PlanV1) + Send + Sync>,
+        handler: fn(&ConstraintV1, &mut PlanV1),
     ) {
         self.constraint_handlers.insert(constraint_type, handler);
     }
@@ -185,6 +184,7 @@ impl Planner for EchoPlanner {
         let mut plan = PlanV1 {
             intent_id: intent.id,
             actions: actions.clone(),
+            cost: actions.iter().map(|a| a.cost_estimate).sum(),
             total_cost: actions.iter().map(|a| a.cost_estimate).sum(),
             total_time: actions.iter().map(|a| a.time_estimate).sum(),
             constraints_applied: Vec::new(),
@@ -235,27 +235,11 @@ impl Planner for EchoPlanner {
             notes.push(format!("Applied {} constraints", plan.constraints_applied.len()));
         }
         
-        // Calculate confidence based on various factors
-        let mut confidence = 80u8; // Base confidence
-        
-        // Reduce confidence for high-risk scenarios
-        if !risks.is_empty() {
-            confidence = confidence.saturating_sub(risks.len() as u8 * 10);
-        }
-        
-        // Increase confidence for well-defined intents
-        if !intent.description.is_empty() {
-            confidence = confidence.saturating_add(5);
-        }
-        
-        // Ensure confidence is within bounds
-        confidence = confidence.clamp(0, 100);
-        
         PlanPreviewV1 {
             plan,
             risks,
             notes,
-            confidence,
+            confidence: 100,
         }
     }
 }
@@ -423,4 +407,3 @@ mod tests {
         assert!(preview.plan.actions.iter().any(|a| a.params.get("operation") == Some(&"constraint_action".to_string())));
     }
 }
-

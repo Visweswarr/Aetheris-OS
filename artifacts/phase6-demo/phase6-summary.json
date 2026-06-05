@@ -1,0 +1,28 @@
+﻿{
+    "status":  "PASS",
+    "demo":  "phase6",
+    "metrics":  "C:\\polymera-os\\ui\\dashboard\\ai_metrics.js",
+    "outputs":  "C:\\polymera-os\\artifacts\\phase6-demo",
+    "log_input":  "C:\\polymera-os\\build_out\\phase6-demo\\operator-hitl.log",
+    "proofs":  [
+                   "HITL reject",
+                   "HITL modify",
+                   "Budget denial and refund",
+                   "Persisted task state resume",
+                   "Replay divergence detection"
+               ],
+    "checks":  [
+                   {
+                       "Value":  3,
+                       "Name":  "ai_hitl_rejects_total"
+                   },
+                   {
+                       "Value":  3,
+                       "Name":  "ai_hitl_modifies_total"
+                   },
+                   {
+                       "Value":  3,
+                       "Name":  "ai_budget_exhausted_total"
+                   }
+               ]
+}

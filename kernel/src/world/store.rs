@@ -47,7 +47,7 @@ impl Segment {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Index {
     pub sp: BTreeMap<(EntityId, PredId), Vec<IndexEntry>>,
     pub ps: BTreeMap<PredId, Vec<EntityId>>,

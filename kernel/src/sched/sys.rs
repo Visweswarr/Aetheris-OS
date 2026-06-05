@@ -490,11 +490,3 @@ pub fn sys_exit(code: i32) -> ! {
         x86_64::instructions::hlt();
     }
 }
-
-    super::schedule();
-    
-    // Should never reach here since the task is dead
-    loop {
-        x86_64::instructions::hlt();
-    }
-}

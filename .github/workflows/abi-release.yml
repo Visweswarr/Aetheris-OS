@@ -1,0 +1,345 @@
+name: ABI Release Publishing
+
+on:
+  push:
+    tags:
+      - 'v0.2.0-phase2'
+      - 'v0.2.*'
+      - 'v0.3.*'
+      - 'v1.*.*'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  abi-release:
+    name: Publish ABI Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build ABI generator
+        run: |
+          cd tooling/abi
+          cargo build --release
+
+      - name: Generate ABI files for release
+        run: |
+          cd tooling/abi
+          ./target/release/abi-gen generate --input-dir ../../abi --output-dir ../../release-abi
+
+      - name: Create release package
+        run: |
+          echo "Creating ABI release package..."
+          
+          # Create release directory structure
+          mkdir -p polymera-abi-${{ github.ref_name }}
+          mkdir -p polymera-abi-${{ github.ref_name }}/include
+          mkdir -p polymera-abi-${{ github.ref_name }}/docs
+          mkdir -p polymera-abi-${{ github.ref_name }}/examples
+          
+          # Copy C headers
+          cp release-abi/include/*.h polymera-abi-${{ github.ref_name }}/include/
+          
+          # Copy documentation
+          cp release-abi/docs/*.md polymera-abi-${{ github.ref_name }}/docs/
+          
+          # Copy examples
+          cp docs/abi/EXAMPLES.md polymera-abi-${{ github.ref_name }}/examples/
+          
+          # Create README
+          cat > polymera-abi-${{ github.ref_name }}/README.md << 'EOF'
+          # Polymera OS ABI Release ${{ github.ref_name }}
+          
+          This release contains the Application Binary Interface (ABI) definitions for Polymera OS.
+          
+          ## Contents
+          
+          - **include/**: C header files for system calls, error codes, and features
+          - **docs/**: Complete ABI documentation
+          - **examples/**: Working code examples
+          
+          ## Installation
+          
+          Copy the header files to your include path:
+          
+          ```bash
+          cp include/*.h /usr/local/include/polymera/
+          ```
+          
+          ## Usage
+          
+          Include the headers in your C/C++ code:
+          
+          ```c
+          #include <polymera/polymera_syscalls.h>
+          #include <polymera/polymera_errno.h>
+          #include <polymera/polymera_features.h>
+          ```
+          
+          ## Version Information
+          
+          - **ABI Version**: ${{ github.ref_name }}
+          - **Generated**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          - **Schema Hash**: $(cat release-abi/schema_hash.txt 2>/dev/null || echo "Unknown")
+          
+          ## Compatibility
+          
+          This ABI version is stable and backward compatible. Applications built with this version will continue to work with future minor and patch releases.
+          
+          ## Support
+          
+          For questions and support, please refer to the main Polymera OS documentation or open an issue on GitHub.
+          EOF
+          
+          # Create version info
+          echo "${{ github.ref_name }}" > polymera-abi-${{ github.ref_name }}/VERSION
+          echo "$(date -u +"%Y-%m-%d %H:%M:%S UTC")" > polymera-abi-${{ github.ref_name }}/BUILD_DATE
+          if [ -f "release-abi/schema_hash.txt" ]; then
+            cp release-abi/schema_hash.txt polymera-abi-${{ github.ref_name }}/SCHEMA_HASH
+          fi
+          
+          # Create tarball
+          tar -czf polymera-abi-${{ github.ref_name }}.tar.gz polymera-abi-${{ github.ref_name }}/
+          
+          # Create zip archive
+          zip -r polymera-abi-${{ github.ref_name }}.zip polymera-abi-${{ github.ref_name }}/
+          
+          echo "Release package created: polymera-abi-${{ github.ref_name }}.tar.gz"
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/github-script@v7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          script: |
+            const release = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: '${{ github.ref }}',
+              name: 'Polymera OS ABI ${{ github.ref_name }}',
+              body: `## Polymera OS ABI Release ${{ github.ref_name }}
+            
+            This release contains the complete Application Binary Interface (ABI) for Polymera OS, including:
+            
+            ### 📁 Headers
+            - **polymera_syscalls.h**: System call definitions and constants
+            - **polymera_errno.h**: Error code definitions
+            - **polymera_features.h**: Feature flag definitions
+            
+            ### 📚 Documentation
+            - **SYSCALLS.md**: Complete system call reference
+            - **ERRNO.md**: Error code reference
+            - **FEATURES.md**: Feature flag reference
+            - **EXAMPLES.md**: Working code examples
+            - **ABI-POLICY.md**: ABI compatibility policy
+            
+            ### 🔧 Features
+            - Stable ABI with backward compatibility guarantees
+            - Support for x86_64 and aarch64 architectures
+            - Comprehensive error handling
+            - Feature detection and runtime adaptation
+            - C and Rust bindings
+            
+            ### 📦 Downloads
+            - **Source**: [polymera-abi-${{ github.ref_name }}.tar.gz](polymera-abi-${{ github.ref_name }}.tar.gz)
+            - **Windows**: [polymera-abi-${{ github.ref_name }}.zip](polymera-abi-${{ github.ref_name }}.zip)
+            
+            ### 🚀 Installation
+            
+            \`\`\`bash
+            # Extract and install headers
+            tar -xzf polymera-abi-${{ github.ref_name }}.tar.gz
+            cd polymera-abi-${{ github.ref_name }}
+            sudo cp include/*.h /usr/local/include/polymera/
+            \`\`\`
+            
+            ### 📋 Usage Example
+            
+            \`\`\`c
+            #include <polymera/polymera_syscalls.h>
+            #include <polymera/polymera_errno.h>
+            
+            int main() {
+                // Check system features
+                unsigned long long features = sys_get_features();
+                if (features & PQC_CAPS_V2) {
+                    printf("PQC capabilities available\\n");
+                }
+                
+                // Make a system call
+                int result = sys_yield();
+                if (result < 0) {
+                    printf("Yield failed: %s\\n", strerror(-result));
+                }
+                
+                return 0;
+            }
+            \`\`\`
+            
+            ### 🔒 Compatibility
+            
+            This ABI version maintains full backward compatibility. Applications built with this version will continue to work with future minor and patch releases.
+            
+            ### 📊 Schema Information
+            
+            - **Schema Hash**: $(cat release-abi/schema_hash.txt 2>/dev/null || echo "Unknown")
+            - **Generated**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            - **ABI Version**: ${{ github.ref_name }}
+            
+            ### 🐛 Reporting Issues
+            
+            If you encounter any issues with this ABI release, please:
+            1. Check the [documentation](docs/)
+            2. Review the [examples](examples/)
+            3. Open an issue on GitHub with detailed information
+            
+            ### 📖 More Information
+            
+            - [Polymera OS Documentation](https://github.com/polymera-os/polymera-os/docs)
+            - [ABI Policy](docs/ABI-POLICY.md)
+            - [Development Guide](https://github.com/polymera-os/polymera-os/docs/DEVELOPMENT.md)`,
+              draft: false,
+              prerelease: false
+            });
+            
+            core.setOutput('upload_url', release.data.upload_url);
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./polymera-abi-${{ github.ref_name }}.tar.gz
+          asset_name: polymera-abi-${{ github.ref_name }}.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload Release Assets (ZIP)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./polymera-abi-${{ github.ref_name }}.zip
+          asset_name: polymera-abi-${{ github.ref_name }}.zip
+          asset_content_type: application/zip
+
+      - name: Upload Source Headers
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release-abi/include/polymera_syscalls.h
+          asset_name: polymera_syscalls.h
+          asset_content_type: text/plain
+
+      - name: Upload Error Codes Header
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release-abi/include/polymera_errno.h
+          asset_name: polymera_errno.h
+          asset_content_type: text/plain
+
+      - name: Upload Features Header
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release-abi/include/polymera_features.h
+          asset_name: polymera_features.h
+          asset_content_type: text/plain
+
+      - name: Upload Documentation
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release-abi/docs/SYSCALLS.md
+          asset_name: SYSCALLS.md
+          asset_content_type: text/markdown
+
+      - name: Upload Examples
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./docs/abi/EXAMPLES.md
+          asset_name: EXAMPLES.md
+          asset_content_type: text/markdown
+
+      - name: Upload ABI Policy
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./docs/abi/ABI-POLICY.md
+          asset_name: ABI-POLICY.md
+          asset_content_type: text/markdown
+
+      - name: Generate Release Summary
+        run: |
+          echo "## 🎉 ABI Release ${{ github.ref_name }} Published Successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Release Assets" >> $GITHUB_STEP_SUMMARY
+          echo "- **Source Package**: polymera-abi-${{ github.ref_name }}.tar.gz" >> $GITHUB_STEP_SUMMARY
+          echo "- **Windows Package**: polymera-abi-${{ github.ref_name }}.zip" >> $GITHUB_STEP_SUMMARY
+          echo "- **Individual Headers**: polymera_syscalls.h, polymera_errno.h, polymera_features.h" >> $GITHUB_STEP_SUMMARY
+          echo "- **Documentation**: SYSCALLS.md, EXAMPLES.md, ABI-POLICY.md" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 Release URL" >> $GITHUB_STEP_SUMMARY
+          echo "https://github.com/${{ github.repository }}/releases/tag/${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Schema Information" >> $GITHUB_STEP_SUMMARY
+          if [ -f "release-abi/schema_hash.txt" ]; then
+            echo "- **Schema Hash**: $(cat release-abi/schema_hash.txt)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Schema Hash**: Unknown" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Generated**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+          echo "- **ABI Version**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify Team
+        run: |
+          echo "ABI Release ${{ github.ref_name }} has been published successfully!"
+          echo ""
+          echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref }}"
+          echo ""
+          echo "The following assets are now available:"
+          echo "- Source package (tar.gz)"
+          echo "- Windows package (zip)"
+          echo "- Individual header files"
+          echo "- Complete documentation"
+          echo "- Working examples"
+          echo ""
+          echo "Users can now download and integrate the ABI headers into their projects."

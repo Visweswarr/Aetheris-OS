@@ -1,0 +1,348 @@
+# Semantic Release Configuration for Aetheris OS
+# Enforces Conventional Commits in PR titles and automates versioning
+
+# Configuration for semantic-release
+branches:
+  - name: 'main'
+    channel: 'latest'
+  - name: 'develop'
+    channel: 'beta'
+    prerelease: 'beta'
+  - name: 'release/*'
+    channel: 'rc'
+    prerelease: 'rc'
+
+# Conventional Commits configuration
+commitAnalyzer:
+  preset: 'conventionalcommits'
+  releaseRules:
+    # Major version bumps
+    - type: 'feat'
+      scope: 'BREAKING'
+      release: 'major'
+    - type: 'feat'
+      breaking: true
+      release: 'major'
+    
+    # Minor version bumps
+    - type: 'feat'
+      release: 'minor'
+    - type: 'perf'
+      release: 'minor'
+    - type: 'refactor'
+      release: 'minor'
+    
+    # Patch version bumps
+    - type: 'fix'
+      release: 'patch'
+    - type: 'docs'
+      release: 'patch'
+    - type: 'style'
+      release: 'patch'
+    - type: 'test'
+      release: 'patch'
+    - type: 'build'
+      release: 'patch'
+    - type: 'ci'
+      release: 'patch'
+    - type: 'chore'
+      release: 'patch'
+    
+    # No release
+    - type: 'revert'
+      release: 'patch'
+    - type: 'wip'
+      release: false
+    - type: 'draft'
+      release: false
+
+# Release notes generation
+releaseNotesGenerator:
+  preset: 'conventionalcommits'
+  presetConfig:
+    types:
+      - type: 'feat'
+        section: '🚀 Features'
+      - type: 'fix'
+        section: '🐛 Bug Fixes'
+      - type: 'perf'
+        section: '⚡ Performance Improvements'
+      - type: 'refactor'
+        section: '♻️ Code Refactoring'
+      - type: 'docs'
+        section: '📚 Documentation'
+      - type: 'style'
+        section: '💄 Styles'
+      - type: 'test'
+        section: '✅ Tests'
+      - type: 'build'
+        section: '📦 Build System'
+      - type: 'ci'
+        section: '👷 CI'
+      - type: 'chore'
+        section: '🔧 Chores'
+      - type: 'revert'
+        section: '⏪ Reverts'
+
+# Changelog generation
+changelogFile: 'CHANGELOG.md'
+changelogTitle: '# Changelog\n\nAll notable changes to Aetheris OS will be documented in this file.'
+
+# GitHub release configuration
+github:
+  release: true
+  releaseName: 'Aetheris OS v${nextRelease.version}'
+  releaseBody: |
+    ## 🚀 Aetheris OS v${nextRelease.version}
+    
+    ${nextRelease.notes}
+    
+    ## 📦 Installation
+    
+    ### Docker
+    ```bash
+    docker pull aetheris/os:${nextRelease.version}
+    ```
+    
+    ### Binary Releases
+    Download the appropriate binary for your platform from the assets below.
+    
+    ## 🔍 Verification
+    
+    All releases are signed and include Software Bill of Materials (SBOM):
+    - **Signatures**: `*.sig` files (minisign format)
+    - **SBOM**: `sbom-*.json` (SPDX format)
+    - **Checksums**: `checksums.txt`
+    
+    ### Verify Signature
+    ```bash
+    minisign -Vm aetheris-os-${nextRelease.version}-linux-amd64.tar.gz -p keys/minisign.pub
+    ```
+    
+    ### Verify SBOM
+    ```bash
+    syft attest --key cosign.key aetheris-os-${nextRelease.version}-linux-amd64.tar.gz
+    ```
+    
+    ## 📋 Phase Status
+    
+    ${nextRelease.notes}
+    
+    ## 🔗 Links
+    
+    - [Documentation](https://docs.aetheris.io)
+    - [Installation Guide](https://docs.aetheris.io/installation)
+    - [API Reference](https://docs.aetheris.io/api)
+    - [Community](https://community.aetheris.io)
+
+# Plugin configuration
+plugins:
+  - '@semantic-release/commit-analyzer'
+  - '@semantic-release/release-notes-generator'
+  - '@semantic-release/changelog'
+  - '@semantic-release/github'
+  - '@semantic-release/git'
+
+# Git configuration
+git:
+  assets:
+    - 'CHANGELOG.md'
+    - 'package.json'
+    - 'Cargo.toml'
+    - 'go.mod'
+  message: 'chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}'
+
+# Conventional Commits enforcement
+conventionalCommits:
+  # Enforce conventional commit format in PR titles
+  enforceConventionalCommits: true
+  
+  # Allowed types
+  types:
+    - feat      # A new feature
+    - fix       # A bug fix
+    - docs      # Documentation only changes
+    - style     # Changes that do not affect the meaning of the code
+    - refactor  # A code change that neither fixes a bug nor adds a feature
+    - perf      # A code change that improves performance
+    - test      # Adding missing tests or correcting existing tests
+    - build     # Changes that affect the build system or external dependencies
+    - ci        # Changes to our CI configuration files and scripts
+    - chore     # Other changes that don't modify src or test files
+    - revert    # Reverts a previous commit
+  
+  # Required scopes for certain types
+  scopes:
+    - xr        # XR/Metaverse related changes
+    - device    # Device runtime changes
+    - ai        # AI/ML related changes
+    - hal       # Hardware abstraction layer
+    - contracts # Smart contracts
+    - relay     # Cross-chain relay
+    - ngfs      # Next-generation file system
+    - dao       # DAO governance
+    - captoken  # Capability tokens
+    - security  # Security related changes
+    - perf      # Performance improvements
+    - docs      # Documentation
+    - ci        # CI/CD
+    - release   # Release process
+  
+  # Breaking change indicators
+  breakingChangePrefixes:
+    - 'BREAKING CHANGE:'
+    - 'BREAKING:'
+  
+  # Footer types
+  footerTypes:
+    - 'Closes'
+    - 'Fixes'
+    - 'Resolves'
+    - 'Refs'
+
+# PR title validation
+prTitleValidation:
+  # Enforce conventional commit format in PR titles
+  enforceConventionalCommits: true
+  
+  # Example valid PR titles:
+  # - feat(xr): add multi-user persistence
+  # - fix(device): resolve camera capture issue
+  # - docs: update installation guide
+  # - feat(ai)!: BREAKING: change AI model format
+  # - chore(release): bump version to 0.4.0
+  
+  # Invalid PR titles will be rejected with helpful error messages
+  errorMessage: |
+    ❌ Invalid PR title format!
+    
+    Please use Conventional Commits format:
+    <type>(<scope>): <description>
+    
+    Examples:
+    - feat(xr): add multi-user persistence
+    - fix(device): resolve camera capture issue
+    - docs: update installation guide
+    - feat(ai)!: BREAKING: change AI model format
+    
+    Allowed types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+    Allowed scopes: xr, device, ai, hal, contracts, relay, ngfs, dao, captoken, security, perf, docs, ci, release
+    
+    For breaking changes, add ! after the type: feat(scope)!: description
+
+# Release workflow integration
+workflow:
+  # Trigger on main branch pushes
+  trigger: 'push'
+  branches:
+    - 'main'
+    - 'develop'
+    - 'release/*'
+  
+  # Skip if commit message contains [skip ci]
+  skipCi: true
+  
+  # Environment variables
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+    COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+    MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
+    MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+
+# Quality gates
+qualityGates:
+  # Require all checks to pass
+  requireStatusChecks: true
+  
+  # Required status checks
+  statusChecks:
+    - 'phase4-verify'
+    - 'build'
+    - 'test'
+    - 'lint'
+    - 'security-scan'
+    - 'sbom-generation'
+  
+  # Require review approval
+  requireReview: true
+  
+  # Require up-to-date branch
+  requireUpToDateBranch: true
+
+# Release notes customization
+releaseNotes:
+  # Include commit hash in release notes
+  includeCommitHash: true
+  
+  # Include author information
+  includeAuthor: true
+  
+  # Group commits by type
+  groupCommits: true
+  
+  # Custom sections
+  customSections:
+    - name: '🔧 Technical Changes'
+      types: ['build', 'ci', 'chore']
+    - name: '📚 Documentation'
+      types: ['docs']
+    - name: '🧪 Testing'
+      types: ['test']
+    - name: '⚡ Performance'
+      types: ['perf']
+    - name: '♻️ Refactoring'
+      types: ['refactor']
+
+# Version bumping rules
+versionBumping:
+  # Major version (1.0.0 -> 2.0.0)
+  major:
+    - 'feat(scope)!: breaking change'
+    - 'feat!: breaking change'
+    - 'BREAKING CHANGE:'
+  
+  # Minor version (1.0.0 -> 1.1.0)
+  minor:
+    - 'feat: new feature'
+    - 'perf: performance improvement'
+    - 'refactor: code refactoring'
+  
+  # Patch version (1.0.0 -> 1.0.1)
+  patch:
+    - 'fix: bug fix'
+    - 'docs: documentation'
+    - 'style: code style'
+    - 'test: tests'
+    - 'build: build system'
+    - 'ci: continuous integration'
+    - 'chore: maintenance'
+
+# Pre-release configuration
+prerelease:
+  # Beta releases
+  beta:
+    channel: 'beta'
+    prerelease: true
+  
+  # Release candidates
+  rc:
+    channel: 'rc'
+    prerelease: true
+  
+  # Alpha releases
+  alpha:
+    channel: 'alpha'
+    prerelease: true
+
+# Dry run configuration
+dryRun:
+  # Enable dry run mode
+  enabled: false
+  
+  # Show what would be released
+  verbose: true
+  
+  # Skip actual release
+  skipRelease: true

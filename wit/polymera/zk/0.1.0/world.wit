@@ -1,0 +1,46 @@
+package polymera:zk@0.1.0;
+
+/// Zero-knowledge proof boundary for components.
+interface proofs {
+    enum zk-error {
+        unknown-circuit,
+        unsupported-proof-system,
+        invalid-proof,
+        public-input-mismatch,
+        mock-mode-disabled,
+        policy-denied,
+        internal-error,
+    }
+
+    record circuit-ref {
+        id: string,
+        version: string,
+        proof-system: string,
+        verifying-key-hash: list<u8>,
+    }
+
+    record proof-request {
+        circuit: circuit-ref,
+        private-witness: list<u8>,
+        public-inputs: list<u8>,
+        mock-mode: bool,
+    }
+
+    record proof-receipt {
+        proof-system: string,
+        circuit-id: string,
+        circuit-version: string,
+        proof-hash: list<u8>,
+        public-inputs-hash: list<u8>,
+        verifier: string,
+        created-at-unix-nanos: u64,
+    }
+
+    prove: func(request: proof-request) -> result<proof-receipt, zk-error>;
+    verify: func(receipt: proof-receipt, proof-bytes: list<u8>, public-inputs: list<u8>) -> result<bool, zk-error>;
+    list-circuits: func() -> list<circuit-ref>;
+}
+
+world zk-plugin {
+    export proofs;
+}

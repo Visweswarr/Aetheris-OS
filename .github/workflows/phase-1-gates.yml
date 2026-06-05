@@ -1,0 +1,169 @@
+name: Phase 1 Gates
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  phase-1-gates:
+    name: Phase 1 Gate Validation
+    runs-on: ubuntu-latest
+    
+    # Block merges on failure
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-unknown-linux-gnu
+          override: true
+          profile: minimal
+      
+      - name: Setup Bazel
+        uses: bazelbuild/setup-bazelisk@v2
+        with:
+          version: latest
+      
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-system-x86_64
+          qemu-system-x86_64 --version
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get install -y build-essential pkg-config libssl-dev
+          cargo install anyhow serde serde_yaml chrono
+      
+      - name: Build kernel image
+        run: |
+          echo "🔨 Building kernel image..."
+          bazel build //kernel:kernel_image
+          echo "✅ Kernel image built successfully"
+      
+      - name: Run Phase 1 gate validation
+        run: |
+          echo "🧪 Running Phase 1 gate validation..."
+          cd perf
+          cargo run --bin check_phase1_gates
+        env:
+          RUST_BACKTRACE: 1
+      
+      - name: Upload gate report
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: phase1-gate-report
+          path: |
+            perf/reports/
+            perf/phase1_gate_serial.log
+          retention-days: 30
+      
+      - name: Comment PR on failure
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ❌ Phase 1 Gate Validation Failed
+            
+            The Phase 1 gate validation has failed, blocking this merge.
+            
+            **Required Actions:**
+            - Review the gate validation output above
+            - Fix any performance or test failures
+            - Ensure all SLOs are met:
+              - IPC p50 < 200μs
+              - IPC p95 < 1ms  
+              - Wake-to-run p95 < 5ms
+              - All tests passing
+            - Re-run the validation
+            
+            **Gate Report:** Available in the workflow artifacts
+            
+            **Contact:** @polymera-os-team for assistance`
+            })
+      
+      - name: Comment PR on success
+        if: success() && github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ✅ Phase 1 Gate Validation Passed
+            
+            All Phase 1 gates have been validated successfully!
+            
+            **Performance Metrics:**
+            - ✅ IPC latency targets met
+            - ✅ Wake-to-run targets met
+            - ✅ All tests passing
+            
+            **Ready for merge review** 🚀`
+            })
+      
+      - name: Trigger Phase 1 Release
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "🎉 Phase 1 gates passed on main branch - triggering release process!"
+          
+          # Make the release script executable
+          chmod +x perf/trigger_phase1_release.sh
+          
+          # Run the release trigger script
+          ./perf/trigger_phase1_release.sh
+          
+          echo "✅ Phase 1 release process completed successfully"
+      
+      - name: Update branch protection
+        if: success() && github.event_name == 'push'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // Update branch protection to require Phase 1 gates
+            const { data: branch } = await github.rest.repos.getBranchProtection({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: context.ref.replace('refs/heads/', '')
+            });
+            
+            // Add Phase 1 gates requirement if not present
+            const requiredChecks = branch.required_status_checks?.contexts || [];
+            if (!requiredChecks.includes('Phase 1 Gate Validation')) {
+              requiredChecks.push('Phase 1 Gate Validation');
+              
+              await github.rest.repos.updateBranchProtection({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: context.ref.replace('refs/heads/', ''),
+                required_status_checks: {
+                  strict: true,
+                  contexts: requiredChecks
+                },
+                enforce_admins: false,
+                required_pull_request_reviews: {
+                  required_approving_review_count: 1,
+                  dismiss_stale_reviews: true,
+                  require_code_owner_reviews: false
+                },
+                restrictions: null
+              });
+            }

@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use wasmtime::{Caller, Linker, ResourceLimiter, Store, Val};
+use wasmtime::{Caller, Engine, Linker, Store, Val, ValType};
 
 /// WASM host environment for policy execution
 #[derive(Clone)]
@@ -31,7 +31,7 @@ struct HostFunctions {
 struct HostFunction {
     /// Function name
     name: String,
-    /// Function implementation
+    /// Function implementation (takes i32/i64 params, returns i32/i64)
     implementation: fn(&[Val]) -> Result<Val, String>,
     /// Function metadata
     metadata: FunctionMetadata,
@@ -189,82 +189,13 @@ impl WasmHost {
     
     /// Register built-in host functions
     fn register_builtin_functions(host_functions: &mut HostFunctions) -> Result<(), WasmHostError> {
-        // JSON functions
-        Self::register_function(
-            host_functions,
-            "json_parse",
-            "Parse JSON string to object",
-            vec!["string"],
-            "object",
-            true,
-            Duration::from_micros(100),
-            |args| Self::json_parse(args),
-        )?;
-        
-        Self::register_function(
-            host_functions,
-            "json_stringify",
-            "Convert object to JSON string",
-            vec!["object"],
-            "string",
-            true,
-            Duration::from_micros(100),
-            |args| Self::json_stringify(args),
-        )?;
-        
-        // String functions
-        Self::register_function(
-            host_functions,
-            "string_length",
-            "Get string length",
-            vec!["string"],
-            "number",
-            true,
-            Duration::from_micros(10),
-            |args| Self::string_length(args),
-        )?;
-        
-        Self::register_function(
-            host_functions,
-            "string_substring",
-            "Extract substring",
-            vec!["string", "number", "number"],
-            "string",
-            true,
-            Duration::from_micros(10),
-            |args| Self::string_substring(args),
-        )?;
-        
-        // Array functions
-        Self::register_function(
-            host_functions,
-            "array_length",
-            "Get array length",
-            vec!["array"],
-            "number",
-            true,
-            Duration::from_micros(10),
-            |args| Self::array_length(args),
-        )?;
-        
-        Self::register_function(
-            host_functions,
-            "array_push",
-            "Add element to array",
-            vec!["array", "any"],
-            "array",
-            true,
-            Duration::from_micros(10),
-            |args| Self::array_push(args),
-        )?;
-        
-        // Math functions
+        // Math functions - these work with i32/i64 which are valid WASM types
         Self::register_function(
             host_functions,
             "math_max",
             "Get maximum of two numbers",
-            vec!["number", "number"],
-            "number",
+            vec!["i32".to_string(), "i32".to_string()],
+            "i32",
             true,
             Duration::from_micros(10),
             |args| Self::math_max(args),
@@ -274,57 +205,80 @@ impl WasmHost {
             host_functions,
             "math_min",
             "Get minimum of two numbers",
-            vec!["number", "number"],
-            "number",
+            vec!["i32".to_string(), "i32".to_string()],
+            "i32",
             true,
             Duration::from_micros(10),
             |args| Self::math_min(args),
+        )?;
+        
+        Self::register_function(
+            host_functions,
+            "math_abs",
+            "Get absolute value",
+            vec!["i32".to_string()],
+            "i32",
+            true,
+            Duration::from_micros(10),
+            |args| Self::math_abs(args),
         )?;
         
         // Time functions
         Self::register_function(
             host_functions,
             "time_now",
-            "Get current timestamp",
+            "Get current timestamp (seconds since epoch)",
             vec![],
-            "number",
+            "i64",
             true,
             Duration::from_micros(10),
-            |args| Self::time_now(args),
-        )?;
-        
-        // Logging functions
-        Self::register_function(
-            host_functions,
-            "log_info",
-            "Log info message",
-            vec!["string"],
-            "void",
-            true,
-            Duration::from_micros(10),
-            |args| Self::log_info(args),
+            |_args| Self::time_now(),
         )?;
         
         Self::register_function(
             host_functions,
-            "log_warning",
-            "Log warning message",
-            vec!["string"],
-            "void",
+            "time_now_millis",
+            "Get current timestamp in milliseconds",
+            vec![],
+            "i64",
             true,
             Duration::from_micros(10),
-            |args| Self::log_warning(args),
+            |_args| Self::time_now_millis(),
+        )?;
+        
+        // Logging functions (take i32 log level, return i32 status)
+        Self::register_function(
+            host_functions,
+            "log_level",
+            "Log with specified level (0=debug, 1=info, 2=warn, 3=error)",
+            vec!["i32".to_string()],
+            "i32",
+            true,
+            Duration::from_micros(10),
+            |args| Self::log_level(args),
+        )?;
+        
+        // Utility functions
+        Self::register_function(
+            host_functions,
+            "random_i32",
+            "Generate random i32",
+            vec![],
+            "i32",
+            true,
+            Duration::from_micros(10),
+            |_args| Self::random_i32(),
         )?;
         
         Self::register_function(
             host_functions,
-            "log_error",
-            "Log error message",
-            vec!["string"],
-            "void",
+            "random_i64",
+            "Generate random i64",
+            vec![],
+            "i64",
             true,
             Duration::from_micros(10),
-            |args| Self::log_error(args),
+            |_args| Self::random_i64(),
         )?;
         
         Ok(())
@@ -359,169 +313,56 @@ impl WasmHost {
         Ok(())
     }
     
-    /// Link host functions to WASM module
-    pub fn link_functions(&self, linker: &mut Linker<Self>) -> Result<(), WasmHostError> {
+    /// Call a host function by name
+    pub fn call_function(&self, name: &str, params: &[Val]) -> Result<Val, WasmHostError> {
         let host_functions = self.host_functions.lock().unwrap();
         
-        for (name, function) in &host_functions.functions {
-            let function_name = name.clone();
-            let function_impl = function.implementation;
-            
-            linker.func_wrap(name, function_name.as_str(), move |caller: Caller<Self>, params: &[Val]| {
-                Self::execute_host_function(caller, params, &function_name, function_impl)
-            })?;
-        }
+        let function = host_functions.functions.get(name)
+            .ok_or_else(|| WasmHostError::HostFunctionNotFound(name.to_string()))?;
         
-        Ok(())
-    }
-    
-    /// Execute a host function
-    fn execute_host_function(
-        mut caller: Caller<Self>,
-        params: &[Val],
-        function_name: &str,
-        implementation: fn(&[Val]) -> Result<Val, String>,
-    ) -> Result<Val, wasmtime::Trap> {
         let start_time = Instant::now();
         
         // Update execution context
         {
-            let mut context = caller.data().execution_context.lock().unwrap();
+            let mut context = self.execution_context.lock().unwrap();
             context.function_call_count += 1;
             context.execution_trace.push(ExecutionEvent {
                 timestamp: Instant::now(),
                 event_type: ExecutionEventType::FunctionCall,
-                details: format!("Calling host function: {}", function_name),
+                details: format!("Calling host function: {}", name),
             });
         }
         
-        // Update function call statistics
+        // Execute function
+        let result = (function.implementation)(params)
+            .map_err(|e| WasmHostError::HostFunctionError(e))?;
+        
+        // Update statistics
+        drop(host_functions);
         {
-            let mut host_functions = caller.data().host_functions.lock().unwrap();
-            if let Some(stats) = host_functions.call_stats.get_mut(function_name) {
+            let mut host_functions = self.host_functions.lock().unwrap();
+            if let Some(stats) = host_functions.call_stats.get_mut(name) {
                 stats.total_calls += 1;
+                stats.successful_calls += 1;
                 stats.total_execution_time += start_time.elapsed();
-                stats.average_execution_time = Duration::from_micros(
-                    stats.total_execution_time.as_micros() as u64 / stats.total_calls
-                );
+                if stats.total_calls > 0 {
+                    stats.average_execution_time = Duration::from_micros(
+                        stats.total_execution_time.as_micros() as u64 / stats.total_calls
+                    );
+                }
             }
         }
         
-        // Execute function
-        match implementation(params) {
-            Ok(result) => {
-                // Update success statistics
-                if let Some(stats) = caller.data().host_functions.lock().unwrap().call_stats.get_mut(function_name) {
-                    stats.successful_calls += 1;
-                }
-                Ok(result)
-            }
-            Err(error) => {
-                // Update failure statistics
-                if let Some(stats) = caller.data().host_functions.lock().unwrap().call_stats.get_mut(function_name) {
-                    stats.failed_calls += 1;
-                }
-                
-                // Log error
-                let mut context = caller.data().execution_context.lock().unwrap();
-                context.execution_trace.push(ExecutionEvent {
-                    timestamp: Instant::now(),
-                    event_type: ExecutionEventType::Error,
-                    details: format!("Host function error: {}", error),
-                });
-                
-                Err(wasmtime::Trap::new(error))
-            }
-        }
+        Ok(result)
+    }
+    
+    /// Get list of available function names
+    pub fn get_function_names(&self) -> Vec<String> {
+        let host_functions = self.host_functions.lock().unwrap();
+        host_functions.functions.keys().cloned().collect()
     }
     
     /// Built-in host function implementations
-    
-    // JSON functions
-    fn json_parse(args: &[Val]) -> Result<Val, String> {
-        if args.len() != 1 {
-            return Err("json_parse requires exactly 1 argument".to_string());
-        }
-        
-        let json_str = args[0].unwrap_str()
-            .map_err(|_| "First argument must be a string".to_string())?;
-        
-        // For now, return the string as-is since we can't easily convert to WASM types
-        // In a real implementation, you'd parse JSON and convert to appropriate WASM values
-        Ok(Val::String(json_str.to_string()))
-    }
-    
-    fn json_stringify(args: &[Val]) -> Result<Val, String> {
-        if args.len() != 1 {
-            return Err("json_stringify requires exactly 1 argument".to_string());
-        }
-        
-        // Convert WASM value to string representation
-        let value_str = match &args[0] {
-            Val::I32(n) => n.to_string(),
-            Val::I64(n) => n.to_string(),
-            Val::F32(f) => f.to_string(),
-            Val::F64(f) => f.to_string(),
-            Val::String(s) => s.clone(),
-            _ => "undefined".to_string(),
-        };
-        
-        Ok(Val::String(value_str))
-    }
-    
-    // String functions
-    fn string_length(args: &[Val]) -> Result<Val, String> {
-        if args.len() != 1 {
-            return Err("string_length requires exactly 1 argument".to_string());
-        }
-        
-        let length = args[0].unwrap_str()
-            .map_err(|_| "First argument must be a string".to_string())?
-            .len() as i32;
-        
-        Ok(Val::I32(length))
-    }
-    
-    fn string_substring(args: &[Val]) -> Result<Val, String> {
-        if args.len() != 3 {
-            return Err("string_substring requires exactly 3 arguments".to_string());
-        }
-        
-        let s = args[0].unwrap_str()
-            .map_err(|_| "First argument must be a string".to_string())?;
-        let start = args[1].unwrap_i32()
-            .map_err(|_| "Second argument must be a number".to_string())? as usize;
-        let end = args[2].unwrap_i32()
-            .map_err(|_| "Third argument must be a number".to_string())? as usize;
-        
-        if start >= s.len() || end > s.len() || start >= end {
-            return Err("Invalid substring indices".to_string());
-        }
-        
-        let substring = &s[start..end];
-        Ok(Val::String(substring.to_string()))
-    }
-    
-    // Array functions
-    fn array_length(args: &[Val]) -> Result<Val, String> {
-        if args.len() != 1 {
-            return Err("array_length requires exactly 1 argument".to_string());
-        }
-        
-        // For now, return 0 since we can't easily determine array length in WASM
-        // In a real implementation, you'd track array metadata
-        Ok(Val::I32(0))
-    }
-    
-    fn array_push(args: &[Val]) -> Result<Val, String> {
-        if args.len() != 2 {
-            return Err("array_push requires exactly 2 arguments".to_string());
-        }
-        
-        // For now, return the array as-is since we can't easily modify arrays in WASM
-        // In a real implementation, you'd modify the array and return it
-        Ok(args[0].clone())
-    }
     
     // Math functions
     fn math_max(args: &[Val]) -> Result<Val, String> {
@@ -529,10 +370,14 @@ impl WasmHost {
             return Err("math_max requires exactly 2 arguments".to_string());
         }
         
-        let a = args[0].unwrap_i32()
-            .map_err(|_| "First argument must be a number".to_string())?;
-        let b = args[1].unwrap_i32()
-            .map_err(|_| "Second argument must be a number".to_string())?;
+        let a = match &args[0] {
+            Val::I32(n) => *n,
+            _ => return Err("First argument must be i32".to_string()),
+        };
+        let b = match &args[1] {
+            Val::I32(n) => *n,
+            _ => return Err("Second argument must be i32".to_string()),
+        };
         
         Ok(Val::I32(a.max(b)))
     }
@@ -542,16 +387,33 @@ impl WasmHost {
             return Err("math_min requires exactly 2 arguments".to_string());
         }
         
-        let a = args[0].unwrap_i32()
-            .map_err(|_| "First argument must be a number".to_string())?;
-        let b = args[1].unwrap_i32()
-            .map_err(|_| "Second argument must be a number".to_string())?;
+        let a = match &args[0] {
+            Val::I32(n) => *n,
+            _ => return Err("First argument must be i32".to_string()),
+        };
+        let b = match &args[1] {
+            Val::I32(n) => *n,
+            _ => return Err("Second argument must be i32".to_string()),
+        };
         
         Ok(Val::I32(a.min(b)))
     }
     
+    fn math_abs(args: &[Val]) -> Result<Val, String> {
+        if args.len() != 1 {
+            return Err("math_abs requires exactly 1 argument".to_string());
+        }
+        
+        let a = match &args[0] {
+            Val::I32(n) => *n,
+            _ => return Err("First argument must be i32".to_string()),
+        };
+        
+        Ok(Val::I32(a.abs()))
+    }
+    
     // Time functions
-    fn time_now(_args: &[Val]) -> Result<Val, String> {
+    fn time_now() -> Result<Val, String> {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -560,41 +422,56 @@ impl WasmHost {
         Ok(Val::I64(timestamp))
     }
     
+    fn time_now_millis() -> Result<Val, String> {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        
+        Ok(Val::I64(timestamp))
+    }
+    
     // Logging functions
-    fn log_info(args: &[Val]) -> Result<Val, String> {
+    fn log_level(args: &[Val]) -> Result<Val, String> {
         if args.len() != 1 {
-            return Err("log_info requires exactly 1 argument".to_string());
+            return Err("log_level requires exactly 1 argument".to_string());
         }
         
-        let message = args[0].unwrap_str()
-            .map_err(|_| "First argument must be a string".to_string())?;
+        let level = match &args[0] {
+            Val::I32(n) => *n,
+            _ => return Err("First argument must be i32".to_string()),
+        };
         
-        eprintln!("[INFO] {}", message);
-        Ok(Val::I32(0))
+        let level_str = match level {
+            0 => "DEBUG",
+            1 => "INFO",
+            2 => "WARN",
+            3 => "ERROR",
+            _ => "UNKNOWN",
+        };
+        
+        eprintln!("[{}] WASM log event", level_str);
+        Ok(Val::I32(0)) // Success
     }
     
-    fn log_warning(args: &[Val]) -> Result<Val, String> {
-        if args.len() != 1 {
-            return Err("log_warning requires exactly 1 argument".to_string());
-        }
+    // Random functions
+    fn random_i32() -> Result<Val, String> {
+        // Simple pseudo-random using time
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as i32;
         
-        let message = args[0].unwrap_str()
-            .map_err(|_| "First argument must be a string".to_string())?;
-        
-        eprintln!("[WARNING] {}", message);
-        Ok(Val::I32(0))
+        Ok(Val::I32(timestamp))
     }
     
-    fn log_error(args: &[Val]) -> Result<Val, String> {
-        if args.len() != 1 {
-            return Err("log_error requires exactly 1 argument".to_string());
-        }
+    fn random_i64() -> Result<Val, String> {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as i64;
         
-        let message = args[0].unwrap_str()
-            .map_err(|_| "First argument must be a string".to_string())?;
-        
-        eprintln!("[ERROR] {}", message);
-        Ok(Val::I32(0))
+        Ok(Val::I64(timestamp))
     }
     
     /// Get host function statistics
@@ -612,6 +489,34 @@ impl WasmHost {
         let mut context = self.execution_context.lock().unwrap();
         *context = ExecutionContext::new();
     }
+    
+    /// Get resource limits
+    pub fn get_resource_limits(&self) -> &ResourceLimits {
+        &self.resource_limits
+    }
+    
+    /// Check if memory limit would be exceeded
+    pub fn check_memory_limit(&self, requested_bytes: usize) -> bool {
+        let context = self.execution_context.lock().unwrap();
+        context.memory_usage_bytes + requested_bytes <= self.resource_limits.max_memory_bytes
+    }
+    
+    /// Check if function call limit would be exceeded
+    pub fn check_function_call_limit(&self) -> bool {
+        let context = self.execution_context.lock().unwrap();
+        context.function_call_count < self.resource_limits.max_function_calls
+    }
+    
+    /// Update memory usage
+    pub fn update_memory_usage(&self, bytes: usize) {
+        let mut context = self.execution_context.lock().unwrap();
+        context.memory_usage_bytes = bytes;
+        context.execution_trace.push(ExecutionEvent {
+            timestamp: Instant::now(),
+            event_type: ExecutionEventType::MemoryAllocation,
+            details: format!("Memory usage updated to {} bytes", bytes),
+        });
+    }
 }
 
 impl ExecutionContext {
@@ -624,79 +529,20 @@ impl ExecutionContext {
             execution_trace: Vec::new(),
         }
     }
-}
-
-impl ResourceLimiter for WasmHost {
-    fn memory_growing(
-        &mut self,
-        current: usize,
-        desired: usize,
-        maximum: Option<usize>,
-    ) -> Result<bool, wasmtime::Error> {
-        // Check memory limits
-        if desired > self.resource_limits.max_memory_bytes {
-            return Err(wasmtime::Error::new(
-                format!("Memory limit exceeded: {} bytes", desired)
-            ));
-        }
-        
-        // Update execution context
-        {
-            let mut context = self.execution_context.lock().unwrap();
-            context.memory_usage_bytes = desired;
-            context.execution_trace.push(ExecutionEvent {
-                timestamp: Instant::now(),
-                event_type: ExecutionEventType::MemoryAllocation,
-                details: format!("Memory allocation: {} -> {} bytes", current, desired),
-            });
-        }
-        
-        Ok(true)
+    
+    /// Get elapsed time since execution started
+    pub fn elapsed(&self) -> Duration {
+        self.start_time.elapsed()
     }
     
-    fn table_growing(
-        &mut self,
-        current: u32,
-        desired: u32,
-        maximum: Option<u32>,
-    ) -> Result<bool, wasmtime::Error> {
-        if desired > self.resource_limits.max_table_size {
-            return Err(wasmtime::Error::new(
-                format!("Table size limit exceeded: {}", desired)
-            ));
-        }
-        
-        Ok(true)
+    /// Get function call count
+    pub fn function_call_count(&self) -> u32 {
+        self.function_call_count
     }
     
-    fn instances(&mut self, count: u32) -> Result<bool, wasmtime::Error> {
-        if count > self.resource_limits.max_instances {
-            return Err(wasmtime::Error::new(
-                format!("Instance limit exceeded: {}", count)
-            ));
-        }
-        
-        Ok(true)
-    }
-    
-    fn tables(&mut self, count: u32) -> Result<bool, wasmtime::Error> {
-        if count > self.resource_limits.max_tables {
-            return Err(wasmtime::Error::new(
-                format!("Table limit exceeded: {}", count)
-            ));
-        }
-        
-        Ok(true)
-    }
-    
-    fn memories(&mut self, count: u32) -> Result<bool, wasmtime::Error> {
-        if count > self.resource_limits.max_memories {
-            return Err(wasmtime::Error::new(
-                format!("Memory limit exceeded: {}", count)
-            ));
-        }
-        
-        Ok(true)
+    /// Get memory usage
+    pub fn memory_usage_bytes(&self) -> usize {
+        self.memory_usage_bytes
     }
 }
 
@@ -737,14 +583,13 @@ mod tests {
     #[test]
     fn test_host_function_registration() {
         let host = WasmHost::new().unwrap();
-        let stats = host.get_function_stats();
+        let names = host.get_function_names();
         
         // Check that built-in functions are registered
-        assert!(stats.contains_key("json_parse"));
-        assert!(stats.contains_key("string_length"));
-        assert!(stats.contains_key("math_max"));
-        assert!(stats.contains_key("time_now"));
-        assert!(stats.contains_key("log_info"));
+        assert!(names.contains(&"math_max".to_string()));
+        assert!(names.contains(&"math_min".to_string()));
+        assert!(names.contains(&"time_now".to_string()));
+        assert!(names.contains(&"log_level".to_string()));
     }
     
     #[test]
@@ -752,8 +597,60 @@ mod tests {
         let host = WasmHost::new().unwrap();
         let context = host.get_execution_context();
         
-        assert_eq!(context.function_call_count, 0);
-        assert_eq!(context.memory_usage_bytes, 0);
-        assert!(context.execution_trace.is_empty());
+        assert_eq!(context.function_call_count(), 0);
+        assert_eq!(context.memory_usage_bytes(), 0);
+    }
+    
+    #[test]
+    fn test_math_max() {
+        let host = WasmHost::new().unwrap();
+        let result = host.call_function("math_max", &[Val::I32(5), Val::I32(10)]);
+        assert!(result.is_ok());
+        match result.unwrap() {
+            Val::I32(n) => assert_eq!(n, 10),
+            _ => panic!("Expected I32"),
+        }
+    }
+    
+    #[test]
+    fn test_math_min() {
+        let host = WasmHost::new().unwrap();
+        let result = host.call_function("math_min", &[Val::I32(5), Val::I32(10)]);
+        assert!(result.is_ok());
+        match result.unwrap() {
+            Val::I32(n) => assert_eq!(n, 5),
+            _ => panic!("Expected I32"),
+        }
+    }
+    
+    #[test]
+    fn test_time_now() {
+        let host = WasmHost::new().unwrap();
+        let result = host.call_function("time_now", &[]);
+        assert!(result.is_ok());
+        match result.unwrap() {
+            Val::I64(n) => assert!(n > 0),
+            _ => panic!("Expected I64"),
+        }
+    }
+    
+    #[test]
+    fn test_function_not_found() {
+        let host = WasmHost::new().unwrap();
+        let result = host.call_function("nonexistent", &[]);
+        assert!(result.is_err());
+    }
+    
+    #[test]
+    fn test_memory_limit_check() {
+        let host = WasmHost::new().unwrap();
+        assert!(host.check_memory_limit(1024)); // 1KB should be fine
+        assert!(!host.check_memory_limit(128 * 1024 * 1024)); // 128MB should exceed
+    }
+    
+    #[test]
+    fn test_function_call_limit_check() {
+        let host = WasmHost::new().unwrap();
+        assert!(host.check_function_call_limit());
     }
 }

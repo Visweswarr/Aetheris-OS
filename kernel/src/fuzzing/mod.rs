@@ -1,9 +1,10 @@
-#![no_std]
-
 use core::fmt;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
 use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::vec;
+use crate::kprintln;
 
 pub mod corpus;
 pub mod mutation;
@@ -213,7 +214,7 @@ impl FuzzingEngine {
     }
 
     /// Run fuzzing campaign
-    pub fn run_campaign<F>(&mut self, target_function: F) -> FuzzingResult
+    pub fn run_campaign<F>(&mut self, mut target_function: F) -> FuzzingResult
     where
         F: FnMut(&[u8]) -> Result<(), String>,
     {

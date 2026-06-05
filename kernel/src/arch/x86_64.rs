@@ -5,7 +5,7 @@ use x86_64::instructions::{hlt, interrupts};
 
 /// x86_64-specific early initialization
 pub fn early_init(config: &KernelConfig) -> KernelResult<()> {
-    crate::log::kprintln!("Initializing x86_64 architecture...");
+    crate::kprintln!("Initializing x86_64 architecture...");
     
     // Initialize GDT
     init_gdt();
@@ -16,25 +16,25 @@ pub fn early_init(config: &KernelConfig) -> KernelResult<()> {
     // Initialize paging
     init_paging(config)?;
     
-    crate::log::kprintln!("x86_64 initialization complete");
+    crate::kprintln!("x86_64 initialization complete");
     Ok(())
 }
 
 /// Initialize Global Descriptor Table
 fn init_gdt() {
-    crate::log::kprintln!("Initializing GDT...");
+    crate::kprintln!("Initializing GDT...");
     // TODO: Implement GDT setup
 }
 
 /// Initialize Interrupt Descriptor Table
 fn init_idt() {
-    crate::log::kprintln!("Initializing IDT...");
+    crate::kprintln!("Initializing IDT...");
     // TODO: Implement IDT setup
 }
 
 /// Initialize paging
-fn init_paging(config: &KernelConfig) -> KernelResult<()> {
-    crate::log::kprintln!("Initializing paging...");
+fn init_paging(_config: &KernelConfig) -> KernelResult<()> {
+    crate::kprintln!("Initializing paging...");
     // TODO: Implement paging setup
     Ok(())
 }
@@ -48,7 +48,7 @@ pub fn halt() -> ! {
 
 /// Shutdown the system
 pub fn shutdown() -> ! {
-    crate::log::kprintln!("x86_64 shutdown");
+    crate::kprintln!("x86_64 shutdown");
     
     // TODO: Implement proper ACPI shutdown
     // For now, just halt

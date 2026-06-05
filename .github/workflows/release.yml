@@ -1,0 +1,522 @@
+name: 🚀 Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'    # Trigger on version tags (v1.0.0, v2.1.3, etc.)
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+      draft:
+        description: 'Create as draft release'
+        required: false
+        type: boolean
+        default: false
+      from_tag:
+        description: 'Previous tag for changelog (auto-detected if empty)'
+        required: false
+        type: string
+
+env:
+  NODE_VERSION: '20'
+  RUST_VERSION: 'stable'
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Validate conventional commits format
+  validate-commits:
+    name: 🔍 Validate Commits
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    outputs:
+      previous-tag: ${{ steps.get-previous-tag.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Get previous tag
+        id: get-previous-tag
+        run: |
+          # Get the second most recent tag (previous release)
+          PREVIOUS_TAG=$(git tag -l --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | sed -n '2p')
+          echo "tag=${PREVIOUS_TAG}" >> $GITHUB_OUTPUT
+          echo "Previous tag: ${PREVIOUS_TAG}"
+
+      - name: Validate conventional commits
+        run: |
+          cd tooling/changelog
+          npm install
+          node gen.ts validate ${{ steps.get-previous-tag.outputs.tag }} ${{ github.ref_name }}
+
+  # Calculate version bump for manual releases
+  version-bump:
+    name: 📈 Calculate Version Bump
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      bump-type: ${{ steps.bump.outputs.bump-type }}
+      previous-tag: ${{ steps.get-previous-tag.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Get previous tag
+        id: get-previous-tag
+        run: |
+          if [ -n "${{ github.event.inputs.from_tag }}" ]; then
+            PREVIOUS_TAG="${{ github.event.inputs.from_tag }}"
+          else
+            PREVIOUS_TAG=$(git tag -l --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          fi
+          echo "tag=${PREVIOUS_TAG}" >> $GITHUB_OUTPUT
+          echo "Previous tag: ${PREVIOUS_TAG}"
+
+      - name: Calculate version bump
+        id: bump
+        run: |
+          cd tooling/changelog
+          npm install
+          node gen.ts bump ${{ steps.get-previous-tag.outputs.tag }} HEAD
+        env:
+          GITHUB_OUTPUT: ${{ github.output }}
+
+  # Build release artifacts
+  build-artifacts:
+    name: 🏗️ Build Artifacts
+    runs-on: ${{ matrix.os }}
+    needs: [validate-commits]
+    if: always() && (needs.validate-commits.result == 'success' || github.event_name == 'workflow_dispatch')
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact-name: polymera-os-linux-x64
+            artifact-ext: tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact-name: polymera-os-linux-arm64
+            artifact-ext: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact-name: polymera-os-macos-x64
+            artifact-ext: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact-name: polymera-os-macos-arm64
+            artifact-ext: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact-name: polymera-os-windows-x64
+            artifact-ext: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build kernel
+        run: |
+          cd kernel
+          cargo build --release --target ${{ matrix.target }}
+
+      - name: Build services
+        run: |
+          # Build all service crates
+          find services -name "Cargo.toml" -exec dirname {} \; | while read service_dir; do
+            echo "Building service: $service_dir"
+            cd "$service_dir"
+            cargo build --release --target ${{ matrix.target }}
+            cd - > /dev/null
+          done
+
+      - name: Build tools
+        run: |
+          cd tools/polymeractl
+          cargo build --release --target ${{ matrix.target }}
+
+      - name: Create distribution directory
+        run: |
+          mkdir -p dist/${{ matrix.artifact-name }}
+          
+          # Copy kernel binary
+          cp target/${{ matrix.target }}/release/polymera-kernel* dist/${{ matrix.artifact-name }}/ || true
+          
+          # Copy service binaries
+          find target/${{ matrix.target }}/release -name "polymera-*" -type f -executable | while read binary; do
+            cp "$binary" dist/${{ matrix.artifact-name }}/
+          done
+          
+          # Copy polymeractl
+          cp target/${{ matrix.target }}/release/polymeractl* dist/${{ matrix.artifact-name }}/ || true
+          
+          # Copy documentation and configuration
+          cp README.md LICENSE dist/${{ matrix.artifact-name }}/
+          cp -r release/ dist/${{ matrix.artifact-name }}/config/ || true
+          
+          # Copy examples and scripts
+          mkdir -p dist/${{ matrix.artifact-name }}/examples
+          cp -r examples/* dist/${{ matrix.artifact-name }}/examples/ || true
+
+      - name: Create checksums
+        run: |
+          cd dist/${{ matrix.artifact-name }}
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            powershell -Command "Get-ChildItem -File | ForEach-Object { (Get-FileHash $_.Name -Algorithm SHA256).Hash + '  ' + $_.Name } | Out-File -FilePath checksums.txt -Encoding utf8"
+          else
+            sha256sum * > checksums.txt
+          fi
+
+      - name: Package artifacts (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          cd dist
+          tar -czf ${{ matrix.artifact-name }}-${{ github.ref_name || github.event.inputs.version }}.tar.gz ${{ matrix.artifact-name }}/
+
+      - name: Package artifacts (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          cd dist
+          powershell -Command "Compress-Archive -Path '${{ matrix.artifact-name }}/*' -DestinationPath '${{ matrix.artifact-name }}-${{ github.ref_name || github.event.inputs.version }}.zip'"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}-${{ github.ref_name || github.event.inputs.version }}
+          path: dist/${{ matrix.artifact-name }}-*.*
+          retention-days: 30
+
+  # Build container images
+  build-containers:
+    name: 🐳 Build Container Images
+    runs-on: ubuntu-latest
+    needs: [validate-commits]
+    if: always() && (needs.validate-commits.result == 'success' || github.event_name == 'workflow_dispatch')
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ github.ref_name || github.event.inputs.version }}
+            COMMIT_SHA=${{ github.sha }}
+
+  # Generate documentation
+  build-docs:
+    name: 📚 Build Documentation
+    runs-on: ubuntu-latest
+    needs: [validate-commits]
+    if: always() && (needs.validate-commits.result == 'success' || github.event_name == 'workflow_dispatch')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build documentation site
+        run: |
+          cd docs/site
+          npm install
+          npm run build
+
+      - name: Upload documentation
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation-${{ github.ref_name || github.event.inputs.version }}
+          path: docs/site/build/
+          retention-days: 30
+
+  # Run security scans
+  security-scan:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    needs: [validate-commits]
+    if: always() && (needs.validate-commits.result == 'success' || github.event_name == 'workflow_dispatch')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Audit Rust dependencies
+        run: |
+          cargo install cargo-audit
+          cargo audit
+
+  # Generate changelog and create release
+  create-release:
+    name: 📝 Create Release
+    runs-on: ubuntu-latest
+    needs: [build-artifacts, build-containers, build-docs, security-scan]
+    if: always() && !contains(needs.*.result, 'failure')
+    outputs:
+      release-url: ${{ steps.create-release.outputs.html_url }}
+      changelog: ${{ steps.generate-changelog.outputs.changelog }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+
+      - name: Organize artifacts
+        run: |
+          # Move all artifacts to a single directory
+          mkdir -p release-artifacts
+          find dist/ -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec mv {} release-artifacts/ \;
+          
+          # List artifacts for verification
+          echo "Release artifacts:"
+          ls -la release-artifacts/
+
+      - name: Generate changelog
+        id: generate-changelog
+        run: |
+          cd tooling/changelog
+          npm install
+          
+          # Determine version and previous tag
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            PREVIOUS_TAG="${{ needs.version-bump.outputs.previous-tag }}"
+          else
+            VERSION="${{ github.ref_name }}"
+            PREVIOUS_TAG="${{ needs.validate-commits.outputs.previous-tag }}"
+          fi
+          
+          # Generate changelog
+          node gen.ts generate "${PREVIOUS_TAG}" "${VERSION}" "../../RELEASE_CHANGELOG.md"
+          
+          # Set outputs for GitHub Actions
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          cat "../../RELEASE_CHANGELOG.md" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        id: create-release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name || format('v{0}', github.event.inputs.version) }}
+          name: Release ${{ github.ref_name || format('v{0}', github.event.inputs.version) }}
+          body_path: RELEASE_CHANGELOG.md
+          draft: ${{ github.event.inputs.draft == 'true' }}
+          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+          files: |
+            release-artifacts/*
+          generate_release_notes: false
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update full changelog
+        run: |
+          cd tooling/changelog
+          node gen.ts full "../../CHANGELOG.md"
+          
+          # Commit and push updated changelog
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add ../../CHANGELOG.md
+          
+          if ! git diff --staged --quiet; then
+            git commit -m "docs: update CHANGELOG.md for ${{ github.ref_name || format('v{0}', github.event.inputs.version) }} [skip ci]"
+            git push origin HEAD:${{ github.event.repository.default_branch }}
+          fi
+
+  # Deploy documentation
+  deploy-docs:
+    name: 🌐 Deploy Documentation
+    runs-on: ubuntu-latest
+    needs: [create-release]
+    if: success() && !github.event.inputs.draft
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Download documentation
+        uses: actions/download-artifact@v4
+        with:
+          name: documentation-${{ github.ref_name || github.event.inputs.version }}
+          path: docs/
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # Notify teams
+  notify:
+    name: 📢 Notify Teams
+    runs-on: ubuntu-latest
+    needs: [create-release, deploy-docs]
+    if: always() && needs.create-release.result == 'success'
+    steps:
+      - name: Notify Slack
+        if: vars.SLACK_WEBHOOK_URL
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              "text": "🚀 New Polymera OS Release",
+              "attachments": [{
+                "color": "good",
+                "fields": [
+                  {
+                    "title": "Version",
+                    "value": "${{ github.ref_name || format('v{0}', github.event.inputs.version) }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Release URL",
+                    "value": "${{ needs.create-release.outputs.release-url }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Container Image",
+                    "value": "${{ needs.build-containers.outputs.image-tag }}",
+                    "short": true
+                  }
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ vars.SLACK_WEBHOOK_URL }}
+
+      - name: Create deployment notification
+        run: |
+          echo "🎉 Release ${{ github.ref_name || format('v{0}', github.event.inputs.version) }} deployed successfully!"
+          echo "📦 Release: ${{ needs.create-release.outputs.release-url }}"
+          echo "🐳 Container: ${{ needs.build-containers.outputs.image-tag }}"
+          echo "📚 Docs: ${{ needs.deploy-docs.outputs.page_url || 'https://polymera-os.github.io/polymera-os/' }}"
+
+# Cleanup old artifacts and releases
+  cleanup:
+    name: 🧹 Cleanup
+    runs-on: ubuntu-latest
+    needs: [create-release]
+    if: success()
+    steps:
+      - name: Delete old workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 30
+          keep_minimum_runs: 10
+
+      - name: Cleanup old container images
+        run: |
+          # Keep only the latest 10 container images
+          echo "Container cleanup would be implemented here"
+          # This would typically use GitHub's container registry API
+          # to delete old images, keeping only recent ones

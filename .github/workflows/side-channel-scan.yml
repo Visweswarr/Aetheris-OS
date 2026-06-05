@@ -1,0 +1,385 @@
+name: Side-Channel Vulnerability Scan
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'kernel/**'
+      - 'crypto/**'
+      - 'ipc/**'
+      - 'perf/**'
+      - '.github/workflows/side-channel-scan.yml'
+  
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'kernel/**'
+      - 'crypto/**'
+      - 'ipc/**'
+      - 'perf/**'
+      - '.github/workflows/side-channel-scan.yml'
+  
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: 'Type of scan to run'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - quick
+          - full
+          - runtime
+
+env:
+  PYTHON_VERSION: '3.11'
+  RUST_VERSION: 'stable'
+
+jobs:
+  static-scan:
+    name: Static Side-Channel Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          override: true
+          
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+            
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install regex pathlib
+          
+      - name: Build project to generate assembly/LLVM-IR
+        run: |
+          # Build in release mode to generate optimized code
+          cargo build --release
+          
+          # Generate assembly output
+          cargo rustc --release -- --emit asm
+          
+          # Generate LLVM-IR output
+          cargo rustc --release -- --emit llvm-ir
+          
+      - name: Run static side-channel scan
+        id: static-scan
+        run: |
+          echo "Running static side-channel vulnerability scan..."
+          
+          # Create output directory
+          mkdir -p scan-results
+          
+          # Run scanner on assembly files
+          python tooling/analysis/sidechan_scan.py \
+            --asm-dir target/release \
+            --llvm-dir target/release \
+            --output scan-results/static-scan-results.json \
+            --check-waivers \
+            --verbose
+          
+          # Check exit code
+          if [ $? -eq 0 ]; then
+            echo "scan_result=clean" >> $GITHUB_OUTPUT
+            echo "vulnerabilities=0" >> $GITHUB_OUTPUT
+          else
+            echo "scan_result=vulnerabilities_found" >> $GITHUB_OUTPUT
+            echo "vulnerabilities=1" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Upload scan results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: side-channel-scan-results
+          path: scan-results/
+          retention-days: 30
+          
+      - name: Parse scan results
+        id: parse-results
+        if: steps.static-scan.outputs.scan_result == 'vulnerabilities_found'
+        run: |
+          echo "Parsing scan results for vulnerabilities..."
+          
+          if [ -f "scan-results/static-scan-results.json" ]; then
+            # Extract vulnerability count and details
+            VULN_COUNT=$(jq '.total_vulnerabilities' scan-results/static-scan-results.json)
+            HIGH_VULNS=$(jq '.vulnerabilities_by_severity.high // 0' scan-results/static-scan-results.json)
+            MEDIUM_VULNS=$(jq '.vulnerabilities_by_severity.medium // 0' scan-results/static-scan-results.json)
+            
+            echo "vuln_count=$VULN_COUNT" >> $GITHUB_OUTPUT
+            echo "high_vulns=$HIGH_VULNS" >> $GITHUB_OUTPUT
+            echo "medium_vulns=$MEDIUM_VULNS" >> $GITHUB_OUTPUT
+            
+            # Generate summary for PR comment
+            echo "## 🚨 Side-Channel Vulnerabilities Detected" > scan-summary.md
+            echo "" >> scan-summary.md
+            echo "**Total Vulnerabilities:** $VULN_COUNT" >> scan-summary.md
+            echo "**High Severity:** $HIGH_VULNS" >> scan-summary.md
+            echo "**Medium Severity:** $MEDIUM_VULNS" >> scan-summary.md
+            echo "" >> scan-summary.md
+            echo "### Vulnerability Details" >> scan-summary.md
+            echo "" >> scan-summary.md
+            
+            # Extract vulnerability details
+            jq -r '.vulnerabilities[] | "- **\(.file_path):\(.line_number)** - \(.description) (Severity: \(.severity))"' \
+              scan-results/static-scan-results.json >> scan-summary.md
+              
+            echo "" >> scan-summary.md
+            echo "### Next Steps" >> scan-summary.md
+            echo "" >> scan-summary.md
+            echo "1. **Review** the detected vulnerabilities" >> scan-summary.md
+            echo "2. **Fix** the issues or request waivers" >> scan-summary.md
+            echo "3. **Document** waivers in `/docs/waivers/SIDECHAN.md`" >> scan-summary.md
+            echo "4. **Re-run** the scan after fixes" >> scan-summary.md
+            echo "" >> scan-summary.md
+            echo "**Note:** This PR is blocked until all vulnerabilities are resolved or properly waived." >> scan-summary.md
+          fi
+          
+      - name: Comment on PR
+        if: steps.static-scan.outputs.scan_result == 'vulnerabilities_found'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            let summary = '';
+            
+            try {
+              summary = fs.readFileSync('scan-summary.md', 'utf8');
+            } catch (error) {
+              summary = '## 🚨 Side-Channel Vulnerabilities Detected\n\nVulnerabilities were detected but details could not be parsed. Please check the scan results artifact.';
+            }
+            
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Side-Channel Vulnerabilities Detected')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                comment_id: botComment.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: summary,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: summary,
+              });
+            }
+            
+      - name: Fail if vulnerabilities found
+        if: steps.static-scan.outputs.scan_result == 'vulnerabilities_found'
+        run: |
+          echo "❌ Side-channel vulnerabilities detected!"
+          echo "This PR is blocked until all vulnerabilities are resolved or properly waived."
+          echo ""
+          echo "To resolve this:"
+          echo "1. Fix the identified vulnerabilities"
+          echo "2. Request waivers in /docs/waivers/SIDECHAN.md"
+          echo "3. Re-run the scan after fixes"
+          echo ""
+          echo "For more information, see the scan results and PR comment."
+          exit 1
+          
+      - name: Success message
+        if: steps.static-scan.outputs.scan_result == 'clean'
+        run: |
+          echo "✅ No side-channel vulnerabilities detected!"
+          echo "Static scan completed successfully."
+          
+  runtime-test:
+    name: Runtime Prime+Probe Test
+    runs-on: ubuntu-latest
+    needs: static-scan
+    if: needs.static-scan.result == 'success' && (github.event_name == 'push' || github.event.inputs.scan_type == 'runtime')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          override: true
+          
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+            
+      - name: Build runtime test
+        run: |
+          cd perf/sidechan
+          cargo build --release
+          
+      - name: Run prime+probe test
+        id: runtime-test
+        run: |
+          echo "Running runtime prime+probe cache side-channel test..."
+          
+          cd perf/sidechan
+          
+          # Run the test with verbose output
+          timeout 300 cargo run --release -- --verbose
+          
+          # Check exit code
+          if [ $? -eq 0 ]; then
+            echo "runtime_result=clean" >> $GITHUB_OUTPUT
+          else
+            echo "runtime_result=vulnerabilities_found" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Upload runtime test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: runtime-test-results
+          path: perf/sidechan/target/release/
+          retention-days: 30
+          
+      - name: Comment on PR for runtime test
+        if: steps.runtime-test.outputs.runtime_result == 'vulnerabilities_found' && github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const commentBody = `## 🚨 Runtime Cache Side-Channel Test Failed
+            
+            The runtime prime+probe test detected potential cache side-channel vulnerabilities.
+            
+            **Test Status:** FAILED
+            **Impact:** Potential cache timing leakage detected
+            
+            ### Next Steps
+            1. **Review** the runtime test results
+            2. **Investigate** the detected cache leakage
+            3. **Implement** cache-oblivious algorithms where needed
+            4. **Re-run** the test after fixes
+            
+            **Note:** This indicates potential runtime side-channel vulnerabilities that need attention.`;
+            
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Runtime Cache Side-Channel Test Failed')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                comment_id: botComment.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: commentBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: commentBody,
+              });
+            }
+            
+      - name: Fail if runtime test failed
+        if: steps.runtime-test.outputs.runtime_result == 'vulnerabilities_found'
+        run: |
+          echo "❌ Runtime cache side-channel test failed!"
+          echo "Potential cache leakage detected in CI VM environment."
+          echo ""
+          echo "This indicates runtime side-channel vulnerabilities that need investigation."
+          echo "Please review the test results and implement appropriate mitigations."
+          exit 1
+          
+      - name: Success message for runtime test
+        if: steps.runtime-test.outputs.runtime_result == 'clean'
+        run: |
+          echo "✅ Runtime cache side-channel test passed!"
+          echo "No significant cache leakage detected in CI VM environment."
+          
+  summary:
+    name: Scan Summary
+    runs-on: ubuntu-latest
+    needs: [static-scan, runtime-test]
+    if: always()
+    
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Side-Channel Vulnerability Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.static-scan.result }}" = "success" ]; then
+            if [ "${{ needs.static-scan.outputs.scan_result }}" = "clean" ]; then
+              echo "✅ **Static Scan:** PASSED - No vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ **Static Scan:** FAILED - Vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+              echo "  - Total: ${{ needs.static-scan.outputs.vuln_count }}" >> $GITHUB_STEP_SUMMARY
+              echo "  - High: ${{ needs.static-scan.outputs.high_vulns }}" >> $GITHUB_STEP_SUMMARY
+              echo "  - Medium: ${{ needs.static-scan.outputs.medium_vulns }}" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⚠️ **Static Scan:** SKIPPED or FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.runtime-test.result }}" = "success" ]; then
+            if [ "${{ needs.runtime-test.outputs.runtime_result }}" = "clean" ]; then
+              echo "✅ **Runtime Test:** PASSED - No cache leakage detected" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ **Runtime Test:** FAILED - Cache leakage detected" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⚠️ **Runtime Test:** SKIPPED or FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Overall Status" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.static-scan.result }}" = "success" ] && [ "${{ needs.static-scan.outputs.scan_result }}" = "clean" ] && \
+             ([ "${{ needs.runtime-test.result }}" != "success" ] || [ "${{ needs.runtime-test.outputs.runtime_result }}" = "clean" ]); then
+            echo "🎉 **ALL TESTS PASSED** - No side-channel vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "🚨 **VULNERABILITIES DETECTED** - Review required before merging" >> $GITHUB_STEP_SUMMARY
+          fi
+

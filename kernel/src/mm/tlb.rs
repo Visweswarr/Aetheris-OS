@@ -3,10 +3,11 @@
 /// This module provides comprehensive TLB management including page-specific flushes,
 /// global flushes, and SMP shootdown support for future multi-core systems.
 
-use crate::{kprintln, klog, kprintln};
+use crate::{kprintln, klog, lazy_static};
 use crate::log::Level;
 use crate::secman::audit::{audit_log, AuditEvent, AuditLevel};
 use super::constants::*;
+use super::utils::is_kernel_address;
 use x86_64::{
     structures::paging::{Page, Size4KiB, Size2MiB, Size1GiB},
     VirtAddr, PhysAddr,
@@ -14,9 +15,11 @@ use x86_64::{
 };
 use core::sync::atomic::{AtomicU64, Ordering};
 use spin::Mutex;
-use alloc::collections::HashMap;
+use alloc::string::ToString;
+use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::format;
 
 //=============================================================================
 // TLB CONFIGURATION AND CONSTANTS
@@ -38,7 +41,7 @@ pub enum TlbFlushType {
 }
 
 /// TLB flush reason for auditing
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TlbFlushReason {
     /// Page mapping changed
     PageMappingChanged,
@@ -95,20 +98,20 @@ pub fn flush_page(virtual_addr: VirtAddr, reason: TlbFlushReason) -> Result<(), 
     match flush_type {
         TlbFlushType::SinglePage => {
             let page = Page::<Size4KiB>::containing_address(virtual_addr);
-            unsafe { tlb::flush(page); }
+            unsafe { tlb::flush(page.start_address()); }
         }
         TlbFlushType::LargePage => {
             let page = Page::<Size2MiB>::containing_address(virtual_addr);
-            unsafe { tlb::flush(page); }
+            unsafe { tlb::flush(page.start_address()); }
         }
         TlbFlushType::HugePage => {
             let page = Page::<Size1GiB>::containing_address(virtual_addr);
-            unsafe { tlb::flush(page); }
+            unsafe { tlb::flush(page.start_address()); }
         }
         _ => {
             // Fallback to single page flush
             let page = Page::<Size4KiB>::containing_address(virtual_addr);
-            unsafe { tlb::flush(page); }
+            unsafe { tlb::flush(page.start_address()); }
         }
     }
     
@@ -343,15 +346,16 @@ impl TlbShootdownManager {
         }
         
         // Move completed requests
+        let completed_count = completed.len();
         for request in completed {
             self.pending_requests.retain(|r| r.request_id != request.request_id);
             self.completed_requests.push(request);
         }
         
-        self.stats.completed_requests += completed.len() as u64;
+        self.stats.completed_requests += completed_count as u64;
         
         klog!(INFO, "[TLB-SHOOTDOWN] Processed {} requests, {} remaining", 
-              completed.len(), self.pending_requests.len());
+              completed_count, self.pending_requests.len());
         
         Ok(())
     }
@@ -407,19 +411,21 @@ pub struct TlbStats {
     /// Multiple page flushes
     pub multiple_page_flushes: u64,
     /// Flushes by reason
-    pub flushes_by_reason: HashMap<TlbFlushReason, u64>,
+    pub flushes_by_reason: BTreeMap<TlbFlushReason, u64>,
     /// Last flush timestamp
     pub last_flush_timestamp: u64,
     /// Average flush time (microseconds)
     pub avg_flush_time_us: u64,
 }
 
-/// Global TLB statistics
-static TLB_STATS: spin::Mutex<TlbStats> = spin::Mutex::new(TlbStats::default());
+lazy_static! {
+    /// Global TLB statistics.
+    static ref TLB_STATS: spin::Mutex<TlbStats> = spin::Mutex::new(TlbStats::default());
 
-/// Global TLB shootdown manager
-static TLB_SHOOTDOWN_MANAGER: spin::Mutex<TlbShootdownManager> = 
-    spin::Mutex::new(TlbShootdownManager::new());
+    /// Global TLB shootdown manager.
+    static ref TLB_SHOOTDOWN_MANAGER: spin::Mutex<TlbShootdownManager> =
+        spin::Mutex::new(TlbShootdownManager::new());
+}
 
 /// Update TLB statistics
 fn update_tlb_stats(flush_type: TlbFlushType, reason: TlbFlushReason) {
@@ -511,15 +517,8 @@ fn page_size_to_string(size: usize) -> &'static str {
 
 /// Get current timestamp in microseconds
 fn get_current_timestamp() -> u64 {
-    // This is a simplified implementation
-    // In a real system, you'd use a high-resolution timer
-    use core::time::Duration;
-    use std::time::SystemTime;
-    
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or(Duration::from_secs(0))
-        .as_micros() as u64
+    // Use kernel time instead of std::time
+    crate::time::Instant::now().as_micros()
 }
 
 //=============================================================================

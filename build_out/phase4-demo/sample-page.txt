@@ -1,0 +1,3 @@
+Polymera OS operator console
+The system runs deterministic local AI planning, browser/page assistance,
+capability-gated log summarization, and a local runtime backend boundary.

@@ -1,0 +1,509 @@
+name: ABI Documentation Auto-Sync
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'kernel/src/syscalls/**'
+      - 'kernel/src/abi/**'
+      - 'tooling/abi/**'
+      - 'docs/abi/**'
+      - 'userland-stubs/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+env:
+  RUST_BACKTRACE: 1
+  RUST_LOG: info
+
+jobs:
+  # Check if ABI-related files have changed
+  check-abi-changes:
+    name: "Check ABI Changes"
+    runs-on: ubuntu-latest
+    outputs:
+      has_abi_changes: ${{ steps.check_changes.outputs.has_changes }}
+      changed_files: ${{ steps.check_changes.outputs.changed_files }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Check for ABI-related changes
+        id: check_changes
+        run: |
+          echo "Checking for ABI-related changes..."
+          
+          # Get list of changed files
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          
+          # Check if any ABI-related files changed
+          ABI_CHANGES=false
+          ABI_FILES=""
+          
+          while IFS= read -r file; do
+            if [[ -n "$file" ]]; then
+              if [[ "$file" =~ ^kernel/src/syscalls/ ]] || \
+                 [[ "$file" =~ ^kernel/src/abi/ ]] || \
+                 [[ "$file" =~ ^tooling/abi/ ]] || \
+                 [[ "$file" =~ ^docs/abi/ ]] || \
+                 [[ "$file" =~ ^userland-stubs/ ]] || \
+                 [[ "$file" == "Cargo.toml" ]] || \
+                 [[ "$file" == "Cargo.lock" ]]; then
+                ABI_CHANGES=true
+                ABI_FILES="$ABI_FILES $file"
+                echo "ABI-related file changed: $file"
+              fi
+            fi
+          done <<< "$CHANGED_FILES"
+          
+          if [[ "$ABI_CHANGES" == true ]]; then
+            echo "ABI changes detected in: $ABI_FILES"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "changed_files=$ABI_FILES" >> $GITHUB_OUTPUT
+          else
+            echo "No ABI-related changes detected"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "changed_files=" >> $GITHUB_OUTPUT
+          fi
+
+  # Generate ABI documentation and files
+  generate-abi-docs:
+    name: "Generate ABI Documentation"
+    runs-on: ubuntu-latest
+    needs: check-abi-changes
+    if: needs.check-abi-changes.outputs.has_abi_changes == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+      
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-abi-gen-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-abi-gen-
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq bc
+      
+      - name: Build ABI generator
+        run: |
+          echo "Building ABI generator..."
+          cd tooling/abi
+          cargo build --release
+          echo "ABI generator built successfully"
+      
+      - name: Generate ABI documentation and files
+        run: |
+          echo "Generating ABI documentation and files..."
+          
+          cd tooling/abi
+          
+          # Run the ABI generator
+          if cargo run --release; then
+            echo "ABI generation completed successfully"
+          else
+            echo "ABI generation failed"
+            exit 1
+          fi
+          
+          # Check what was generated
+          echo "Generated files:"
+          find ../../docs/abi -name "*.md" -o -name "*.txt" | head -20
+          find ../../userland-stubs -name "*.h" -o -name "*.rs" | head -20
+      
+      - name: Check for generated file changes
+        id: check_generated_changes
+        run: |
+          echo "Checking for generated file changes..."
+          
+          # Stage generated files
+          git add docs/abi/ userland-stubs/ kernel/src/abi/
+          
+          # Check if there are any changes
+          if git diff --staged --quiet; then
+            echo "No changes detected in generated files"
+            echo "has_generated_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected in generated files"
+            echo "has_generated_changes=true" >> $GITHUB_OUTPUT
+            
+            # Show what changed
+            echo "Generated file changes:"
+            git diff --staged --name-only
+          fi
+      
+      - name: Create bot branch
+        if: steps.check_generated_changes.outputs.has_generated_changes == 'true'
+        run: |
+          echo "Creating bot branch for ABI updates..."
+          
+          # Create a unique branch name
+          BOT_BRANCH="bot/abi-sync-$(date +%Y%m%d-%H%M%S)-${{ github.run_number }}"
+          echo "Bot branch: $BOT_BRANCH"
+          
+          # Create and switch to bot branch
+          git checkout -b "$BOT_BRANCH"
+          
+          # Configure git for bot commits
+          git config --local user.email "action@github.com"
+          git config --local user.name "ABI Sync Bot"
+          
+          # Commit generated files
+          git add docs/abi/ userland-stubs/ kernel/src/abi/
+          git commit -m "Auto-sync ABI documentation and generated files
+
+          This commit was automatically generated by the ABI sync bot.
+          
+          Changes detected in ABI-related source files:
+          ${{ needs.check-abi-changes.outputs.changed_files }}
+          
+          Generated files updated:
+          - ABI documentation in docs/abi/
+          - Userland stubs in userland-stubs/
+          - Kernel ABI tables in kernel/src/abi/
+          
+          Generated at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          Run ID: ${{ github.run_id }}"
+          
+          # Push bot branch
+          git push origin "$BOT_BRANCH"
+          
+          # Save branch name for next steps
+          echo "BOT_BRANCH=$BOT_BRANCH" >> $GITHUB_ENV
+      
+      - name: Create bot PR
+        if: steps.check_generated_changes.outputs.has_generated_changes == 'true'
+        run: |
+          echo "Creating bot PR with ABI updates..."
+          
+          # Install GitHub CLI
+          if ! command -v gh &> /dev/null; then
+            echo "Installing GitHub CLI..."
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt-get update
+            sudo apt-get install -y gh
+          fi
+          
+          # Authenticate with GitHub
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+          
+          # Create PR
+          PR_TITLE="🤖 Auto-sync ABI documentation and generated files"
+          PR_BODY="## ABI Documentation Auto-Sync
+
+          This PR was automatically created by the ABI sync bot to keep documentation and generated files in sync with source changes.
+
+          ### 🔍 Changes Detected
+          The following ABI-related source files were modified:
+          ${{ needs.check-abi-changes.outputs.changed_files }}
+
+          ### 📚 Generated Files Updated
+          - **ABI Documentation**: Updated in \`docs/abi/\`
+          - **Userland Stubs**: Updated in \`userland-stubs/\`
+          - **Kernel ABI Tables**: Updated in \`kernel/src/abi/\`
+
+          ### 🚀 What This PR Does
+          - Regenerates all ABI documentation from source
+          - Updates userland stub files
+          - Updates kernel syscall tables
+          - Ensures consistency between source and documentation
+
+          ### ✅ Verification
+          - [ ] ABI documentation is up-to-date
+          - [ ] Userland stubs match kernel ABI
+          - [ ] Generated files are consistent
+          - [ ] No manual changes needed
+
+          ### 🔄 Next Steps
+          1. Review the generated changes
+          2. Ensure all files are properly updated
+          3. Merge this PR to keep documentation in sync
+          4. The original PR can then be merged
+
+          ---
+          *Generated by ABI Sync Bot at $(date -u +"%Y-%m-%dT%H:%M:%SZ")*
+          *Run ID: ${{ github.run_id }}*"
+          
+          # Create the PR
+          if gh pr create \
+            --title "$PR_TITLE" \
+            --body "$PR_BODY" \
+            --base "${{ github.head_ref }}" \
+            --head "$BOT_BRANCH"; then
+            
+            echo "Bot PR created successfully"
+            
+            # Get the PR number
+            PR_NUMBER=$(gh pr list --head "$BOT_BRANCH" --json number --jq '.[0].number')
+            echo "PR Number: $PR_NUMBER"
+            
+            # Save PR number for next steps
+            echo "BOT_PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
+            
+          else
+            echo "Failed to create bot PR"
+            exit 1
+          fi
+      
+      - name: Comment on original PR
+        if: steps.check_generated_changes.outputs.has_generated_changes == 'true'
+        run: |
+          echo "Commenting on original PR about ABI sync..."
+          
+          COMMENT_BODY="## 🔄 ABI Documentation Sync Required
+
+          Changes were detected in ABI-related source files, and the ABI sync bot has automatically generated updated documentation and files.
+
+          ### 📋 What Happened
+          - ABI generator detected changes in: ${{ needs.check-abi-changes.outputs.changed_files }}
+          - Generated files have been updated
+          - A bot PR has been created with the changes
+
+          ### 🚀 Bot PR Created
+          **PR #${{ env.BOT_PR_NUMBER }}**: [🤖 Auto-sync ABI documentation and generated files](https://github.com/${{ github.repository }}/pull/${{ env.BOT_PR_NUMBER }})
+
+          ### ⚠️ Merge Blocked
+          **This PR cannot be merged until the ABI sync is complete.** The bot PR must be merged first to ensure documentation consistency.
+
+          ### 📚 Files Updated
+          - ABI documentation in \`docs/abi/\`
+          - Userland stubs in \`userland-stubs/\`
+          - Kernel ABI tables in \`kernel/src/abi/\`
+
+          ### 🔄 Next Steps
+          1. **Review and merge the bot PR** (PR #${{ env.BOT_PR_NUMBER }})
+          2. **Then merge this PR** once ABI sync is complete
+          3. This ensures all documentation stays in sync
+
+          ---
+          *This comment was automatically generated by the ABI sync bot*"
+          
+          # Comment on the original PR
+          gh pr comment "${{ github.event.number }}" --body "$COMMENT_BODY"
+          
+          echo "Comment added to original PR"
+      
+      - name: Upload generated files as artifacts
+        if: steps.check_generated_changes.outputs.has_generated_changes == 'true'
+        uses: actions/upload-artifact@v3
+        with:
+          name: abi-generated-files-${{ github.run_number }}
+          path: |
+            docs/abi/
+            userland-stubs/
+            kernel/src/abi/
+          retention-days: 7
+
+  # Block merge if ABI changes are missing
+  block-merge:
+    name: "Block Merge if ABI Sync Missing"
+    runs-on: ubuntu-latest
+    needs: [check-abi-changes, generate-abi-docs]
+    if: needs.check-abi-changes.outputs.has_abi_changes == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install GitHub CLI
+        run: |
+          if ! command -v gh &> /dev/null; then
+            echo "Installing GitHub CLI..."
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt-get update
+            sudo apt-get install -y gh
+          fi
+      
+      - name: Authenticate with GitHub
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+      
+      - name: Check if bot PR exists and is merged
+        id: check_bot_pr
+        run: |
+          echo "Checking bot PR status..."
+          
+          # Look for bot PRs targeting the same branch
+          BOT_PRS=$(gh pr list --base "${{ github.head_ref }}" --state all --json number,title,state,headRefName --jq '.[] | select(.headRefName | startswith("bot/abi-sync"))')
+          
+          if [[ -n "$BOT_PRS" ]]; then
+            echo "Found bot PRs:"
+            echo "$BOT_PRS"
+            
+            # Check if any bot PR is merged
+            MERGED_BOT_PR=$(echo "$BOT_PRS" | jq -r 'select(.state == "MERGED") | .number' | head -1)
+            
+            if [[ -n "$MERGED_BOT_PR" ]]; then
+              echo "Found merged bot PR: #$MERGED_BOT_PR"
+              echo "bot_pr_merged=true" >> $GITHUB_OUTPUT
+              echo "merged_bot_pr_number=$MERGED_BOT_PR" >> $GITHUB_OUTPUT
+            else
+              echo "No merged bot PR found"
+              echo "bot_pr_merged=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "No bot PRs found"
+            echo "bot_pr_merged=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Block merge if ABI sync missing
+        if: steps.check_bot_pr.outputs.bot_pr_merged != 'true'
+        run: |
+          echo "ABI sync not complete - blocking merge..."
+          
+          # Create a check run to block the merge
+          CHECK_NAME="ABI Documentation Sync"
+          CHECK_STATUS="failure"
+          CHECK_SUMMARY="ABI documentation sync required before merge"
+          CHECK_DETAILS="## ❌ Merge Blocked - ABI Sync Required
+
+          This PR contains changes to ABI-related source files, but the corresponding documentation and generated files have not been synchronized.
+
+          ### 🔍 Changes Detected
+          ${{ needs.check-abi-changes.outputs.changed_files }}
+
+          ### 📋 Required Actions
+          1. **Wait for ABI sync bot** to create a PR with updated documentation
+          2. **Review and merge the bot PR** to sync documentation
+          3. **Then merge this PR** once sync is complete
+
+          ### 🚀 What the Bot Will Do
+          - Automatically generate updated ABI documentation
+          - Update userland stubs and kernel ABI tables
+          - Create a PR with all generated changes
+          - Block merge until sync is complete
+
+          ### ⏰ Current Status
+          - ABI sync bot is processing your changes
+          - Documentation updates are being generated
+          - A bot PR will be created shortly
+
+          ---
+          *This check was automatically created by the ABI sync system*"
+          
+          # Use GitHub API to create a check run
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/check-runs" \
+            -d "{
+              \"name\": \"$CHECK_NAME\",
+              \"head_sha\": \"${{ github.sha }}\",
+              \"status\": \"$CHECK_STATUS\",
+              \"conclusion\": \"$CHECK_STATUS\",
+              \"output\": {
+                \"title\": \"$CHECK_SUMMARY\",
+                \"summary\": \"$CHECK_DETAILS\"
+              }
+            }"
+          
+          echo "Merge blocked - ABI sync required"
+          exit 1
+      
+      - name: Allow merge if ABI sync complete
+        if: steps.check_bot_pr.outputs.bot_pr_merged == 'true'
+        run: |
+          echo "ABI sync complete - allowing merge..."
+          
+          # Create a successful check run
+          CHECK_NAME="ABI Documentation Sync"
+          CHECK_STATUS="success"
+          CHECK_SUMMARY="ABI documentation sync complete"
+          CHECK_DETAILS="## ✅ Merge Allowed - ABI Sync Complete
+
+          The ABI documentation and generated files have been successfully synchronized.
+
+          ### 🔍 Bot PR Merged
+          **PR #${{ steps.check_bot_pr.outputs.merged_bot_pr_number }}** has been merged, updating:
+          - ABI documentation in \`docs/abi/\`
+          - Userland stubs in \`userland-stubs/\`
+          - Kernel ABI tables in \`kernel/src/abi/\`
+
+          ### 🚀 Ready to Merge
+          This PR can now be merged safely, as all documentation is in sync.
+
+          ---
+          *This check was automatically created by the ABI sync system*"
+          
+          # Use GitHub API to create a successful check run
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/check-runs" \
+            -d "{
+              \"name\": \"$CHECK_NAME\",
+              \"head_sha\": \"${{ github.sha }}\",
+              \"status\": \"$CHECK_STATUS\",
+              \"conclusion\": \"$CHECK_STATUS\",
+              \"output\": {
+                \"title\": \"$CHECK_SUMMARY\",
+                \"summary\": \"$CHECK_DETAILS\"
+              }
+            }"
+          
+          echo "Merge allowed - ABI sync complete"
+
+  # Summary job
+  summary:
+    name: "ABI Sync Summary"
+    runs-on: ubuntu-latest
+    needs: [check-abi-changes, generate-abi-docs, block-merge]
+    if: always()
+    
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## 🤖 ABI Documentation Auto-Sync Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.check-abi-changes.outputs.has_abi_changes }}" == "true" ]]; then
+            echo "### 📋 ABI Changes Detected" >> $GITHUB_STEP_SUMMARY
+            echo "- **Changed Files**: ${{ needs.check-abi-changes.outputs.changed_files }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if [[ "${{ needs.generate-abi-docs.outputs.has_generated_changes }}" == "true" ]]; then
+              echo "### ✅ Documentation Generated" >> $GITHUB_STEP_SUMMARY
+              echo "- **Status**: ABI documentation and generated files updated" >> $GITHUB_STEP_SUMMARY
+              echo "- **Bot PR**: Created with updated files" >> $GITHUB_STEP_SUMMARY
+              echo "- **Merge Status**: Blocked until ABI sync is complete" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "### ⚠️ No Generated Changes" >> $GITHUB_STEP_SUMMARY
+              echo "- **Status**: ABI changes detected but no documentation updates needed" >> $GITHUB_STEP_SUMMARY
+              echo "- **Merge Status**: Allowed (no sync required)" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "### ✅ No ABI Changes" >> $GITHUB_STEP_SUMMARY
+            echo "- **Status**: No ABI-related changes detected" >> $GITHUB_STEP_SUMMARY
+            echo "- **Merge Status**: Allowed (no sync required)" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔄 Workflow Status" >> $GITHUB_STEP_SUMMARY
+          echo "- **Check ABI Changes**: ${{ needs.check-abi-changes.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Generate ABI Docs**: ${{ needs.generate-abi-docs.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Block Merge**: ${{ needs.block-merge.result }}" >> $GITHUB_STEP_SUMMARY

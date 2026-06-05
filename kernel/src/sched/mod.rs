@@ -4,6 +4,7 @@
 /// runqueue operations, context switching, and timer integration.
 
 pub mod task;
+pub mod task_id;
 pub mod runqueue;
 pub mod context;
 pub mod sys;
@@ -18,9 +19,12 @@ pub mod test;
 use crate::{kprintln, klog};
 use spin::Mutex;
 use lazy_static::lazy_static;
-use self::task::{Task, TaskId, TaskState};
-use self::runqueue::RunQueue;
-use self::context::CpuContext;
+
+// Re-export key types for external use
+pub use self::task::{Task, TaskId, TaskState, TaskPriority};
+pub use self::task_id::TaskId as TaskIdV2;
+pub use self::runqueue::RunQueue;
+pub use self::context::CpuContext;
 
 /// Global scheduler state
 static NEXT_TASK_ID: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(1);
@@ -28,13 +32,13 @@ static CURRENT_TASK_ID: core::sync::atomic::AtomicU64 = core::sync::atomic::Atom
 
 lazy_static! {
     /// Global runqueue for ready tasks
-    static ref GLOBAL_RUNQUEUE: Mutex<RunQueue> = Mutex::new(RunQueue::new());
+    static ref GLOBAL_RUNQUEUE: Mutex<runqueue::RunQueue> = Mutex::new(runqueue::RunQueue::new());
     
     /// Task storage (simplified for Phase 1)
-    static ref TASK_STORAGE: Mutex<[Option<Task>; 256]> = Mutex::new([None; 256]);
+    static ref TASK_STORAGE: Mutex<[Option<task::Task>; 256]> = Mutex::new([None; 256]);
     
     /// Current task context
-    static ref CURRENT_CONTEXT: Mutex<CpuContext> = Mutex::new(CpuContext::new());
+    static ref CURRENT_CONTEXT: Mutex<context::CpuContext> = Mutex::new(context::CpuContext::new());
 }
 
 /// Initialize the scheduler subsystem
@@ -44,12 +48,12 @@ pub fn init_sched() {
     kprintln!("[SCHED] Initializing scheduler subsystem");
     
     // Initialize the global runqueue
-    let mut runqueue = GLOBAL_RUNQUEUE.lock();
-    *runqueue = RunQueue::new();
-    drop(runqueue);
+    let mut rq = GLOBAL_RUNQUEUE.lock();
+    *rq = runqueue::RunQueue::new();
+    drop(rq);
     
     // Create and register the idle task (task ID 0)
-    let idle_task = Task::new(0, 0); // Idle task runs on current stack
+    let idle_task = task::Task::new(0, 0); // Idle task runs on current stack
     {
         let mut storage = TASK_STORAGE.lock();
         storage[0] = Some(idle_task);
@@ -62,7 +66,7 @@ pub fn init_sched() {
     crate::sched::starvation::init();
     
     klog!(INFO, "[SCHED] Scheduler initialized with idle task");
-    klog!(INFO, "[SCHED] Runqueue capacity: {}", RunQueue::capacity());
+    klog!(INFO, "[SCHED] Runqueue capacity: {}", runqueue::RunQueue::capacity());
 }
 
 /// Main scheduling function
@@ -86,7 +90,7 @@ pub fn schedule() {
             if current == 0 {
                 return; // Already running idle task
             } else {
-                TaskId(0) // Switch to idle task
+                task::TaskId(0) // Switch to idle task
             }
         }
     };
@@ -147,7 +151,7 @@ pub fn create_task(kstack_top: u64) -> TaskId {
     // Add to runqueue
     {
         let mut runqueue = GLOBAL_RUNQUEUE.lock();
-        runqueue.push(TaskId(task_id));
+        runqueue.push(TaskId(task_id), task.priority);
     }
     
     klog!(INFO, "[SCHED] Created task {} with stack at 0x{:016x}", task_id, kstack_top);
@@ -246,9 +250,12 @@ pub fn enqueue_task(task_id: TaskId) {
     // Record task ready for starvation detection
     crate::sched::starvation::record_task_ready(task_id);
     
+    // Get task priority
+    let priority = get_task(task_id).map(|t| t.priority).unwrap_or(TaskPriority::Normal);
+
     // Add to runqueue
     let mut runqueue = GLOBAL_RUNQUEUE.lock();
-    runqueue.push(task_id);
+    runqueue.push(task_id, priority);
     
     klog!(TRACE, "[SCHED] Task {} enqueued", task_id.0);
 }
@@ -334,20 +341,17 @@ fn context_switch_to(next_task_id: TaskId) {
     let (current_context, next_context) = {
         let storage = TASK_STORAGE.lock();
         
-        let current_task = storage.iter()
-            .find_map(|t| t.as_ref().filter(|task| task.id.0 == current_task_id));
-        
         let next_task = storage.iter()
             .find_map(|t| t.as_ref().filter(|task| task.id == next_task_id));
         
-        match (current_task, next_task) {
-            (Some(current), Some(next)) => {
+        match next_task {
+            Some(next) => {
                 // For Phase 1, we'll use simplified context switching
-                // In a full implementation, we'd load actual register state from task stacks
+                // current_context is just a dummy since current_task might be dead
                 (CpuContext::new(), CpuContext::from_stack(next.kstack_top))
             }
-            _ => {
-                klog!(TRACE, "[SCHED] Context switch failed: invalid task IDs");
+            None => {
+                klog!(TRACE, "[SCHED] Context switch failed: invalid next task ID");
                 return;
             }
         }

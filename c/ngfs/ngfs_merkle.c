@@ -170,10 +170,9 @@ int aeth_ngfs_dir_entry_count(
     // validates the structure without full CBOR parsing
     // TODO: Implement proper CBOR parsing in v2
     
-    // Set a placeholder value for now
+    // Explicitly fail for now rather than returning 0
     *out_count = 0;
-    
-    return NGFS_OK;
+    return NGFS_ERROR_NOT_IMPLEMENTED;
 }
 
 int aeth_ngfs_file_chunk_count(
@@ -199,10 +198,9 @@ int aeth_ngfs_file_chunk_count(
     // validates the structure without full CBOR parsing
     // TODO: Implement proper CBOR parsing in v2
     
-    // Set a placeholder value for now
+    // Explicitly fail for now rather than returning 0
     *out_count = 0;
-    
-    return NGFS_OK;
+    return NGFS_ERROR_NOT_IMPLEMENTED;
 }
 
 bool aeth_ngfs_is_valid_manifest(

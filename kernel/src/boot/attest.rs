@@ -220,13 +220,13 @@ impl KernelAttestVerifier {
         
         // Create Dilithium2 public key
         let mut key_data = SecureMemory::new(SIGNING_CERT_LEN);
-        key_data.copy_from_slice(cert_bytes);
+        key_data.as_mut_slice().copy_from_slice(cert_bytes);
         
         // In a real implementation, this would parse the key properly
         // For now, we'll create a stub key
         let cert = DilithiumPublicKey::new(
+            key_data.as_slice().to_vec(),
             DilithiumParameterSet::Dilithium2,
-            key_data,
         );
         
         Ok(cert)
@@ -247,13 +247,12 @@ impl KernelAttestVerifier {
         
         // Create Dilithium2 signature
         let mut sig_data = SecureMemory::new(2701);
-        sig_data.copy_from_slice(sig_bytes);
+        sig_data.as_mut_slice().copy_from_slice(sig_bytes);
         
         // In a real implementation, this would parse the signature properly
         // For now, we'll create a stub signature
         let signature = DilithiumSignature::new(
-            DilithiumParameterSet::Dilithium2,
-            sig_data,
+            sig_data.as_slice().to_vec(),
         );
         
         Ok(signature)
@@ -272,7 +271,7 @@ impl KernelAttestVerifier {
         }
         
         // Basic validation - check that the key looks reasonable
-        cert.parameter_set() == DilithiumParameterSet::Dilithium2
+        cert.parameter_set == DilithiumParameterSet::Dilithium2
     }
     
     /// Verify kernel signature

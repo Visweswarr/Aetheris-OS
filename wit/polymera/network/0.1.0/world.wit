@@ -1,0 +1,41 @@
+package polymera:network@0.1.0;
+
+interface tcp {
+    enum net-error {
+        connection-refused,
+        host-unreachable,
+        timeout,
+        permission-denied,
+        address-in-use,
+        io-error,
+    }
+
+    resource connection {
+        write: func(data: list<u8>) -> result<u64, net-error>;
+        read: func(max: u64) -> result<list<u8>, net-error>;
+        close: func();
+    }
+
+    /// Open a TCP connection. Capability-gated by host.
+    connect: func(host: string, port: u16) -> result<connection, net-error>;
+}
+
+interface udp {
+    use tcp.{net-error};
+
+    record datagram {
+        peer-host: string,
+        peer-port: u16,
+        payload: list<u8>,
+    }
+
+    bind: func(host: string, port: u16) -> result<u32, net-error>;
+    send: func(socket: u32, msg: datagram) -> result<_, net-error>;
+    recv: func(socket: u32) -> result<datagram, net-error>;
+    close: func(socket: u32);
+}
+
+world network-host {
+    export tcp;
+    export udp;
+}

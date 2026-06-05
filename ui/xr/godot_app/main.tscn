@@ -1,0 +1,34 @@
+[gd_scene load_steps=3 format=3 uid="uid://b8x7y2z1w0v9u8t7s6r5q4p3o2n1m0l"]
+
+[ext_resource type="Script" path="res://main.gd" id="1_0x1y2"]
+[ext_resource type="Script" path="res://AetherisScene.gd" id="2_1x2y3"]
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_0x1y2")
+
+[node name="AetherisScene" type="Node3D" parent="."]
+script = ExtResource("2_1x2y3")
+
+[node name="Camera3D" type="Camera3D" parent="AetherisScene"]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 5, 5)
+fov = 60.0
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="AetherisScene"]
+transform = Transform3D(0.707107, -0.5, 0.5, 0, 0.707107, 0.707107, -0.707107, -0.5, 0.5, 0, 10, 0)
+light_energy = 1.0
+shadow_enabled = true
+
+[node name="Ground" type="StaticBody3D" parent="AetherisScene"]
+transform = Transform3D(10, 0, 0, 0, 1, 0, 0, 0, 10, 0, -1, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="AetherisScene/Ground"]
+shape = SubResource("BoxShape3D_1x2y3z4")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="AetherisScene/Ground"]
+mesh = SubResource("BoxMesh_2x3y4z5")
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_1x2y3z4"]
+size = Vector3(20, 2, 20)
+
+[sub_resource type="BoxMesh" id="BoxMesh_2x3y4z5"]
+size = Vector3(20, 2, 20)

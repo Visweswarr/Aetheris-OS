@@ -1,0 +1,7 @@
+package polymera:fs@0.1.0;
+
+/// A component that implements the filesystem service.
+/// Hosts wishing to consume a filesystem component should `import filesystem;` from this world.
+world fs-service {
+    export filesystem;
+}

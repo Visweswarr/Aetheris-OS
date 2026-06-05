@@ -1,0 +1,161 @@
+name: Phase 2 Soak Testing
+
+on:
+  # Nightly soak test (2 hours)
+  schedule:
+    - cron: '0 2 * * *'  # 2 AM UTC daily
+  
+  # PR soak test (10 minutes)
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'kernel/**'
+      - 'tests/**'
+      - '.github/workflows/phase-2-soak.yml'
+  
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Test type to run'
+        required: true
+        default: 'mini'
+        type: choice
+        options:
+          - mini
+          - full
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUST_LOG: info
+
+jobs:
+  soak-test:
+    name: ${{ github.event_name == 'schedule' && 'Full Soak (2h)' || 'Mini Soak (10m)' }}
+    runs-on: ubuntu-latest
+    
+    # Skip full soak on PRs to avoid long CI times
+    if: github.event_name != 'pull_request' || github.event.inputs.test_type == 'full'
+    
+    strategy:
+      matrix:
+        test-type: ${{ github.event_name == 'schedule' && 'full' || 'mini' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+            
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils
+          
+      - name: Build soak test
+        run: |
+          cd tests/soak
+          cargo build --release
+          
+      - name: Run soak test
+        timeout-minutes: ${{ matrix.test-type == 'full' && 150 || 20 }}
+        run: |
+          cd tests/soak
+          if [ "${{ matrix.test-type }}" = "full" ]; then
+            echo "Running full 2-hour soak test..."
+            timeout 7200 cargo run --release
+          else
+            echo "Running mini 10-minute soak test..."
+            timeout 600 cargo run --release mini
+          fi
+          
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: soak-test-results-${{ matrix.test-type }}-${{ github.run_id }}
+          path: |
+            tests/soak/target/release/soak-test
+            tests/soak/Cargo.lock
+          retention-days: 30
+          
+      - name: Parse and report results
+        if: always()
+        run: |
+          echo "## Soak Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Type:** ${{ matrix.test-type }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Duration:** ${{ matrix.test-type == 'full' && '2 hours' || '10 minutes' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ **PASSED** - No panics, deadlocks, or performance regressions detected" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **FAILED** - Test encountered issues" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Soak Test Failure')
+            );
+            
+            const commentBody = `🚨 **Soak Test Failure Detected**
+            
+            **Test Type:** ${{ matrix.test-type }}
+            **Duration:** ${{ matrix.test-type == 'full' && '2 hours' || '10 minutes' }}
+            **Status:** Failed
+            
+            The soak test has detected stability issues that need immediate attention:
+            - Potential panics or deadlocks
+            - Performance regressions
+            - Memory leaks
+            - System instability
+            
+            Please review the test logs and address the issues before merging.
+            
+            [View Test Run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                comment_id: botComment.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: commentBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: commentBody,
+              });
+            }
+

@@ -1,0 +1,401 @@
+name: P5-16 AI Core Service Performance Baselines
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'services/ai_core/**'
+      - 'benches/**'
+      - 'artifacts/bench/ai_core.phase5.json'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'services/ai_core/**'
+      - 'benches/**'
+      - 'artifacts/bench/ai_core.phase5.json'
+  workflow_dispatch:
+    inputs:
+      benchmark_type:
+        description: 'Benchmark type to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - first-token
+          - tokens-per-sec
+          - memory
+      iterations:
+        description: 'Number of benchmark iterations'
+        required: false
+        default: '100'
+        type: string
+
+env:
+  AETHERIS_DETERMINISTIC: true
+  AETHERIS_SEED: 42
+  RUST_BACKTRACE: 1
+
+jobs:
+  performance-benchmarks:
+    name: AI Core Performance Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+          override: true
+      
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev jq
+      
+      - name: Build AI Core Service
+        run: |
+          cd services/ai_core
+          cargo build --release
+          cd ../..
+      
+      - name: Start AI Core Service
+        run: |
+          cd services/ai_core
+          cargo run --bin ai_core &
+          AI_CORE_PID=$!
+          echo "AI_CORE_PID=$AI_CORE_PID" >> $GITHUB_ENV
+          
+          # Wait for service to start
+          sleep 15
+          
+          # Check if service is running
+          if ! kill -0 $AI_CORE_PID 2>/dev/null; then
+            echo "❌ AI Core Service failed to start"
+            exit 1
+          fi
+          
+          echo "✅ AI Core Service started (PID: $AI_CORE_PID)"
+        env:
+          AETHERIS_DETERMINISTIC: true
+          AETHERIS_SEED: 42
+      
+      - name: Run Performance Benchmarks
+        run: |
+          echo "🧪 Running AI Core Service Performance Benchmarks..."
+          
+          # Set benchmark parameters
+          BENCHMARK_TYPE="${{ github.event.inputs.benchmark_type || 'all' }}"
+          ITERATIONS="${{ github.event.inputs.iterations || '100' }}"
+          
+          echo "Benchmark Type: $BENCHMARK_TYPE"
+          echo "Iterations: $ITERATIONS"
+          
+          # Run benchmarks
+          bash scripts/ai-core-perf-bench.sh \
+            --type "$BENCHMARK_TYPE" \
+            --iterations "$ITERATIONS" \
+            --out "artifacts/bench/ai_core.phase5.json"
+        env:
+          AETHERIS_DETERMINISTIC: true
+          AETHERIS_SEED: 42
+      
+      - name: Verify Performance Budget Compliance
+        run: |
+          echo "🔍 Verifying performance budget compliance..."
+          
+          if [ -f "artifacts/bench/ai_core.phase5.json" ]; then
+            echo "✅ Performance benchmark report generated"
+            
+            # Check compliance
+            COMPLIANCE_PCT=$(jq -r '.summary.compliance_percentage' artifacts/bench/ai_core.phase5.json)
+            OVERALL_COMPLIANT=$(jq -r '.summary.overall_compliant' artifacts/bench/ai_core.phase5.json)
+            
+            echo "Compliance Percentage: ${COMPLIANCE_PCT}%"
+            echo "Overall Compliant: $OVERALL_COMPLIANT"
+            
+            if [ "$OVERALL_COMPLIANT" = "true" ]; then
+              echo "✅ Performance budget compliance: PASSED"
+            else
+              echo "❌ Performance budget compliance: FAILED"
+              echo "   Compliance below 95% threshold"
+              exit 1
+            fi
+            
+            # Check individual metrics against budget
+            echo ""
+            echo "📊 Performance Metrics vs Budget:"
+            
+            # First token latency
+            FIRST_TOKEN_AVG=$(jq -r '.results.prompt_to_first_token.complex_prompts.latency_avg_ms' artifacts/bench/ai_core.phase5.json)
+            FIRST_TOKEN_BUDGET=$(jq -r '.performance_budget.max_first_token_latency_ms' artifacts/bench/ai_core.phase5.json)
+            echo "  First Token Latency: ${FIRST_TOKEN_AVG}ms (budget: ${FIRST_TOKEN_BUDGET}ms)"
+            
+            # Tokens per second
+            TOKENS_PER_SEC_AVG=$(jq -r '.results.tokens_per_second.complex_prompts.tokens_per_sec_avg' artifacts/bench/ai_core.phase5.json)
+            TOKENS_PER_SEC_BUDGET=$(jq -r '.performance_budget.min_tokens_per_sec' artifacts/bench/ai_core.phase5.json)
+            echo "  Tokens/sec: ${TOKENS_PER_SEC_AVG} (budget: ${TOKENS_PER_SEC_BUDGET})"
+            
+            # Memory usage
+            MEMORY_AVG=$(jq -r '.results.memory_usage.complex_prompts.memory_avg_mb' artifacts/bench/ai_core.phase5.json)
+            MEMORY_BUDGET=$(jq -r '.performance_budget.max_memory_usage_mb' artifacts/bench/ai_core.phase5.json)
+            echo "  Memory Usage: ${MEMORY_AVG}MB (budget: ${MEMORY_BUDGET}MB)"
+            
+            # CPU usage
+            CPU_AVG=$(jq -r '.results.cpu_usage.complex_prompts.cpu_avg_percent' artifacts/bench/ai_core.phase5.json)
+            CPU_BUDGET=$(jq -r '.performance_budget.max_cpu_usage_percent' artifacts/bench/ai_core.phase5.json)
+            echo "  CPU Usage: ${CPU_AVG}% (budget: ${CPU_BUDGET}%)"
+            
+            # End-to-end latency
+            E2E_AVG=$(jq -r '.results.end_to_end_latency.complex_prompts.latency_avg_ms' artifacts/bench/ai_core.phase5.json)
+            E2E_BUDGET=$(jq -r '.performance_budget.max_end_to_end_latency_ms' artifacts/bench/ai_core.phase5.json)
+            echo "  End-to-End Latency: ${E2E_AVG}ms (budget: ${E2E_BUDGET}ms)"
+            
+          else
+            echo "❌ Performance benchmark report not found"
+            exit 1
+          fi
+      
+      - name: Performance Regression Check
+        run: |
+          echo "🔄 Checking for performance regressions..."
+          
+          # Check if baseline exists
+          if [ -f "artifacts/bench/baseline.phase4.json" ]; then
+            echo "✅ Baseline found, checking for regressions..."
+            
+            # Compare key metrics with baseline
+            CURRENT_FIRST_TOKEN=$(jq -r '.results.prompt_to_first_token.complex_prompts.latency_avg_ms' artifacts/bench/ai_core.phase5.json)
+            BASELINE_FIRST_TOKEN=$(jq -r '.benchmarks.ai.results.vision_inference.latency_p95_ms' artifacts/bench/baseline.phase4.json)
+            
+            # Calculate regression threshold (baseline + 10%)
+            REGRESSION_THRESHOLD=$(echo "$BASELINE_FIRST_TOKEN * 1.1" | bc -l)
+            
+            echo "Current First Token Latency: ${CURRENT_FIRST_TOKEN}ms"
+            echo "Baseline First Token Latency: ${BASELINE_FIRST_TOKEN}ms"
+            echo "Regression Threshold: ${REGRESSION_THRESHOLD}ms"
+            
+            if (( $(echo "$CURRENT_FIRST_TOKEN > $REGRESSION_THRESHOLD" | bc -l) )); then
+              echo "❌ Performance regression detected!"
+              echo "   First token latency exceeds baseline + 10%"
+              exit 1
+            else
+              echo "✅ No performance regression detected"
+            fi
+          else
+            echo "⚠️  No baseline found, skipping regression check"
+          fi
+      
+      - name: Upload Performance Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-core-performance-results
+          path: |
+            artifacts/bench/ai_core.phase5.json
+            target/criterion/
+          retention-days: 30
+      
+      - name: Stop AI Core Service
+        if: always()
+        run: |
+          if [ -n "$AI_CORE_PID" ]; then
+            echo "🛑 Stopping AI Core Service (PID: $AI_CORE_PID)..."
+            kill $AI_CORE_PID 2>/dev/null || true
+            wait $AI_CORE_PID 2>/dev/null || true
+            echo "✅ AI Core Service stopped"
+          fi
+
+  performance-gate:
+    name: Performance Gate
+    runs-on: ubuntu-latest
+    needs: performance-benchmarks
+    if: always()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download Performance Results
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-core-performance-results
+          path: artifacts/bench/
+      
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq bc
+      
+      - name: Performance Gate Decision
+        run: |
+          echo "🚪 Performance Gate Decision"
+          echo "============================"
+          
+          if [ -f "artifacts/bench/ai_core.phase5.json" ]; then
+            # Extract key metrics
+            COMPLIANCE_PCT=$(jq -r '.summary.compliance_percentage' artifacts/bench/ai_core.phase5.json)
+            OVERALL_COMPLIANT=$(jq -r '.summary.overall_compliant' artifacts/bench/ai_core.phase5.json)
+            TOTAL_BENCHMARKS=$(jq -r '.summary.total_benchmarks' artifacts/bench/ai_core.phase5.json)
+            PASSED_BENCHMARKS=$(jq -r '.summary.passed_budget' artifacts/bench/ai_core.phase5.json)
+            FAILED_BENCHMARKS=$(jq -r '.summary.failed_budget' artifacts/bench/ai_core.phase5.json)
+            
+            echo "📊 Performance Gate Results:"
+            echo "  Total Benchmarks: $TOTAL_BENCHMARKS"
+            echo "  Passed: $PASSED_BENCHMARKS"
+            echo "  Failed: $FAILED_BENCHMARKS"
+            echo "  Compliance: ${COMPLIANCE_PCT}%"
+            echo "  Overall Compliant: $OVERALL_COMPLIANT"
+            
+            # Performance gate decision
+            if [ "$OVERALL_COMPLIANT" = "true" ] && [ "$COMPLIANCE_PCT" -ge 95 ]; then
+              echo ""
+              echo "✅ PERFORMANCE GATE: PASSED"
+              echo "   All performance requirements met"
+              echo "   Compliance: ${COMPLIANCE_PCT}% (threshold: 95%)"
+            else
+              echo ""
+              echo "❌ PERFORMANCE GATE: FAILED"
+              echo "   Performance requirements not met"
+              echo "   Compliance: ${COMPLIANCE_PCT}% (threshold: 95%)"
+              exit 1
+            fi
+            
+            # Show performance margins
+            echo ""
+            echo "📈 Performance Margins:"
+            FIRST_TOKEN_MARGIN=$(jq -r '.summary.performance_margin.first_token_latency_margin_ms' artifacts/bench/ai_core.phase5.json)
+            TOKENS_PER_SEC_MARGIN=$(jq -r '.summary.performance_margin.tokens_per_sec_margin' artifacts/bench/ai_core.phase5.json)
+            MEMORY_MARGIN=$(jq -r '.summary.performance_margin.memory_usage_margin_mb' artifacts/bench/ai_core.phase5.json)
+            CPU_MARGIN=$(jq -r '.summary.performance_margin.cpu_usage_margin_percent' artifacts/bench/ai_core.phase5.json)
+            
+            echo "  First Token Latency Margin: ${FIRST_TOKEN_MARGIN}ms"
+            echo "  Tokens/sec Margin: ${TOKENS_PER_SEC_MARGIN}"
+            echo "  Memory Usage Margin: ${MEMORY_MARGIN}MB"
+            echo "  CPU Usage Margin: ${CPU_MARGIN}%"
+            
+          else
+            echo "❌ PERFORMANCE GATE: FAILED"
+            echo "   Performance benchmark report not found"
+            exit 1
+          fi
+
+  performance-summary:
+    name: Performance Summary
+    runs-on: ubuntu-latest
+    needs: [performance-benchmarks, performance-gate]
+    if: always()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download Performance Results
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-core-performance-results
+          path: artifacts/bench/
+      
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+      
+      - name: Generate Performance Summary
+        run: |
+          echo "📊 AI Core Service Performance Summary"
+          echo "====================================="
+          
+          if [ -f "artifacts/bench/ai_core.phase5.json" ]; then
+            # Extract summary information
+            TIMESTAMP=$(jq -r '.timestamp' artifacts/bench/ai_core.phase5.json)
+            ITERATIONS=$(jq -r '.iterations' artifacts/bench/ai_core.phase5.json)
+            MODEL_NAME=$(jq -r '.model_config.model_name' artifacts/bench/ai_core.phase5.json)
+            
+            COMPLIANCE_PCT=$(jq -r '.summary.compliance_percentage' artifacts/bench/ai_core.phase5.json)
+            OVERALL_COMPLIANT=$(jq -r '.summary.overall_compliant' artifacts/bench/ai_core.phase5.json)
+            TOTAL_BENCHMARKS=$(jq -r '.summary.total_benchmarks' artifacts/bench/ai_core.phase5.json)
+            PASSED_BENCHMARKS=$(jq -r '.summary.passed_budget' artifacts/bench/ai_core.phase5.json)
+            
+            echo "🕐 Timestamp: $TIMESTAMP"
+            echo "🔄 Iterations: $ITERATIONS"
+            echo "🤖 Model: $MODEL_NAME"
+            echo ""
+            echo "📈 Performance Results:"
+            echo "  Total Benchmarks: $TOTAL_BENCHMARKS"
+            echo "  Passed: $PASSED_BENCHMARKS"
+            echo "  Compliance: ${COMPLIANCE_PCT}%"
+            echo "  Overall Compliant: $OVERALL_COMPLIANT"
+            
+            # Performance gate status
+            if [ "${{ needs.performance-gate.result }}" = "success" ]; then
+              echo ""
+              echo "✅ Performance Gate: PASSED"
+            else
+              echo ""
+              echo "❌ Performance Gate: FAILED"
+            fi
+            
+            # Key performance metrics
+            echo ""
+            echo "⏱️  Key Performance Metrics:"
+            
+            # First token latency
+            FIRST_TOKEN_SIMPLE=$(jq -r '.results.prompt_to_first_token.simple_prompts.latency_avg_ms' artifacts/bench/ai_core.phase5.json)
+            FIRST_TOKEN_MEDIUM=$(jq -r '.results.prompt_to_first_token.medium_prompts.latency_avg_ms' artifacts/bench/ai_core.phase5.json)
+            FIRST_TOKEN_COMPLEX=$(jq -r '.results.prompt_to_first_token.complex_prompts.latency_avg_ms' artifacts/bench/ai_core.phase5.json)
+            echo "  First Token Latency:"
+            echo "    Simple: ${FIRST_TOKEN_SIMPLE}ms"
+            echo "    Medium: ${FIRST_TOKEN_MEDIUM}ms"
+            echo "    Complex: ${FIRST_TOKEN_COMPLEX}ms"
+            
+            # Tokens per second
+            TOKENS_SIMPLE=$(jq -r '.results.tokens_per_second.simple_prompts.tokens_per_sec_avg' artifacts/bench/ai_core.phase5.json)
+            TOKENS_MEDIUM=$(jq -r '.results.tokens_per_second.medium_prompts.tokens_per_sec_avg' artifacts/bench/ai_core.phase5.json)
+            TOKENS_COMPLEX=$(jq -r '.results.tokens_per_second.complex_prompts.tokens_per_sec_avg' artifacts/bench/ai_core.phase5.json)
+            echo "  Tokens per Second:"
+            echo "    Simple: ${TOKENS_SIMPLE}"
+            echo "    Medium: ${TOKENS_MEDIUM}"
+            echo "    Complex: ${TOKENS_COMPLEX}"
+            
+            # Memory usage
+            MEMORY_SIMPLE=$(jq -r '.results.memory_usage.simple_prompts.memory_avg_mb' artifacts/bench/ai_core.phase5.json)
+            MEMORY_MEDIUM=$(jq -r '.results.memory_usage.medium_prompts.memory_avg_mb' artifacts/bench/ai_core.phase5.json)
+            MEMORY_COMPLEX=$(jq -r '.results.memory_usage.complex_prompts.memory_avg_mb' artifacts/bench/ai_core.phase5.json)
+            echo "  Memory Usage:"
+            echo "    Simple: ${MEMORY_SIMPLE}MB"
+            echo "    Medium: ${MEMORY_MEDIUM}MB"
+            echo "    Complex: ${MEMORY_COMPLEX}MB"
+            
+            # CPU usage
+            CPU_SIMPLE=$(jq -r '.results.cpu_usage.simple_prompts.cpu_avg_percent' artifacts/bench/ai_core.phase5.json)
+            CPU_MEDIUM=$(jq -r '.results.cpu_usage.medium_prompts.cpu_avg_percent' artifacts/bench/ai_core.phase5.json)
+            CPU_COMPLEX=$(jq -r '.results.cpu_usage.complex_prompts.cpu_avg_percent' artifacts/bench/ai_core.phase5.json)
+            echo "  CPU Usage:"
+            echo "    Simple: ${CPU_SIMPLE}%"
+            echo "    Medium: ${CPU_MEDIUM}%"
+            echo "    Complex: ${CPU_COMPLEX}%"
+            
+            echo ""
+            echo "📁 Artifacts:"
+            echo "  - Performance Report: artifacts/bench/ai_core.phase5.json"
+            echo "  - Criterion Reports: target/criterion/"
+            
+          else
+            echo "❌ Performance benchmark report not found"
+          fi

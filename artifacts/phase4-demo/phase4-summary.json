@@ -1,0 +1,26 @@
+﻿{
+    "status":  "PASS",
+    "demo":  "phase4",
+    "metrics":  "C:\\polymera-os\\ui\\dashboard\\ai_metrics.js",
+    "outputs":  "C:\\polymera-os\\artifacts\\phase4-demo",
+    "log_input":  "C:\\polymera-os\\build_out\\phase4-demo\\sample-runtime.log",
+    "page_input":  "C:\\polymera-os\\build_out\\phase4-demo\\sample-page.txt",
+    "checks":  [
+                   {
+                       "Value":  7,
+                       "Name":  "ai_plans_generated_total"
+                   },
+                   {
+                       "Value":  4,
+                       "Name":  "ai_browser_summaries_total"
+                   },
+                   {
+                       "Value":  3,
+                       "Name":  "ai_log_summaries_total"
+                   },
+                   {
+                       "Value":  5,
+                       "Name":  "ai_runtime_backend_executions_total"
+                   }
+               ]
+}

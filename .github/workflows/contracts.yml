@@ -1,0 +1,530 @@
+name: Contract CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'contracts/**/*'
+      - '.github/workflows/contracts.yml'
+      - 'foundry.toml'
+      - 'Cargo.toml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'contracts/**/*'
+      - '.github/workflows/contracts.yml'
+      - 'foundry.toml'
+      - 'Cargo.toml'
+
+env:
+  RUST_VERSION: '1.75.0'
+  GO_VERSION: '1.21'
+  NODE_VERSION: '20.11.0'
+  FOUNDRY_VERSION: 'nightly'
+  COSMWASM_VERSION: '0.3.0'
+
+jobs:
+  # EVM Contract Testing with Foundry
+  evm-contracts:
+    name: EVM Contracts (Foundry)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: "Foundry Tests"
+            command: "test"
+            cache-key: "foundry-tests"
+          - name: "Gas Snapshots"
+            command: "snapshot"
+            cache-key: "foundry-gas"
+          - name: "Invariant Tests"
+            command: "invariant"
+            cache-key: "foundry-invariant"
+          - name: "Fuzz Tests"
+            command: "fuzz"
+            cache-key: "foundry-fuzz"
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          override: true
+          components: rustfmt, clippy
+      
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      
+      - name: Cache Foundry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.foundry
+            ~/.cache/forge
+          key: ${{ runner.os }}-foundry-${{ matrix.cache-key }}-${{ hashFiles('foundry.toml', 'contracts/evm/**/*.sol') }}
+          restore-keys: |
+            ${{ runner.os }}-foundry-${{ matrix.cache-key }}-
+            ${{ runner.os }}-foundry-
+      
+      - name: Install dependencies
+        run: |
+          cd contracts/evm
+          forge install
+      
+      - name: Build contracts
+        run: |
+          cd contracts/evm
+          forge build --sizes
+      
+      - name: Run ${{ matrix.name }}
+        run: |
+          cd contracts/evm
+          case "${{ matrix.command }}" in
+            "test")
+              forge test --gas-report --verbosity 2
+              ;;
+            "snapshot")
+              forge snapshot --check
+              ;;
+            "invariant")
+              forge test --match-contract ".*Invariant.*" --gas-report
+              ;;
+            "fuzz")
+              forge test --match-test ".*Fuzz.*" --gas-report
+              ;;
+          esac
+      
+      - name: Upload gas report
+        if: matrix.command == 'test'
+        uses: actions/upload-artifact@v3
+        with:
+          name: gas-report-${{ matrix.command }}
+          path: contracts/evm/gas-report.txt
+          retention-days: 30
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results-${{ matrix.command }}
+          path: |
+            contracts/evm/out/
+            contracts/evm/cache/
+          retention-days: 30
+
+  # CosmWasm Contract Testing
+  cosmwasm-contracts:
+    name: CosmWasm Contracts
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: "Unit Tests"
+            command: "test"
+            cache-key: "cosmwasm-tests"
+          - name: "Integration Tests"
+            command: "integration"
+            cache-key: "cosmwasm-integration"
+          - name: "Schema Generation"
+            command: "schema"
+            cache-key: "cosmwasm-schema"
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          override: true
+          components: rustfmt, clippy
+      
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      
+      - name: Install wasmd
+        run: |
+          git clone https://github.com/CosmWasm/wasmd.git
+          cd wasmd
+          git checkout v0.50.0
+          make install
+          cd ..
+      
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-rust-${{ matrix.cache-key }}-${{ hashFiles('**/Cargo.lock', 'contracts/cosmos/**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-${{ matrix.cache-key }}-
+            ${{ runner.os }}-rust-
+      
+      - name: Install cosmwasm-check
+        run: |
+          cargo install cosmwasm-check --version 0.3.0
+      
+      - name: Run ${{ matrix.name }}
+        run: |
+          cd contracts/cosmos
+          case "${{ matrix.command }}" in
+            "test")
+              cargo test --verbose
+              cargo clippy -- -D warnings
+              cargo fmt -- --check
+              ;;
+            "integration")
+              cargo test --test integration --verbose
+              ;;
+            "schema")
+              cargo schema
+              ;;
+          esac
+      
+      - name: Check contract size
+        if: matrix.command == 'test'
+        run: |
+          cd contracts/cosmos
+          for contract in target/wasm32-unknown-unknown/release/*.wasm; do
+            if [ -f "$contract" ]; then
+              size=$(stat -c%s "$contract")
+              echo "Contract size: $size bytes"
+              if [ $size -gt 800000 ]; then
+                echo "Warning: Contract exceeds 800KB limit"
+              fi
+            fi
+          done
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: cosmwasm-${{ matrix.command }}
+          path: |
+            contracts/cosmos/target/
+            contracts/cosmos/schema/
+          retention-days: 30
+
+  # Security and Quality Checks
+  security-checks:
+    name: Security & Quality
+    runs-on: ubuntu-latest
+    needs: [evm-contracts, cosmwasm-contracts]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          override: true
+          components: rustfmt, clippy
+      
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      
+      - name: Install Slither
+        run: |
+          pip3 install slither-analyzer
+      
+      - name: Install Mythril
+        run: |
+          pip3 install mythril
+      
+      - name: Run Slither analysis
+        run: |
+          cd contracts/evm
+          slither . --json slither-report.json
+      
+      - name: Run Mythril analysis
+        run: |
+          cd contracts/evm
+          myth analyze . --output json --outfile mythril-report.json
+      
+      - name: Run Foundry security checks
+        run: |
+          cd contracts/evm
+          forge build --sizes
+          forge test --match-contract ".*Security.*" --gas-report
+      
+      - name: Upload security reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-reports
+          path: |
+            contracts/evm/slither-report.json
+            contracts/evm/mythril-report.json
+          retention-days: 30
+
+  # Gas Regression Testing
+  gas-regression:
+    name: Gas Regression
+    runs-on: ubuntu-latest
+    needs: [evm-contracts]
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      
+      - name: Get base branch
+        id: base
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "base=${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
+          else
+            echo "base=main" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.base.outputs.base }}
+          path: base
+      
+      - name: Generate base gas report
+        run: |
+          cd base/contracts/evm
+          forge install
+          forge test --gas-report --out gas-report-base.txt
+      
+      - name: Generate current gas report
+        run: |
+          cd contracts/evm
+          forge install
+          forge test --gas-report --out gas-report-current.txt
+      
+      - name: Compare gas reports
+        run: |
+          cd contracts/evm
+          python3 ../../scripts/compare_gas.py gas-report-base.txt gas-report-current.txt
+      
+      - name: Upload gas comparison
+        uses: actions/upload-artifact@v3
+        with:
+          name: gas-comparison
+          path: |
+            contracts/evm/gas-report-base.txt
+            contracts/evm/gas-report-current.txt
+          retention-days: 30
+
+  # Contract Deployment Testing
+  deployment-test:
+    name: Deployment Test
+    runs-on: ubuntu-latest
+    needs: [evm-contracts, cosmwasm-contracts]
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          override: true
+      
+      - name: Start local devnet
+        run: |
+          cd infra/devnets
+          chmod +x up.sh
+          ./up.sh evm &
+          sleep 60
+      
+      - name: Deploy and test EVM contracts
+        run: |
+          cd contracts/evm
+          forge script Deploy --rpc-url http://localhost:8545 --broadcast --verify
+          forge test --rpc-url http://localhost:8545
+      
+      - name: Deploy and test CosmWasm contracts
+        run: |
+          cd contracts/cosmos
+          cargo wasm
+          wasmd tx wasm store target/wasm32-unknown-unknown/release/*.wasm \
+            --from validator --gas-prices 0.025uatom --gas auto --gas-adjustment 1.3 \
+            --chain-id cosmoshub-local --yes
+      
+      - name: Cleanup devnet
+        run: |
+          cd infra/devnets
+          ./up.sh --down
+
+  # Documentation Generation
+  docs-generation:
+    name: Documentation
+    runs-on: ubuntu-latest
+    needs: [evm-contracts, cosmwasm-contracts]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          override: true
+      
+      - name: Generate Foundry docs
+        run: |
+          cd contracts/evm
+          forge doc --build
+      
+      - name: Generate CosmWasm docs
+        run: |
+          cd contracts/cosmos
+          cargo doc --no-deps
+          cargo schema
+      
+      - name: Upload documentation
+        uses: actions/upload-artifact@v3
+        with:
+          name: contract-docs
+          path: |
+            contracts/evm/docs/
+            contracts/cosmos/target/doc/
+            contracts/cosmos/schema/
+          retention-days: 30
+
+  # Final Status Check
+  status-check:
+    name: Status Check
+    runs-on: ubuntu-latest
+    needs: [evm-contracts, cosmwasm-contracts, security-checks, gas-regression, deployment-test, docs-generation]
+    if: always()
+    
+    steps:
+      - name: Check job statuses
+        run: |
+          echo "Checking job statuses..."
+          
+          # Check if any required jobs failed
+          if [[ "${{ needs.evm-contracts.result }}" == "failure" ]] || \
+             [[ "${{ needs.cosmwasm-contracts.result }}" == "failure" ]] || \
+             [[ "${{ needs.security-checks.result }}" == "failure" ]]; then
+            echo "❌ Critical jobs failed - Contract CI failed"
+            exit 1
+          fi
+          
+          # Check if gas regression tests failed
+          if [[ "${{ needs.gas-regression.result }}" == "failure" ]]; then
+            echo "⚠️ Gas regression detected - Review required"
+            exit 1
+          fi
+          
+          # Check if deployment tests failed
+          if [[ "${{ needs.deployment-test.result }}" == "failure" ]]; then
+            echo "⚠️ Deployment tests failed - Review required"
+            exit 1
+          fi
+          
+          echo "✅ All critical checks passed"
+      
+      - name: Comment PR status
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: jobs } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId
+            });
+            
+            let comment = '## 🔍 Contract CI Results\n\n';
+            
+            // Check job statuses
+            const jobStatuses = {
+              'EVM Contracts (Foundry)': jobs.jobs.find(j => j.name.includes('EVM Contracts')),
+              'CosmWasm Contracts': jobs.jobs.find(j => j.name.includes('CosmWasm Contracts')),
+              'Security & Quality': jobs.jobs.find(j => j.name.includes('Security & Quality')),
+              'Gas Regression': jobs.jobs.find(j => j.name.includes('Gas Regression')),
+              'Deployment Test': jobs.jobs.find(j => j.name.includes('Deployment Test')),
+              'Documentation': jobs.jobs.find(j => j.name.includes('Documentation'))
+            };
+            
+            for (const [name, job] of Object.entries(jobStatuses)) {
+              if (job) {
+                const status = job.conclusion === 'success' ? '✅' : 
+                              job.conclusion === 'failure' ? '❌' : '⏳';
+                comment += `${status} **${name}**: ${job.conclusion || 'running'}\n`;
+              }
+            }
+            
+            comment += '\n### 📊 Summary\n\n';
+            
+            if (jobs.jobs.every(j => j.conclusion === 'success')) {
+              comment += '🎉 **All checks passed!** Your contracts are ready for review.\n';
+            } else if (jobs.jobs.some(j => j.conclusion === 'failure')) {
+              comment += '⚠️ **Some checks failed.** Please review the logs and fix any issues.\n';
+            } else {
+              comment += '⏳ **Checks are still running.** Please wait for completion.\n';
+            }
+            
+            comment += '\n### 🚀 Next Steps\n\n';
+            comment += '1. Review any failed checks\n';
+            comment += '2. Fix security issues if detected\n';
+            comment += '3. Address gas regressions if found\n';
+            comment += '4. Ensure deployment tests pass\n';
+            comment += '5. Update documentation if needed\n';
+            
+            // Create or update comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const existingComment = comments.find(c => c.body.includes('## 🔍 Contract CI Results'));
+            
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }

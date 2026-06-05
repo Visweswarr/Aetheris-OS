@@ -1,0 +1,228 @@
+# Implementation Plan: Aetheris Polyglot Runtime
+
+- [x] 1. Core Types & Aetheris Module Structure
+  - [x] 1.1 Create polyglot runtime module structure in kernel/src/aetheris_polyglot/
+    - Create mod.rs, manager.rs, backend.rs, sandbox.rs, bridge.rs, registry.rs
+    - Define exports for the AI Core Service and XR Compositor
+    - _Aligns with: Polyglot Runtime Module_
+  - [x] 1.2 Define core types and traits
+    - Implement LanguageType enum (WASM, Python, JS, Rust)
+    - Implement LanguageBackend trait
+    - Implement ResourceLimits and ResourceUsage structs
+    - _Requirements: 1.1, 1.2, 2.1_
+  - [x] 1.3 Write property test for language type detection
+    - **Property 1: Language Detection Consistency**
+    - **Validates: Requirements 1.1**
+
+- [x] 2. Process Sandboxing & Resource Governance
+  - [x] 2.1 Implement ExecutionSandbox struct
+    - Create sandbox with resource limits
+    - Implement state management (Created, Running, Suspended, Terminated)
+    - Track resource usage for DAO Reporting
+    - _Requirements: 1.2, 2.1, 2.4_
+  - [x] 2.2 Implement resource limit enforcement
+    - Memory limit checking
+    - File descriptor limit checking
+    - CPU time tracking (integrated with AI Resource Scheduler)
+    - _Requirements: 2.1, 2.2, 2.4_
+  - [x] 2.3 Write property test for sandbox initialization
+    - **Property 2: Sandbox Initialization Invariant**
+    - **Validates: Requirements 1.2**
+  - [x] 2.4 Write property test for memory limit enforcement
+    - **Property 5: Memory Limit Enforcement**
+    - **Validates: Requirements 2.1**
+  - [x] 2.5 Write property test for file descriptor limit enforcement
+    - **Property 7: File Descriptor Limit Enforcement**
+    - **Validates: Requirements 2.4**
+
+- [x] 3. Backend Registry
+  - [x] 3.1 Implement BackendRegistry struct
+    - Create registry with plugins directory
+    - Implement backend discovery
+    - _Requirements: 5.1, 5.3_
+  - [x] 3.2 Implement backend validation
+    - Validate required interface methods
+    - Report missing methods on failure
+    - _Requirements: 5.1, 5.2_
+  - [x] 3.3 Implement backend registration
+    - Register backends manually
+    - Handle duplicate registrations
+    - _Requirements: 5.1_
+  - [x] 3.4 Write property test for backend validation
+    - **Property 13: Backend Validation Completeness**
+    - **Validates: Requirements 5.1, 5.2**
+  - [x] 3.5 Write property test for unsupported language errors
+    - **Property 4: Unsupported Language Error Completeness**
+    - **Validates: Requirements 1.4**
+
+- [x] 4. Checkpoint - Architecture Validation
+  - Ensure core types, sandbox, and registry tests pass.
+
+- [x] 5. Aetheris Communication Bridge
+  - [x] 5.1 Implement PolyglotBridge struct
+    - Create bridge with references to CapTokenManager and AI Event Bus
+    - Implement syscall translation to Aetheris Kernel Ops
+    - _Requirements: 1.3, 3.1_
+  - [x] 5.2 Implement CBOR serialization/deserialization
+    - Serialize messages to CBOR (compatible with AI IPC Contracts)
+    - Deserialize CBOR to messages
+    - Handle binary data preservation
+    - _Requirements: 4.1, 4.2, 4.3, 4.4_
+  - [x] 5.3 Implement Capability Token verification
+    - Verify CapTokens against the Policy Enforcer
+    - Handle capability denial and logging
+    - _Requirements: 3.1, 3.3_
+  - [x] 5.4 Write property test for syscall translation
+    - **Property 3: Syscall Translation Validity**
+    - **Validates: Requirements 1.3**
+  - [x] 5.5 Write property test for message serialization round-trip
+    - **Property 11: Message Serialization Round-Trip**
+    - **Validates: Requirements 3.4, 4.1, 4.2, 4.3**
+  - [x] 5.6 Write property test for deserialization error completeness
+    - **Property 12: Deserialization Error Completeness**
+    - **Validates: Requirements 4.4**
+  - [x] 5.7 Write property test for capability verification
+    - **Property 8: Capability Verification Consistency**
+    - **Validates: Requirements 3.1**
+  - [x] 5.8 Write property test for capability denial logging
+    - **Property 10: Capability Denial Logging**
+    - **Validates: Requirements 3.3**
+
+- [x] 6. Checkpoint - Communication & Security
+  - Ensure all bridge and capability tests pass.
+
+- [x] 7. Aetheris Runtime Manager
+  - [x] 7.1 Implement PolyglotRuntimeManager struct
+    - Create manager with backend registry
+    - Manage active sandboxes
+    - _Requirements: 1.1, 1.2_
+  - [x] 7.2 Implement sandbox lifecycle management
+    - Create sandbox from manifest
+    - Execute applications (triggered by AI Orchestrator)
+    - Terminate sandboxes
+    - _Requirements: 1.1, 1.2, 7.2_
+  - [x] 7.3 Implement configuration management
+    - Apply configuration to new sandboxes
+    - Isolate existing sandboxes from config changes
+    - _Requirements: 2.3_
+  - [x] 7.4 Implement capability token revocation
+    - Invalidate cached permissions
+    - Propagate revocation to Blockchain Audit Log
+    - _Requirements: 3.2_
+  - [x] 7.5 Write property test for configuration isolation
+    - **Property 6: Configuration Isolation**
+    - **Validates: Requirements 2.3**
+  - [x] 7.6 Write property test for token revocation propagation
+    - **Property 9: Token Revocation Propagation**
+    - **Validates: Requirements 3.2**
+  - [x] 7.7 Write property test for termination statistics
+    - **Property 19: Termination Statistics Recording**
+    - **Validates: Requirements 7.2**
+
+- [x] 8. WASM Backend (Web3 & dApp Support)
+  - [x] 8.1 Implement WasmBackend struct
+    - Implement LanguageBackend trait for WASM
+    - Integrate with existing skills/wasi.rs
+    - Supports: Smart Contract Execution Sandbox
+    - _Requirements: 1.1_
+  - [x] 8.2 Implement module loading and execution
+    - Load WASM modules
+    - Execute functions with arguments
+    - Track memory usage
+    - _Requirements: 1.1, 1.3_
+  - [x] 8.3 Write unit tests for WASM backend
+    - Test module loading
+    - Test function execution
+    - Test memory tracking
+    - _Requirements: 1.1_
+
+- [x] 9. Fault Isolation & Recovery
+  - [x] 9.1 Implement backend crash detection
+    - Detect backend crashes
+    - Isolate crashed backends
+    - _Requirements: 5.4_
+  - [x] 9.2 Implement crash recovery
+    - Terminate affected sandboxes
+    - Attempt backend reload
+    - Notify AI Agent of failure for user reporting
+    - _Requirements: 5.4_
+  - [x] 9.3 Write property test for fault isolation
+    - **Property 14: Fault Isolation**
+    - **Validates: Requirements 5.4**
+
+- [x] 10. Debugging Support
+  - [x] 10.1 Implement crash dump capture
+    - Capture stack traces on crash
+    - Capture register state
+    - _Requirements: 6.2_
+  - [x] 10.2 Implement syscall tracing
+    - Emit trace events for syscalls (feed to AI Diagnostics)
+    - Support trace enable/disable
+    - _Requirements: 6.3_
+  - [x] 10.3 Implement memory inspection
+    - Provide read-only memory access
+    - Reject write attempts
+    - _Requirements: 6.4_
+  - [x] 10.4 Write property test for crash dump completeness
+    - **Property 15: Crash Dump Completeness**
+    - **Validates: Requirements 6.2**
+  - [x] 10.5 Write property test for syscall tracing
+    - **Property 16: Syscall Tracing Completeness**
+    - **Validates: Requirements 6.3**
+  - [x] 10.6 Write property test for memory inspection
+    - **Property 17: Memory Inspection Read-Only**
+    - **Validates: Requirements 6.4**
+
+- [x] 11. Checkpoint - Stability & Debugging
+  - Ensure all fault isolation and debugging tests pass.
+
+- [x] 12. Metrics and Monitoring
+  - [x] 12.1 Implement RuntimeMetrics struct
+    - Track per-backend statistics
+    - Track per-sandbox statistics
+    - _Requirements: 7.1, 7.4_
+  - [x] 12.2 Implement metrics collection
+    - Collect memory usage
+    - Collect CPU time
+    - Collect syscall counts
+    - _Requirements: 7.1_
+  - [x] 12.3 Implement threshold warnings
+    - Configure thresholds
+    - Emit warnings to AI Resource Manager when exceeded
+    - _Requirements: 7.3_
+  - [x] 12.4 Write property test for metrics completeness
+    - **Property 18: Metrics Completeness**
+    - **Validates: Requirements 7.1**
+  - [x] 12.5 Write property test for threshold warnings
+    - **Property 20: Threshold Warning Emission**
+    - **Validates: Requirements 7.3**
+  - [x] 12.6 Write property test for timestamp precision
+    - **Property 21: Timestamp Precision**
+    - **Validates: Requirements 7.4**
+
+- [x] 13. Integration and Wiring
+  - [x] 13.1 Integrate with Aetheris Kernel syscall table
+    - Add polyglot runtime syscall numbers to kernel/src/syscall/table.rs (SYS_POLYGLOT_CREATE, SYS_POLYGLOT_EXEC, SYS_POLYGLOT_TERMINATE, etc.)
+    - Implement syscall handlers in kernel/src/syscall/handlers/ for polyglot operations
+    - Wire handlers to the syscall dispatch in kernel/src/syscall/mod.rs
+    - _Requirements: 1.3_
+  - [x] 13.2 Integrate with Intent Bus for cross-runtime IPC
+    - Create adapter in aetheris_polyglot to connect PolyglotBridge to IntentKernel
+    - Register message handlers for AI Tool Calls (AiInvoke, AiQuery, AiStream)
+    - Implement message routing between sandboxes via Intent Bus
+    - _Requirements: 4.1, 4.2_
+  - [x] 13.3 Wire CapTokenManager to kernel security module
+    - Connect PolyglotBridge.cap_store to kernel's global CapabilityStore
+    - Ensure token revocation propagates from kernel security to all sandboxes
+    - Add audit logging for capability operations via kernel audit module
+    - _Requirements: 3.1, 3.2_
+  - [x] 13.4 Update kernel lib.rs exports
+    - Export aetheris_polyglot module (already done)
+    - Update public API for XR Compositor access
+    - _Requirements: 1.1_
+
+- [x] 14. Final Checkpoint - System Integration
+  - Ensure all tests pass, ask the user if questions arise.
+  - Run property tests to confirm all 21 correctness properties hold
+  - Verify syscall integration works end-to-end
+  - This confirms the Polyglot Runtime is ready to execute AI-generated scripts and Web3 dApps.

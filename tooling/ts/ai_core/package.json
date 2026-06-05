@@ -1,0 +1,47 @@
+{
+  "name": "@aetheris/ai-core-proto",
+  "version": "1.0.0",
+  "description": "AI Core Service Protocol Buffers for TypeScript",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "lint": "eslint src/**/*.ts",
+    "format": "prettier --write src/**/*.ts"
+  },
+  "keywords": [
+    "aetheris",
+    "ai-core",
+    "protobuf",
+    "typescript",
+    "grpc"
+  ],
+  "author": "Aetheris OS Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aetheris-os/polymera-os.git",
+    "directory": "tooling/ts/ai_core"
+  },
+  "dependencies": {
+    "protobufjs": "^7.2.5",
+    "grpc-web": "^1.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "jest": "^29.0.0",
+    "@types/jest": "^29.0.0",
+    "eslint": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "prettier": "^3.0.0"
+  },
+  "files": [
+    "dist/**/*",
+    "src/**/*",
+    "*.d.ts",
+    "*.js"
+  ]
+}

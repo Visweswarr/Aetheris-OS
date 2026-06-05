@@ -1,0 +1,22 @@
+[configuration]
+
+entry_symbol = "aetheris_library_init"
+compatibility_minimum = "4.3"
+
+[libraries]
+
+windows.debug.x86_64 = "bin/libaetheris.windows.template_debug.x86_64.dll"
+windows.release.x86_64 = "bin/libaetheris.windows.template_release.x86_64.dll"
+linux.debug.x86_64 = "bin/libaetheris.linux.template_debug.x86_64.so"
+linux.release.x86_64 = "bin/libaetheris.linux.template_release.x86_64.so"
+macos.debug = "bin/libaetheris.macos.template_debug.framework"
+macos.release = "bin/libaetheris.macos.template_release.framework"
+
+[dependencies]
+
+windows.debug.x86_64 = []
+windows.release.x86_64 = []
+linux.debug.x86_64 = []
+linux.release.x86_64 = []
+macos.debug = []
+macos.release = []

@@ -1,6 +1,11 @@
-use alloc::collections::{BTreeMap, HashMap};
+use alloc::string::ToString;
+use alloc::collections::BTreeMap;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU64, Ordering};
 use spin::Mutex;
+use crate::lazy_static;
 
 use super::topics::{TopicDesc, find_topic, get_matching_topics};
 use super::queue::{Event, Lane, Inbox, InboxStats};
@@ -63,7 +68,7 @@ pub struct FabricStats {
 /// Main event fabric that manages subscriptions and routing
 pub struct EventFabric {
     subscriptions: Mutex<Vec<Subscription>>,
-    task_inboxes: Mutex<HashMap<u32, Inbox>>,
+    task_inboxes: Mutex<BTreeMap<u32, Inbox>>,
     next_subscription_id: AtomicU64,
     stats: Mutex<FabricStats>,
 }
@@ -72,7 +77,7 @@ impl EventFabric {
     pub fn new() -> Self {
         Self {
             subscriptions: Mutex::new(Vec::new()),
-            task_inboxes: Mutex::new(HashMap::new()),
+            task_inboxes: Mutex::new(BTreeMap::new()),
             next_subscription_id: AtomicU64::new(1),
             stats: Mutex::new(FabricStats::default()),
         }
@@ -263,7 +268,7 @@ impl EventFabric {
     pub fn get_active_topics(&self) -> Vec<&'static TopicDesc> {
         // Return all topics for now
         // In the future, this could track which topics have active subscribers
-        super::topics::TOPICS.to_vec()
+        super::topics::TOPICS.iter().collect()
     }
 }
 
@@ -280,7 +285,9 @@ impl Clone for Subscription {
 }
 
 /// Global event fabric instance
-pub static EVENT_FABRIC: EventFabric = EventFabric::new();
+lazy_static! {
+    pub static ref EVENT_FABRIC: EventFabric = EventFabric::new();
+}
 
 #[cfg(test)]
 mod tests {

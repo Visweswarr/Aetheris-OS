@@ -7,7 +7,7 @@ use crate::{
     schema::{ExportOpts, IpfsMapV1},
     ipfs::IpfsExporter,
 };
-use alloc::{string::String, vec::Vec, collections::HashMap};
+use std::{string::String, vec::Vec, collections::HashMap};
 use core::time::Duration;
 
 /// Benchmark target configuration

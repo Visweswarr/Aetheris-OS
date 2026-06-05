@@ -1,0 +1,36 @@
+name: Phase 5 - AICORE
+
+on:
+  push:
+    paths:
+      - 'services/ai/**'
+      - 'c/aicore.*'
+      - 'go/aicore.go'
+      - 'ui/aicore_bridge.ts'
+      - 'tools/aicore_validator.py'
+      - 'docs/phase-5/P5-01-AICORE.md'
+      - '.github/workflows/p5-01-aicore.yml'
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build AI crate (phase5)
+        run: |
+          cargo build -p aetheris-ai --features phase5 --verbose
+      - name: Test AI crate (phase5)
+        run: |
+          cargo test -p aetheris-ai --features phase5 --verbose
+      - name: Check docs presence
+        run: |
+          test -f docs/phase-5/P5-01-AICORE.md || exit 1

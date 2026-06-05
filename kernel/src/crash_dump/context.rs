@@ -1,8 +1,8 @@
-#![no_std]
-
 use core::fmt;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
+use alloc::format;
 
 /// Task context information
 #[derive(Debug, Clone)]
@@ -184,15 +184,15 @@ impl TaskContext {
         let mut context = Self::new(task_id);
         
         // Try to get task information from scheduler
-        if let Some(task) = crate::sched::get_task(task_id) {
-            context.process_id = task.process_id;
+        if let Some(task) = crate::sched::get_task(crate::sched::TaskId::new(task_id)) {
+            context.process_id = task.id.as_u64();
             context.priority = Self::convert_priority(task.priority);
             context.state = Self::convert_state(task.state);
-            context.cpu_id = Some(task.cpu_id);
+            context.cpu_id = None;
             context.wake_timestamp = task.wake_timestamp;
-            context.context_switch_count = task.context_switch_count;
-            context.total_runtime = task.total_runtime;
-            context.last_scheduled = task.last_scheduled;
+            context.context_switch_count = 0;
+            context.total_runtime = task.cpu_time;
+            context.last_scheduled = 0;
             
             // Capture stack information
             context.stack_info = Self::capture_stack_info(task_id);
@@ -210,26 +210,22 @@ impl TaskContext {
     }
 
     /// Convert internal priority to display priority
-    fn convert_priority(priority: u8) -> TaskPriority {
+    fn convert_priority(priority: crate::sched::TaskPriority) -> TaskPriority {
         match priority {
-            0 => TaskPriority::Low,
-            1 => TaskPriority::Normal,
-            2 => TaskPriority::High,
-            3 => TaskPriority::RealTime,
-            _ => TaskPriority::Normal,
+            crate::sched::TaskPriority::Low => TaskPriority::Low,
+            crate::sched::TaskPriority::Normal => TaskPriority::Normal,
+            crate::sched::TaskPriority::High => TaskPriority::High,
+            crate::sched::TaskPriority::RealTime => TaskPriority::RealTime,
         }
     }
 
     /// Convert internal state to display state
-    fn convert_state(state: u8) -> TaskState {
+    fn convert_state(state: crate::sched::TaskState) -> TaskState {
         match state {
-            0 => TaskState::Ready,
-            1 => TaskState::Running,
-            2 => TaskState::Blocked,
-            3 => TaskState::Sleeping,
-            4 => TaskState::Terminated,
-            5 => TaskState::Zombie,
-            _ => TaskState::Unknown,
+            crate::sched::TaskState::Ready => TaskState::Ready,
+            crate::sched::TaskState::Running => TaskState::Running,
+            crate::sched::TaskState::Blocked => TaskState::Blocked,
+            crate::sched::TaskState::Dead => TaskState::Terminated,
         }
     }
 

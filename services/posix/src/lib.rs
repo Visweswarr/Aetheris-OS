@@ -2,11 +2,19 @@ pub mod broker;
 pub mod vfs;
 pub mod shims;
 pub mod shell;
+pub mod process;
+pub mod signals;
+pub mod ipc;
+pub mod threading;
 
 pub use broker::*;
 pub use vfs::*;
 pub use shims::*;
 pub use shell::*;
+pub use process::*;
+pub use signals::*;
+pub use ipc::*;
+pub use threading::*;
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -16,6 +24,10 @@ pub struct POSIXService {
     vfs: Arc<CapabilityAwareVFS>,
     shims: Arc<PolyglotShims>,
     shell: Arc<AeshShell>,
+    process_manager: Arc<ProcessManager>,
+    signal_dispatcher: Arc<SignalDispatcher>,
+    ipc_subsystem: Arc<IPCSubsystem>,
+    thread_manager: Arc<ThreadManager>,
     performance_baselines: Arc<Mutex<HashMap<String, Duration>>>,
     virtual_clock: Arc<Mutex<u64>>,
 }
@@ -27,6 +39,10 @@ impl POSIXService {
             vfs: Arc::new(CapabilityAwareVFS::new()),
             shims: Arc::new(PolyglotShims::new()),
             shell: Arc::new(AeshShell::new()),
+            process_manager: Arc::new(ProcessManager::new()),
+            signal_dispatcher: Arc::new(SignalDispatcher::new()),
+            ipc_subsystem: Arc::new(IPCSubsystem::new()),
+            thread_manager: Arc::new(ThreadManager::new()),
             performance_baselines: Arc::new(Mutex::new(HashMap::new())),
             virtual_clock: Arc::new(Mutex::new(0)),
         }
@@ -288,6 +304,9 @@ impl POSIXService {
                 "vfs_read" => Duration::from_micros(300),
                 "shell_command" => Duration::from_micros(800),
                 "shim_call" => Duration::from_micros(400),
+                "process_spawn" => Duration::from_micros(2000), // 2ms
+                "ipc_send" => Duration::from_micros(500),
+                "signal_deliver" => Duration::from_micros(1000), // 1ms
                 _ => Duration::from_micros(1000),
             };
             
@@ -298,6 +317,26 @@ impl POSIXService {
         
         report
     }
+
+    // Advanced POSIX Features - Process Management
+    pub fn spawn_process(&self, request: SpawnRequest) -> SpawnResponse {
+        let start = Instant::now();
+        let response = self.process_manager.spawn(request);
+        let duration = start.elapsed();
+        self.record_performance("process_spawn", duration);
+        response
+    }
+
+    pub fn fork_process(&self, parent_cap: &str) -> SpawnResponse {
+        let start = Instant::now();
+        let response = self.process_manager.fork(parent_cap);
+        let duration = start.elapsed();
+        self.record_performance("process_fork", duration);
+        response
+    }
+
+    pub fn exec_process(&self, cap_proc: &str, executable: &str, args: Vec<String>) -> Result<(), String> {
+        self.process_manager.exec
 }
 
 #[derive(Debug, Clone)]
@@ -382,3 +421,4 @@ mod tests {
         assert!(result.is_ok());
     }
 }
+

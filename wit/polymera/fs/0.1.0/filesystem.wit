@@ -1,0 +1,39 @@
+package polymera:fs@0.1.0;
+
+/// Minimal filesystem interface used as the canonical starter WIT for Polymera OS.
+///
+/// This interface intentionally exposes only a small read/write/list surface. It exists
+/// so the roadmap's Initiative 2 has a concrete contract to generate bindings against
+/// in Phase 1. Larger surfaces (capabilities, streams, watchers) will land as separate
+/// interfaces in later semver bumps.
+interface filesystem {
+    /// Error codes returned by filesystem operations. Maps loosely to POSIX errno but
+    /// is intentionally a closed enum so that components do not depend on numeric values.
+    enum error-code {
+        not-found,
+        permission-denied,
+        already-exists,
+        not-a-directory,
+        is-a-directory,
+        io-error,
+        invalid-path,
+        quota-exceeded,
+        unsupported,
+    }
+
+    /// Read the contents of a file as a byte vector.
+    /// Paths are UTF-8 and use forward-slash separators on every platform.
+    read-file: func(path: string) -> result<list<u8>, error-code>;
+
+    /// Write `data` to `path`, creating the file if necessary and truncating if it exists.
+    write-file: func(path: string, data: list<u8>) -> result<_, error-code>;
+
+    /// List the immediate children of a directory. Returns names only, not full paths.
+    list-dir: func(path: string) -> result<list<string>, error-code>;
+
+    /// Check whether `path` exists. Does not distinguish files from directories.
+    exists: func(path: string) -> bool;
+
+    /// Remove a file. Use `remove-dir` for directories.
+    remove-file: func(path: string) -> result<_, error-code>;
+}

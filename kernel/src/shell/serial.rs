@@ -3,8 +3,9 @@
 //! This module provides serial input/output functionality for the shell,
 //! including line buffering, command history, and input validation.
 
-use crate::{kprintln, klog, klog};
+use crate::{kprintln, klog, kprint};
 use crate::log::Level;
+use alloc::string::ToString;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::RefCell;
@@ -306,10 +307,11 @@ impl SerialInterface {
             
             // Ctrl+K - clear line after cursor
             0x0B => {
-                let after_cursor = buffer.buffer.len() - buffer.cursor;
+                let cursor = buffer.cursor;
+                let after_cursor = buffer.buffer.len() - cursor;
                 for _ in 0..after_cursor {
-                    if buffer.buffer.len() > buffer.cursor {
-                        buffer.buffer.remove(buffer.cursor);
+                    if buffer.buffer.len() > cursor {
+                        buffer.buffer.remove(cursor);
                         kprint!(" ");
                     }
                 }

@@ -1,5 +1,7 @@
 use core::fmt;
 use core::ptr;
+use alloc::format;
+use alloc::string::String;
 
 /// Serial port base addresses
 const COM1_BASE: u16 = 0x3F8;
@@ -18,9 +20,9 @@ const SERIAL_SCRATCH: u16 = 0x07;   // Scratch register
 
 /// Serial configuration constants
 const SERIAL_BAUD_115200: u16 = 1;   // Divisor for 115200 baud
-const SERIAL_8N1: u16 = 0x03;        // 8 data bits, no parity, 1 stop bit
-const SERIAL_FIFO_ENABLE: u16 = 0xC7; // Enable FIFO and clear buffers
-const SERIAL_DTR_RTS: u16 = 0x0B;    // Set DTR and RTS
+const SERIAL_8N1: u8 = 0x03;        // 8 data bits, no parity, 1 stop bit
+const SERIAL_FIFO_ENABLE: u8 = 0xC7; // Enable FIFO and clear buffers
+const SERIAL_DTR_RTS: u8 = 0x0B;    // Set DTR and RTS
 
 /// Serial port structure
 pub struct SerialPort {

@@ -1,0 +1,66 @@
+[package]
+name = "aetheris-ai"
+version = "0.1.0"
+edition = "2021"
+authors = ["Aetheris OS Team"]
+description = "Edge AI Perception & Encoding for Aetheris OS"
+license = "MIT"
+repository = "https://github.com/aetheris-os/polymera-os"
+
+[dependencies]
+# Core dependencies
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_cbor = "0.11"
+serde_json = "1.0"
+uuid = { version = "1.0", features = ["v4"] }
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Async traits
+async-trait = "0.1"
+
+# Math and utilities
+rand = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Optional runtime backends. These stay disabled in CI/default builds so the
+# lower-level AI crate can parse and test without local model runtimes.
+ort = { version = "2.0.0-rc.12", optional = true }
+whisper-rs = { version = "0.10", optional = true }
+
+# Phase 5 support
+ciborium = { version = "0.2", optional = true }
+blake3 = { version = "1.5", optional = true }
+lazy_static = { version = "1.4", optional = true }
+dashmap = { version = "5.5", optional = true }
+parking_lot = { version = "0.12", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+named_pipe = "0.4"
+
+# Optional dependencies for real implementations
+[features]
+default = ["mock"]
+mock = []
+onnx = ["dep:ort"]
+whisper = ["dep:whisper-rs"]
+gpu = []
+phase5 = ["dep:ciborium", "dep:blake3", "dep:lazy_static", "dep:dashmap", "dep:parking_lot"]
+
+# Development dependencies
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = "0.5"
+tempfile = "3.0"
+
+[[bench]]
+name = "ai_benchmarks"
+path = "benches/aicore_bench.rs"
+harness = false
+
+[[bench]]
+name = "phase5_perf"
+path = "benches/phase5_perf.rs"
+harness = false

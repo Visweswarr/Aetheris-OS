@@ -6,7 +6,7 @@
 /// - Guard page management
 /// - Memory safety validation
 
-use crate::{kprintln, klog, kprintln};
+use crate::{kprintln, klog, lazy_static};
 use crate::log::Level;
 use crate::mm::{MemoryResult, MemoryError, VirtualAddress, PhysicalAddress, PageSize, MemoryFlags};
 use crate::mm::vm::VirtualMemoryManager;
@@ -170,6 +170,10 @@ pub struct StackProtectionStats {
     pub canary_corruptions: AtomicU32,
     /// Stacks successfully protected
     pub stacks_successfully_protected: AtomicU64,
+    /// Red-zones created
+    pub red_zones_created: AtomicU64,
+    /// Guard pages created
+    pub guard_pages_created: AtomicU64,
 }
 
 //=============================================================================
@@ -336,7 +340,7 @@ impl StackProtectionManager {
     pub fn check_stack_protection(&self, stack_id: u64) -> MemoryResult<StackOverflowResult> {
         let stacks = self.protected_stacks.lock();
         
-        guard let Some(stack) = stacks.get(&stack_id) else {
+        let Some(stack) = stacks.get(&stack_id) else {
             return Err(MemoryError::InvalidAddress);
         };
         
@@ -418,9 +422,9 @@ impl StackProtectionManager {
     pub fn update_stack_pointer(&self, stack_id: u64, new_sp: u64) -> MemoryResult<()> {
         let mut stacks = self.protected_stacks.lock();
         
-        guard let Some(stack) = stacks.get_mut(&stack_id) else {
+        let Some(stack) = stacks.get_mut(&stack_id) else {
             return Err(MemoryError::InvalidAddress);
-        }
+        };
         
         // Check for stack overflow/underflow
         if new_sp < stack.base_address || new_sp >= stack.top_address {
@@ -465,9 +469,9 @@ impl StackProtectionManager {
     pub fn unprotect_stack(&self, stack_id: u64) -> MemoryResult<()> {
         let mut stacks = self.protected_stacks.lock();
         
-        guard let Some(_) = stacks.remove(&stack_id) else {
+        let Some(_) = stacks.remove(&stack_id) else {
             return Err(MemoryError::InvalidAddress);
-        }
+        };
         
         klog!(INFO, "[STACK_PROTECT] Unprotected stack {}", stack_id);
         
@@ -599,7 +603,8 @@ pub fn unprotect_kernel_stack(stack_id: u64) -> MemoryResult<()> {
 /// Print stack protection statistics
 pub fn print_stack_protection_stats() {
     let manager = get_stack_protection_manager();
-    let stats = manager.lock().get_stats();
+    let guard = manager.lock();
+    let stats = guard.get_stats();
     
     kprintln!("");
     kprintln!("=== STACK PROTECTION STATISTICS ===");
@@ -621,8 +626,8 @@ pub fn test_stack_protection() {
     
     // Test stack protection
     let base_address = 0x1000000;
-    let size = 0x10000; // 64KB stack
-    let current_sp = base_address + size - 0x1000; // 4KB from top
+    let size: usize = 0x10000; // 64KB stack
+    let current_sp = base_address + size as u64 - 0x1000; // 4KB from top
     
     match protect_kernel_stack(base_address, size, current_sp) {
         Ok(stack_id) => {

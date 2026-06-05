@@ -1,0 +1,503 @@
+name: Phase 1 QEMU CI Gates
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'kernel/**'
+      - '.github/workflows/phase-1-qemu.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'kernel/**'
+      - '.github/workflows/phase-1-qemu.yml'
+  schedule:
+    # Run daily at 3 AM UTC to catch regressions
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  QEMU_TIMEOUT: 5s
+  KERNEL_BUILD_TIMEOUT: 10m
+  QEMU_RUN_TIMEOUT: 2m
+
+jobs:
+  qemu-phase1-gates:
+    name: QEMU Phase 1 CI Gates
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        # Test different Rust toolchain versions
+        rust-version: [stable, nightly]
+        # Test different QEMU configurations
+        qemu-arch: [x86_64]
+        # Test different kernel configurations
+        kernel-config: [debug, release]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for build context
+    
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ matrix.rust-version }}
+        profile: minimal
+        override: true
+        components: rust-src, rust-analysis
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          pkg-config \
+          libssl-dev \
+          qemu-system-x86 \
+          qemu-utils \
+          ovmf \
+          mtools \
+          dosfstools \
+          gdisk \
+          xorriso \
+          curl \
+          wget \
+          unzip
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ matrix.rust-version }}-${{ matrix.kernel-config }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-${{ matrix.rust-version }}-${{ matrix.kernel-config }}-
+          ${{ runner.os }}-cargo-${{ matrix.rust-version }}-
+          ${{ runner.os }}-cargo-
+    
+    - name: Cache QEMU artifacts
+      uses: actions/cache@v3
+      with:
+        path: |
+          kernel/target
+          kernel/qemu
+        key: ${{ runner.os }}-qemu-${{ matrix.qemu-arch }}-${{ matrix.kernel-config }}-${{ hashFiles('kernel/**') }}
+        restore-keys: |
+          ${{ runner.os }}-qemu-${{ matrix.qemu-arch }}-${{ matrix.kernel-config }}-
+          ${{ runner.os }}-qemu-${{ matrix.qemu-arch }}-
+    
+    - name: Verify kernel source structure
+      working-directory: kernel
+      run: |
+        echo "=== Kernel Source Structure Verification ==="
+        echo "Current directory: $(pwd)"
+        echo "Directory contents:"
+        ls -la
+        
+        echo ""
+        echo "Source files:"
+        find src -name "*.rs" | head -20
+        
+        echo ""
+        echo "Cargo.toml contents:"
+        cat Cargo.toml
+        
+        echo ""
+        echo "=== End Structure Verification ==="
+    
+    - name: Build kernel
+      working-directory: kernel
+      timeout-minutes: 10
+      run: |
+        echo "=== Building Kernel ==="
+        echo "Rust version: $(rustc --version)"
+        echo "Cargo version: $(cargo --version)"
+        echo "Target: ${{ matrix.kernel-config }}"
+        echo "Architecture: ${{ matrix.qemu-arch }}"
+        
+        # Clean previous builds
+        cargo clean
+        
+        # Build kernel
+        if [ "${{ matrix.kernel-config }}" = "release" ]; then
+          echo "Building in release mode..."
+          cargo build --release --target x86_64-unknown-none
+        else
+          echo "Building in debug mode..."
+          cargo build --target x86_64-unknown-none
+        fi
+        
+        # Verify build artifacts
+        echo ""
+        echo "Build artifacts:"
+        find target -name "*.elf" -o -name "*.bin" -o -name "polymera-kernel" | head -10
+        
+        echo ""
+        echo "=== Kernel Build Completed ==="
+    
+    - name: Create QEMU boot environment
+      working-directory: kernel
+      run: |
+        echo "=== Creating QEMU Boot Environment ==="
+        
+        # Create QEMU directory
+        mkdir -p qemu
+        
+        # Copy kernel binary
+        if [ "${{ matrix.kernel-config }}" = "release" ]; then
+          cp target/x86_64-unknown-none/release/polymera-kernel qemu/kernel.elf
+        else
+          cp target/x86_64-unknown-none/debug/polymera-kernel qemu/kernel.elf
+        fi
+        
+        # Create UEFI boot script
+        cat > qemu/boot.nsh << 'EOF'
+        # UEFI boot script for Polymera OS
+        echo "Starting Polymera OS kernel..."
+        kernel.elf
+        EOF
+        
+        # Create QEMU run script
+        cat > qemu/run_qemu.sh << 'EOF'
+        #!/bin/bash
+        # QEMU runner script for Polymera OS
+        
+        set -e
+        
+        KERNEL_ELF="kernel.elf"
+        QEMU_TIMEOUT="${{ env.QEMU_TIMEOUT }}"
+        
+        echo "Starting QEMU with kernel: $KERNEL_ELF"
+        echo "Timeout: $QEMU_TIMEOUT"
+        
+        # Run QEMU with UEFI
+        timeout $QEMU_TIMEOUT \
+          qemu-system-x86_64 \
+            -machine q35 \
+            -cpu qemu64 \
+            -m 512M \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/ovmf/OVMF.fd \
+            -drive format=raw,file=fat:rw:qemu \
+            -nographic \
+            -serial stdio \
+            -monitor none \
+            -no-reboot \
+            -no-shutdown \
+            -d guest_errors \
+            -D qemu.log
+        
+        echo "QEMU execution completed"
+        EOF
+        
+        chmod +x qemu/run_qemu.sh
+        
+        # Create FAT filesystem for UEFI boot
+        dd if=/dev/zero of=qemu/uefi.img bs=1M count=64
+        mkfs.fat -F 32 qemu/uefi.img
+        
+        # Mount and copy files
+        sudo mkdir -p /mnt/uefi
+        sudo mount qemu/uefi.img /mnt/uefi
+        sudo mkdir -p /mnt/uefi/EFI/BOOT
+        sudo cp qemu/kernel.elf /mnt/uefi/EFI/BOOT/
+        sudo cp qemu/boot.nsh /mnt/uefi/EFI/BOOT/
+        sudo umount /mnt/uefi
+        
+        echo ""
+        echo "QEMU boot environment created:"
+        ls -la qemu/
+        
+        echo ""
+        echo "=== QEMU Boot Environment Ready ==="
+    
+    - name: Run QEMU kernel test
+      working-directory: kernel/qemu
+      timeout-minutes: 2
+      run: |
+        echo "=== Running QEMU Kernel Test ==="
+        echo "Timeout: ${{ env.QEMU_TIMEOUT }}"
+        echo "Architecture: ${{ matrix.qemu-arch }}"
+        echo "Kernel config: ${{ matrix.kernel-config }}"
+        
+        # Run QEMU with timeout
+        timeout ${{ env.QEMU_TIMEOUT }} \
+          qemu-system-x86_64 \
+            -machine q35 \
+            -cpu qemu64 \
+            -m 512M \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/ovmf/OVMF.fd \
+            -drive format=raw,file=uefi.img \
+            -nographic \
+            -serial stdio \
+            -monitor none \
+            -no-reboot \
+            -no-shutdown \
+            -d guest_errors \
+            -D qemu.log \
+            2>&1 | tee qemu_output.log
+        
+        echo ""
+        echo "QEMU execution completed"
+        echo "Output log size: $(wc -l < qemu_output.log) lines"
+        
+        echo ""
+        echo "=== End QEMU Test ==="
+    
+    - name: Analyze QEMU output
+      working-directory: kernel/qemu
+      run: |
+        echo "=== Analyzing QEMU Output ==="
+        
+        # Check if output log exists
+        if [ ! -f "qemu_output.log" ]; then
+          echo "❌ ERROR: QEMU output log not found!"
+          exit 1
+        fi
+        
+        # Display output log (first and last 20 lines)
+        echo "First 20 lines of QEMU output:"
+        head -20 qemu_output.log
+        
+        echo ""
+        echo "Last 20 lines of QEMU output:"
+        tail -20 qemu_output.log
+        
+        echo ""
+        echo "=== Phase 1 Validation Checks ==="
+        
+        # Check for Phase 1 pass indicator
+        if grep -q "\[PHASE1 PASS\]" qemu_output.log; then
+          echo "✅ [PHASE1 PASS] indicator found"
+          PHASE1_PASS=true
+        else
+          echo "❌ [PHASE1 PASS] indicator NOT found"
+          PHASE1_PASS=false
+        fi
+        
+        # Check for HAL logs
+        if grep -q "HAL" qemu_output.log; then
+          echo "✅ HAL logs found"
+          HAL_LOGS=true
+        else
+          echo "❌ HAL logs NOT found"
+          HAL_LOGS=false
+        fi
+        
+        # Check for specific HAL initialization messages
+        HAL_INIT_COUNT=$(grep -c "HAL.*init\|HAL.*Init\|HAL.*INIT" qemu_output.log || echo "0")
+        echo "HAL initialization messages found: $HAL_INIT_COUNT"
+        
+        # Check for kernel boot messages
+        BOOT_COUNT=$(grep -c "boot\|Boot\|BOOT" qemu_output.log || echo "0")
+        echo "Boot-related messages found: $BOOT_COUNT"
+        
+        # Check for scheduler messages
+        SCHED_COUNT=$(grep -c "sched\|Sched\|SCHED" qemu_output.log || echo "0")
+        echo "Scheduler messages found: $SCHED_COUNT"
+        
+        # Check for IPC messages
+        IPC_COUNT=$(grep -c "ipc\|IPC" qemu_output.log || echo "0")
+        echo "IPC messages found: $IPC_COUNT"
+        
+        # Check for memory management messages
+        MM_COUNT=$(grep -c "mm\|MM" qemu_output.log || echo "0")
+        echo "Memory management messages found: $MM_COUNT"
+        
+        echo ""
+        echo "=== Validation Summary ==="
+        
+        # Determine overall success
+        if [ "$PHASE1_PASS" = "true" ] && [ "$HAL_LOGS" = "true" ]; then
+          echo "🎉 PHASE 1 VALIDATION PASSED!"
+          echo "✅ All required indicators found"
+          VALIDATION_PASSED=true
+        else
+          echo "❌ PHASE 1 VALIDATION FAILED!"
+          echo "Missing required indicators:"
+          [ "$PHASE1_PASS" = "false" ] && echo "  - [PHASE1 PASS]"
+          [ "$HAL_LOGS" = "false" ] && echo "  - HAL logs"
+          VALIDATION_PASSED=false
+        fi
+        
+        echo ""
+        echo "=== End Analysis ==="
+        
+        # Exit with error if validation failed
+        if [ "$VALIDATION_PASSED" = "false" ]; then
+          exit 1
+        fi
+    
+    - name: Collect QEMU artifacts
+      if: always()
+      working-directory: kernel/qemu
+      run: |
+        echo "=== Collecting QEMU Artifacts ==="
+        
+        # List all artifacts
+        echo "QEMU directory contents:"
+        ls -la
+        
+        # Show QEMU log if it exists
+        if [ -f "qemu.log" ]; then
+          echo ""
+          echo "QEMU debug log (first 50 lines):"
+          head -50 qemu.log
+        fi
+        
+        # Show output log statistics
+        if [ -f "qemu_output.log" ]; then
+          echo ""
+          echo "Output log statistics:"
+          echo "Total lines: $(wc -l < qemu_output.log)"
+          echo "File size: $(du -h qemu_output.log | cut -f1)"
+          
+          echo ""
+          echo "Key message counts:"
+          echo "HAL messages: $(grep -c 'HAL' qemu_output.log || echo '0')"
+          echo "Boot messages: $(grep -c 'boot\|Boot\|BOOT' qemu_output.log || echo '0')"
+          echo "Phase1 messages: $(grep -c 'PHASE1' qemu_output.log || echo '0')"
+        fi
+        
+        echo ""
+        echo "=== End Artifact Collection ==="
+    
+    - name: Upload QEMU artifacts
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: qemu-artifacts-${{ matrix.qemu-arch }}-${{ matrix.kernel-config }}-${{ matrix.rust-version }}
+        path: |
+          kernel/qemu/
+        retention-days: 30
+    
+    - name: Generate QEMU test report
+      if: always()
+      working-directory: kernel/qemu
+      run: |
+        echo ""
+        echo "=== QEMU PHASE 1 TEST REPORT ==="
+        echo "Architecture: ${{ matrix.qemu-arch }}"
+        echo "Kernel Config: ${{ matrix.kernel-config }}"
+        echo "Rust Version: ${{ matrix.rust-version }}"
+        echo "QEMU Timeout: ${{ env.QEMU_TIMEOUT }}"
+        echo ""
+        
+        # Check validation results
+        if [ -f "qemu_output.log" ]; then
+          PHASE1_PASS=$(grep -c "\[PHASE1 PASS\]" qemu_output.log || echo "0")
+          HAL_LOGS=$(grep -c "HAL" qemu_output.log || echo "0")
+          
+          echo "Test Results:"
+          echo "  [PHASE1 PASS] indicators: $PHASE1_PASS"
+          echo "  HAL log entries: $HAL_LOGS"
+          
+          if [ "$PHASE1_PASS" -gt 0 ] && [ "$HAL_LOGS" -gt 0 ]; then
+            echo ""
+            echo "🎉 PHASE 1 QEMU TEST PASSED! 🎉"
+            echo "✅ Kernel booted successfully in QEMU"
+            echo "✅ Phase 1 functionality validated"
+            echo "✅ HAL initialization confirmed"
+          else
+            echo ""
+            echo "❌ PHASE 1 QEMU TEST FAILED! ❌"
+            echo "✗ Missing required validation indicators"
+            exit 1
+          fi
+        else
+          echo "❌ ERROR: QEMU output log not available for analysis"
+          exit 1
+        fi
+        
+        echo ""
+        echo "=== END QEMU TEST REPORT ==="
+
+  qemu-phase1-quick:
+    name: Quick QEMU Phase 1 Test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+    
+    - name: Install QEMU
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y qemu-system-x86 ovmf
+    
+    - name: Build kernel (quick)
+      working-directory: kernel
+      timeout-minutes: 5
+      run: |
+        echo "Building kernel for quick QEMU test..."
+        cargo build --release --target x86_64-unknown-none
+        
+        # Verify build
+        if [ ! -f "target/x86_64-unknown-none/release/polymera-kernel" ]; then
+          echo "❌ Kernel build failed"
+          exit 1
+        fi
+        echo "✅ Kernel built successfully"
+    
+    - name: Run quick QEMU test
+      working-directory: kernel
+      timeout-minutes: 2
+      run: |
+        echo "Running quick QEMU test..."
+        
+        # Create minimal boot environment
+        mkdir -p qemu-quick
+        cp target/x86_64-unknown-none/release/polymera-kernel qemu-quick/kernel.elf
+        
+        # Run QEMU for 5 seconds
+        timeout 5s \
+          qemu-system-x86_64 \
+            -machine q35 \
+            -cpu qemu64 \
+            -m 256M \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/ovmf/OVMF.fd \
+            -drive format=raw,file=fat:rw:qemu-quick \
+            -nographic \
+            -serial stdio \
+            -monitor none \
+            -no-reboot \
+            -no-shutdown \
+            2>&1 | tee qemu-quick/output.log
+        
+        echo "Quick QEMU test completed"
+    
+    - name: Quick validation check
+      working-directory: kernel/qemu-quick
+      run: |
+        echo "Quick validation check..."
+        
+        if [ ! -f "output.log" ]; then
+          echo "❌ No output log found"
+          exit 1
+        fi
+        
+        # Check for basic kernel activity
+        if grep -q "kernel\|Kernel\|KERNEL" output.log; then
+          echo "✅ Kernel activity detected"
+        else
+          echo "❌ No kernel activity detected"
+          exit 1
+        fi
+        
+        echo "✅ Quick QEMU test passed"

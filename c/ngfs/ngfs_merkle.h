@@ -25,6 +25,7 @@ extern "C" {
 #define NGFS_ERROR_INVALID_CBOR -2
 #define NGFS_ERROR_PROOF_INVALID -3
 #define NGFS_ERROR_BUFFER_TOO_SMALL -4
+#define NGFS_ERROR_NOT_IMPLEMENTED -5
 
 /* Constants */
 #define NGFS_BLAKE3_SIZE 32

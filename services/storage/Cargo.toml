@@ -1,0 +1,11 @@
+[package]
+name = "storage-service"
+version = "0.1.0"
+edition = "2021"
+description = "Storage Service for Polymera OS - CoW, Dedup, WAL"
+
+[dependencies]
+sha2 = "0.10"
+
+[features]
+default = []

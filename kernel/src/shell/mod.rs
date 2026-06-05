@@ -3,13 +3,14 @@
 //! This module provides a simple command-line interface accessible via serial
 //! for debugging, monitoring, and controlling the kernel.
 
-use crate::{kprintln, klog, klog, kprint};
+use crate::{kprintln, klog, kprint, format, vec};
 use crate::log::Level;
 use crate::sched::{Task, TaskId, TaskPriority, TaskState};
 use crate::secman::audit;
 use crate::fault_injection;
 use crate::crash_dump;
 use crate::trace;
+use alloc::string::ToString;
 use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::collections::BTreeMap;
@@ -211,9 +212,9 @@ impl Shell {
         
         output.push_str(&format!("Uptime: {} ms\n", stats.uptime_ms));
         output.push_str(&format!("Ticks: {}\n", stats.ticks));
-        output.push_str(&format!("Context Switches: {}\n", stats.context_switches));
-        output.push_str(&format!("Messages Sent: {}\n", stats.messages_sent));
-        output.push_str(&format!("Messages Received: {}\n", stats.messages_received));
+        output.push_str(&format!("Context Switches: {}\n", stats.ctx_switches));
+        output.push_str(&format!("Messages Sent: {}\n", stats.msgs_sent));
+        output.push_str(&format!("Messages Received: {}\n", stats.msgs_recvd));
         output.push_str(&format!("Page Faults: {}\n", stats.page_faults));
         output.push_str(&format!("Active Tasks: {}\n", stats.active_tasks));
         output.push_str(&format!("Blocked Tasks: {}\n", stats.blocked_tasks));
@@ -418,7 +419,7 @@ pub fn shell_task() -> ! {
         }
         
         // Yield to other tasks
-        crate::sched::yield_cpu();
+        crate::sched::yield_current();
         
         // Small delay to prevent busy waiting
         for _ in 0..1000 {
@@ -434,20 +435,10 @@ pub fn init() {
     // Initialize serial interface
     init_serial_interface();
     
-    // Create shell task
-    let shell_task = Task::new(
-        "shell",
-        shell_task,
-        TaskPriority::Normal,
-        4096, // 4KB stack
-    );
-    
-    // Start shell task
-    if let Ok(task_id) = crate::sched::spawn(shell_task) {
-        klog!(INFO, "[SHELL] Shell task started with ID: {}", task_id);
-    } else {
-        klog!(ERROR, "[SHELL] Failed to start shell task");
-    }
+    // Start shell task (best-effort using the lightweight task factory).
+    let task_id = crate::sched::create_task(0);
+    crate::sched::enqueue_task(task_id);
+    klog!(INFO, "[SHELL] Shell task started with ID: {:?}", task_id);
     
     kprintln!("[SHELL] Shell system initialized");
 }

@@ -1,0 +1,621 @@
+name: P4-06 XR/Metaverse Surface Bootstrap
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'services/xr/**'
+      - 'ui/xr/**'
+      - 'tooling/ts/xr_bridge.ts'
+      - 'go/tooling/xrctl/**'
+      - 'tooling/python/xr_validator.py'
+      - 'docs/phase-4/P4-06-A1-XR-BOOTSTRAP.md'
+      - '.github/workflows/p4-06-xr.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'services/xr/**'
+      - 'ui/xr/**'
+      - 'tooling/ts/xr_bridge.ts'
+      - 'go/tooling/xrctl/**'
+      - 'tooling/python/xr_validator.py'
+      - 'docs/phase-4/P4-06-A1-XR-BOOTSTRAP.md'
+      - '.github/workflows/p4-06-xr.yml'
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUST_LOG: info
+
+jobs:
+  # Rust Scene Graph Service Tests
+  rust-scene-service:
+    name: Rust Scene Graph Service
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust-version: [1.70, 1.71, 1.72]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ matrix.rust-version }}
+        components: rustfmt, clippy
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ matrix.rust-version }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-${{ matrix.rust-version }}-
+    
+    - name: Check Rust formatting
+      run: cargo fmt --all -- --check
+    
+    - name: Run Clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+    
+    - name: Build Rust scene service
+      run: |
+        cd services/xr/scene
+        cargo build --release --verbose
+    
+    - name: Run Rust unit tests
+      run: |
+        cd services/xr/scene
+        cargo test --release --verbose
+    
+    - name: Run Rust integration tests
+      run: |
+        cd services/xr/scene
+        cargo test --release --verbose --test integration
+    
+    - name: Generate Rust documentation
+      run: |
+        cd services/xr/scene
+        cargo doc --no-deps --release
+    
+    - name: Upload Rust test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: rust-test-results-${{ matrix.rust-version }}
+        path: |
+          services/xr/scene/target/release/deps/*.xml
+          services/xr/scene/target/doc/
+        retention-days: 7
+
+  # Godot Module Build and Tests
+  godot-module:
+    name: Godot Module (C++)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        godot-version: [4.3, 4.4]
+        build-type: [Debug, Release]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          ninja-build \
+          pkg-config \
+          libssl-dev \
+          libprotobuf-dev \
+          protobuf-compiler \
+          libgrpc++-dev \
+          protobuf-compiler-grpc
+    
+    - name: Download Godot
+      run: |
+        mkdir -p godot
+        cd godot
+        wget -q https://downloads.tuxfamily.org/godotengine/${{ matrix.godot-version }}/Godot_v${{ matrix.godot-version }}-stable_linux.x86_64.zip
+        unzip -q Godot_v${{ matrix.godot-version }}-stable_linux.x86_64.zip
+        chmod +x Godot_v${{ matrix.godot-version }}-stable_linux.x86_64
+        echo "$PWD/Godot_v${{ matrix.godot-version }}-stable_linux.x86_64" >> $GITHUB_PATH
+    
+    - name: Download Godot C++ bindings
+      run: |
+        mkdir -p third_party
+        cd third_party
+        git clone --depth 1 --branch ${{ matrix.godot-version }} https://github.com/godotengine/godot-cpp.git
+        cd godot-cpp
+        scons platform=linux target=template_debug
+        scons platform=linux target=template_release
+    
+    - name: Build Godot module
+      run: |
+        cd ui/xr/godot_modules/aetheris
+        mkdir -p build
+        cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} \
+          -DGODOT_CPP_DIR=../../../../third_party/godot-cpp \
+          -DGODOT_HEADERS_DIR=../../../../third_party/godot-cpp/include
+        make -j$(nproc)
+    
+    - name: Test Godot module (headless)
+      run: |
+        cd ui/xr/godot_app
+        godot --headless --script main.gd --quit
+    
+    - name: Upload Godot build artifacts
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: godot-module-${{ matrix.godot-version }}-${{ matrix.build-type }}
+        path: ui/xr/godot_modules/aetheris/build/
+        retention-days: 7
+
+  # TypeScript XR Bridge Tests
+  typescript-bridge:
+    name: TypeScript XR Bridge
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 21]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: tooling/ts/package-lock.json
+    
+    - name: Install dependencies
+      run: |
+        cd tooling/ts
+        npm ci
+    
+    - name: Check TypeScript compilation
+      run: |
+        cd tooling/ts
+        npm run build
+    
+    - name: Run TypeScript tests
+      run: |
+        cd tooling/ts
+        npm test
+    
+    - name: Run TypeScript linting
+      run: |
+        cd tooling/ts
+        npm run lint
+    
+    - name: Run TypeScript type checking
+      run: |
+        cd tooling/ts
+        npm run type-check
+    
+    - name: Upload TypeScript test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: typescript-test-results-${{ matrix.node-version }}
+        path: tooling/ts/coverage/
+        retention-days: 7
+
+  # Go XR CLI Tests
+  go-cli:
+    name: Go XR CLI
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [1.21, 1.22]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ matrix.go-version }}
+        cache: true
+        cache-dependency-path: go/tooling/xrctl/go.sum
+    
+    - name: Check Go formatting
+      run: |
+        cd go/tooling/xrctl
+        go fmt ./...
+    
+    - name: Run Go vet
+      run: |
+        cd go/tooling/xrctl
+        go vet ./...
+    
+    - name: Run Go linting
+      run: |
+        cd go/tooling/xrctl
+        golangci-lint run
+    
+    - name: Build Go CLI
+      run: |
+        cd go/tooling/xrctl
+        go build -v -o xrctl main.go
+    
+    - name: Run Go tests
+      run: |
+        cd go/tooling/xrctl
+        go test -v ./...
+    
+    - name: Run Go benchmarks
+      run: |
+        cd go/tooling/xrctl
+        go test -bench=. -benchmem ./...
+    
+    - name: Upload Go test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: go-test-results-${{ matrix.go-version }}
+        path: go/tooling/xrctl/coverage/
+        retention-days: 7
+
+  # Python Validator Tests
+  python-validator:
+    name: Python Validator
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9, 3.10, 3.11, 3.12]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+        cache-dependency-path: tooling/python/requirements.txt
+    
+    - name: Install Python dependencies
+      run: |
+        cd tooling/python
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-asyncio
+    
+    - name: Check Python formatting
+      run: |
+        cd tooling/python
+        black --check .
+        isort --check-only .
+    
+    - name: Run Python linting
+      run: |
+        cd tooling/python
+        flake8 .
+        mypy xr_validator.py
+    
+    - name: Run Python tests
+      run: |
+        cd tooling/python
+        pytest -v --cov=xr_validator --cov-report=xml
+    
+    - name: Run Python validator
+      run: |
+        cd tooling/python
+        python xr_validator.py --config config.yaml --output results.json
+    
+    - name: Upload Python test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: python-test-results-${{ matrix.python-version }}
+        path: |
+          tooling/python/coverage.xml
+          tooling/python/results.json
+        retention-days: 7
+
+  # Integration Tests
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [rust-scene-service, godot-module, typescript-bridge, go-cli, python-validator]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Setup system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          ninja-build \
+          pkg-config \
+          libssl-dev \
+          libprotobuf-dev \
+          protobuf-compiler \
+          libgrpc++-dev \
+          protobuf-compiler-grpc \
+          python3 \
+          python3-pip \
+          nodejs \
+          npm \
+          golang-go
+    
+    - name: Build all components
+      run: |
+        # Build Rust scene service
+        cd services/xr/scene
+        cargo build --release
+        
+        # Build Godot module
+        cd ../../../ui/xr/godot_modules/aetheris
+        mkdir -p build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+        make -j$(nproc)
+        
+        # Build Go CLI
+        cd ../../../../go/tooling/xrctl
+        go build -o xrctl main.go
+        
+        # Build TypeScript bridge
+        cd ../../../tooling/ts
+        npm install
+        npm run build
+    
+    - name: Start scene service
+      run: |
+        cd services/xr/scene
+        ./target/release/xr-scene --config config.yaml &
+        sleep 5
+    
+    - name: Run integration tests
+      run: |
+        # Test Go CLI
+        cd go/tooling/xrctl
+        ./xrctl scene spawn cube --position 0,1,0
+        ./xrctl avatar bind did:aeth:test --position 0,1,2
+        ./xrctl demo run --headless --spawn cube --bind-did did:aeth:demo
+        
+        # Test Python validator
+        cd ../../../tooling/python
+        python xr_validator.py --config config.yaml --output integration_results.json
+        
+        # Test TypeScript bridge
+        cd ../ts
+        npm test -- --grep "integration"
+    
+    - name: Run performance benchmarks
+      run: |
+        cd tooling/python
+        python xr_validator.py --config config.yaml --benchmark --output benchmark_results.json
+    
+    - name: Upload integration test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: integration-test-results
+        path: |
+          tooling/python/integration_results.json
+          tooling/python/benchmark_results.json
+        retention-days: 7
+
+  # Security Scanning
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: [rust-scene-service, godot-module, typescript-bridge, go-cli, python-validator]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+    
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v2
+      with:
+        languages: rust, javascript, python, go, cpp
+    
+    - name: Run CodeQL analysis
+      uses: github/codeql-action/analyze@v2
+
+  # Documentation Generation
+  documentation:
+    name: Documentation
+    runs-on: ubuntu-latest
+    needs: [rust-scene-service, godot-module, typescript-bridge, go-cli, python-validator]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Setup system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          ninja-build \
+          pkg-config \
+          libssl-dev \
+          libprotobuf-dev \
+          protobuf-compiler \
+          libgrpc++-dev \
+          protobuf-compiler-grpc \
+          python3 \
+          python3-pip \
+          nodejs \
+          npm \
+          golang-go
+    
+    - name: Generate Rust documentation
+      run: |
+        cd services/xr/scene
+        cargo doc --no-deps --release
+    
+    - name: Generate TypeScript documentation
+      run: |
+        cd tooling/ts
+        npm install
+        npm run docs
+    
+    - name: Generate Go documentation
+      run: |
+        cd go/tooling/xrctl
+        go doc -all . > docs.md
+    
+    - name: Generate Python documentation
+      run: |
+        cd tooling/python
+        pip install sphinx sphinx-rtd-theme
+        sphinx-build -b html . docs/_build/html
+    
+    - name: Deploy documentation
+      uses: peaceiris/actions-gh-pages@v3
+      if: github.ref == 'refs/heads/main'
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs
+
+  # Performance Regression Testing
+  performance-test:
+    name: Performance Test
+    runs-on: ubuntu-latest
+    needs: [rust-scene-service, godot-module, typescript-bridge, go-cli, python-validator]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Setup system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          ninja-build \
+          pkg-config \
+          libssl-dev \
+          libprotobuf-dev \
+          protobuf-compiler \
+          libgrpc++-dev \
+          protobuf-compiler-grpc \
+          python3 \
+          python3-pip \
+          nodejs \
+          npm \
+          golang-go
+    
+    - name: Build all components
+      run: |
+        # Build Rust scene service
+        cd services/xr/scene
+        cargo build --release
+        
+        # Build Godot module
+        cd ../../../ui/xr/godot_modules/aetheris
+        mkdir -p build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+        make -j$(nproc)
+        
+        # Build Go CLI
+        cd ../../../../go/tooling/xrctl
+        go build -o xrctl main.go
+        
+        # Build TypeScript bridge
+        cd ../../../tooling/ts
+        npm install
+        npm run build
+    
+    - name: Run performance benchmarks
+      run: |
+        cd tooling/python
+        python xr_validator.py --config config.yaml --benchmark --output benchmark_results.json
+    
+    - name: Compare performance with baseline
+      run: |
+        cd tooling/python
+        python compare_performance.py benchmark_results.json baseline_results.json
+    
+    - name: Upload performance results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: performance-results
+        path: tooling/python/benchmark_results.json
+        retention-days: 30
+
+  # Final Status Check
+  status-check:
+    name: Status Check
+    runs-on: ubuntu-latest
+    needs: [rust-scene-service, godot-module, typescript-bridge, go-cli, python-validator, integration-tests, security-scan, documentation, performance-test]
+    if: always()
+    
+    steps:
+    - name: Check all jobs status
+      run: |
+        echo "Rust Scene Service: ${{ needs.rust-scene-service.result }}"
+        echo "Godot Module: ${{ needs.godot-module.result }}"
+        echo "TypeScript Bridge: ${{ needs.typescript-bridge.result }}"
+        echo "Go CLI: ${{ needs.go-cli.result }}"
+        echo "Python Validator: ${{ needs.python-validator.result }}"
+        echo "Integration Tests: ${{ needs.integration-tests.result }}"
+        echo "Security Scan: ${{ needs.security-scan.result }}"
+        echo "Documentation: ${{ needs.documentation.result }}"
+        echo "Performance Test: ${{ needs.performance-test.result }}"
+        
+        # Check if any critical job failed
+        if [[ "${{ needs.rust-scene-service.result }}" == "failure" || 
+              "${{ needs.godot-module.result }}" == "failure" || 
+              "${{ needs.typescript-bridge.result }}" == "failure" || 
+              "${{ needs.go-cli.result }}" == "failure" || 
+              "${{ needs.python-validator.result }}" == "failure" || 
+              "${{ needs.integration-tests.result }}" == "failure" ]]; then
+          echo "Critical job failed"
+          exit 1
+        fi
+        
+        echo "All critical jobs passed"

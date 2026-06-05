@@ -20,6 +20,26 @@ env:
   NODE_VERSION: "18"
 
 jobs:
+  # Kernel Build Gate (Deliverable 1A.3)
+  kernel-cargo-check:
+    name: Kernel Cargo Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-unknown-none
+
+      - name: Cargo check kernel
+        run: |
+          cd kernel
+          cargo check --release --target x86_64-unknown-none 2>&1
+        env:
+          RUSTFLAGS: "-C panic=abort"
+
   # SBOM Generation Job
   generate-sbom:
     name: Generate SBOM
@@ -34,10 +54,9 @@ jobs:
           fetch-depth: 0  # Full history for SBOM generation
       
       - name: Setup Rust
-        uses: actions/setup-rust@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          rust-version: ${{ env.RUST_VERSION }}
-          cache: 'cargo'
+          toolchain: ${{ env.RUST_VERSION }}
       
       - name: Setup Go
         uses: actions/setup-go@v4
@@ -185,10 +204,9 @@ jobs:
           path: sbom/
 
       - name: Setup Rust
-        uses: actions/setup-rust@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          rust-version: ${{ env.RUST_VERSION }}
-          cache: 'cargo'
+          toolchain: ${{ env.RUST_VERSION }}
       
       - name: Build Rust components
         run: |
@@ -649,12 +667,12 @@ jobs:
           path: ./
       
       - name: Create release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          name: Release ${{ github.ref }}
           body: |
             ## Polymera OS Release ${{ github.ref }}
             
@@ -682,9 +700,6 @@ jobs:
             ### 🔍 Verification
             
             All signatures have been verified and comply with our security policy.
-            
-          draft: false
-          prerelease: false
       
       - name: Upload release assets
         run: |

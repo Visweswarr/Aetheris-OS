@@ -1,0 +1,500 @@
+name: P4-03 Network Observability & Chaos Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'services/net/**'
+      - 'go/tooling/**'
+      - 'tooling/**'
+      - '.github/workflows/p4-03-net-obs.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'services/net/**'
+      - 'go/tooling/**'
+      - 'tooling/**'
+      - '.github/workflows/p4-03-net-obs.yml'
+  schedule:
+    # Run daily at 4 AM UTC
+    - cron: '0 4 * * *'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUST_LOG: info
+
+jobs:
+  # Observability tests
+  observability-tests:
+    name: Observability Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        test-type: ['metrics', 'tracing', 'chaos']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+    
+    - name: Install Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          build-essential \
+          libssl-dev \
+          pkg-config \
+          libclang-dev \
+          libudev-dev \
+          python3 \
+          python3-pip
+    
+    - name: Install Python dependencies
+      run: |
+        pip install pyyaml aiohttp requests
+    
+    - name: Build components
+      run: |
+        # Build crypto module
+        cd crypto
+        cargo build --release --features full
+        
+        # Build networking services
+        cd ../services/net/posixnet
+        cargo build --release
+        
+        # Build Go tools
+        cd ../../../go/tooling/netctl
+        go build -o netctl .
+    
+    - name: Install TypeScript dependencies
+      run: |
+        cd tooling/ts
+        npm install typescript @types/node
+    
+    - name: Compile TypeScript modules
+      run: |
+        cd tooling/ts
+        npx tsc net-chaos.ts
+    
+    - name: Run observability tests
+      run: |
+        cd go/tooling/netctl
+        
+        # Create results directory
+        mkdir -p runs
+        
+        # Run tests based on type
+        case "${{ matrix.test-type }}" in
+          "metrics")
+            echo "Running metrics tests..."
+            timeout 5m ./netctl metrics collect --duration 2m --interval 1s --output runs/metrics_test.json || true
+            ;;
+          "tracing")
+            echo "Running tracing tests..."
+            timeout 5m ./netctl trace start --output runs/ --sample-rate 1.0 || true
+            ;;
+          "chaos")
+            echo "Running chaos tests..."
+            timeout 5m ./netctl chaos inject --loss 2% --latency 50ms --duration 2m --output runs/chaos_test.json || true
+            ;;
+        esac
+    
+    - name: Validate observability results
+      run: |
+        cd go/tooling/netctl
+        
+        # Validate results based on type
+        case "${{ matrix.test-type }}" in
+          "metrics")
+            if [ -f runs/metrics_test.json ]; then
+              echo "Validating metrics..."
+              python3 ../../../tooling/python/net_obs_validator.py validate-metrics runs/metrics_test.json
+            fi
+            ;;
+          "tracing")
+            if [ -f runs/network_traces.json ]; then
+              echo "Validating traces..."
+              python3 ../../../tooling/python/net_obs_validator.py validate-traces runs/network_traces.json
+            fi
+            ;;
+          "chaos")
+            if [ -f runs/chaos_test.json ]; then
+              echo "Validating chaos results..."
+              python3 ../../../tooling/python/net_obs_validator.py validate-chaos runs/chaos_test.json
+            fi
+            ;;
+        esac
+    
+    - name: Upload observability results
+      uses: actions/upload-artifact@v3
+      with:
+        name: observability-results-${{ matrix.test-type }}
+        path: go/tooling/netctl/runs/
+        if-no-files-found: ignore
+
+  # Chaos mini-tests
+  chaos-mini-tests:
+    name: Chaos Mini-Tests
+    runs-on: ubuntu-latest
+    needs: observability-tests
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+    
+    - name: Install Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Install Python dependencies
+      run: |
+        pip install pyyaml aiohttp requests
+    
+    - name: Build components
+      run: |
+        # Build crypto module
+        cd crypto
+        cargo build --release --features full
+        
+        # Build networking services
+        cd ../services/net/posixnet
+        cargo build --release
+        
+        # Build Go tools
+        cd ../../../go/tooling/netctl
+        go build -o netctl .
+    
+    - name: Download observability results
+      uses: actions/download-artifact@v3
+      with:
+        name: observability-results-chaos
+        path: runs/
+    
+    - name: Run chaos mini-tests
+      run: |
+        cd go/tooling/netctl
+        
+        # Create results directory
+        mkdir -p runs
+        
+        # Run chaos mini-tests (loss 2%, 2m duration)
+        echo "Running chaos mini-tests..."
+        timeout 5m ./netctl chaos inject --loss 0.02 --latency 100ms --duration 2m --output runs/chaos_mini.json || true
+        
+        # Run concurrent benchmark with chaos
+        echo "Running benchmark with chaos..."
+        timeout 10m ./netctl concurrent --clients 1000 --duration 3m --tls off --json runs/bench_with_chaos.json || true
+    
+    - name: Validate chaos mini-tests
+      run: |
+        cd go/tooling/netctl
+        
+        # Validate chaos results
+        if [ -f runs/chaos_mini.json ]; then
+          echo "Validating chaos mini-test results..."
+          python3 ../../../tooling/python/net_obs_validator.py validate-chaos runs/chaos_mini.json
+        fi
+        
+        # Validate error budget
+        if [ -f runs/bench_with_chaos.json ] && [ -f perf/baselines/p4_03_net_adv.json ]; then
+          echo "Validating error budget..."
+          python3 ../../../tooling/python/net_obs_validator.py validate-error-budget \
+            runs/bench_with_chaos.json \
+            perf/baselines/p4_03_net_adv.json \
+            --threshold 0.01 || echo "Error budget validation completed"
+        fi
+        
+        # Validate latency regression
+        if [ -f runs/bench_with_chaos.json ] && [ -f perf/baselines/p4_03_net_adv.json ]; then
+          echo "Validating latency regression..."
+          python3 ../../../tooling/python/net_obs_validator.py validate-latency-regression \
+            runs/bench_with_chaos.json \
+            perf/baselines/p4_03_net_adv.json \
+            --threshold 0.2 || echo "Latency regression validation completed"
+        fi
+    
+    - name: Check error budget and latency regression
+      run: |
+        cd go/tooling/netctl
+        
+        # Check if error budget exceeded
+        if [ -f runs/chaos_mini.json ]; then
+          echo "Checking error budget..."
+          python3 ../../../tooling/python/net_obs_validator.py validate-error-budget \
+            runs/bench_with_chaos.json \
+            perf/baselines/p4_03_net_adv.json \
+            --threshold 0.01
+          
+          if [ $? -ne 0 ]; then
+            echo "❌ Error budget exceeded!"
+            exit 1
+          fi
+        fi
+        
+        # Check if latency regression exceeded
+        if [ -f runs/bench_with_chaos.json ]; then
+          echo "Checking latency regression..."
+          python3 ../../../tooling/python/net_obs_validator.py validate-latency-regression \
+            runs/bench_with_chaos.json \
+            perf/baselines/p4_03_net_adv.json \
+            --threshold 0.2
+          
+          if [ $? -ne 0 ]; then
+            echo "❌ Latency regression exceeded!"
+            exit 1
+          fi
+        fi
+        
+        echo "✅ All chaos mini-tests passed!"
+    
+    - name: Upload chaos mini-test results
+      uses: actions/upload-artifact@v3
+      with:
+        name: chaos-mini-test-results
+        path: go/tooling/netctl/runs/
+        if-no-files-found: ignore
+
+  # Metrics and tracing integration
+  metrics-tracing-integration:
+    name: Metrics & Tracing Integration
+    runs-on: ubuntu-latest
+    needs: observability-tests
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+    
+    - name: Install Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Install Python dependencies
+      run: |
+        pip install pyyaml aiohttp requests
+    
+    - name: Build components
+      run: |
+        # Build crypto module
+        cd crypto
+        cargo build --release --features full
+        
+        # Build networking services
+        cd ../services/net/posixnet
+        cargo build --release
+        
+        # Build Go tools
+        cd ../../../go/tooling/netctl
+        go build -o netctl .
+    
+    - name: Install TypeScript dependencies
+      run: |
+        cd tooling/ts
+        npm install typescript @types/node
+    
+    - name: Compile TypeScript modules
+      run: |
+        cd tooling/ts
+        npx tsc net-chaos.ts
+    
+    - name: Start metrics server
+      run: |
+        cd go/tooling/netctl
+        
+        # Start metrics server in background
+        ./netctl metrics serve --port 9090 --json runs/metrics_integration.json &
+        METRICS_PID=$!
+        echo $METRICS_PID > metrics.pid
+        
+        # Wait for server to start
+        sleep 5
+        
+        # Test Prometheus endpoint
+        curl -f http://localhost:9090/metrics || echo "Prometheus endpoint test completed"
+    
+    - name: Start tracing collection
+      run: |
+        cd go/tooling/netctl
+        
+        # Start tracing collection
+        ./netctl trace start --output runs/ --sample-rate 1.0 &
+        TRACE_PID=$!
+        echo $TRACE_PID > trace.pid
+        
+        # Wait for tracing to start
+        sleep 2
+    
+    - name: Run integration tests
+      run: |
+        cd go/tooling/netctl
+        
+        # Run concurrent benchmark with observability
+        echo "Running benchmark with observability..."
+        timeout 5m ./netctl concurrent --clients 500 --duration 2m --tls off --json runs/obs_integration.json || true
+        
+        # Run TypeScript chaos test
+        echo "Running TypeScript chaos test..."
+        cd ../../../tooling/ts
+        timeout 3m node net-chaos.js chaos --loss 0.01 --latency 50 --duration 60000 || true
+    
+    - name: Stop observability services
+      run: |
+        cd go/tooling/netctl
+        
+        # Stop metrics server
+        if [ -f metrics.pid ]; then
+          kill $(cat metrics.pid) || true
+          rm metrics.pid
+        fi
+        
+        # Stop tracing collection
+        if [ -f trace.pid ]; then
+          kill $(cat trace.pid) || true
+          rm trace.pid
+        fi
+    
+    - name: Validate integration results
+      run: |
+        cd go/tooling/netctl
+        
+        # Validate metrics
+        if [ -f runs/metrics_integration.json ]; then
+          echo "Validating metrics integration..."
+          python3 ../../../tooling/python/net_obs_validator.py validate-metrics runs/metrics_integration.json
+        fi
+        
+        # Validate traces
+        if [ -f runs/network_traces.json ]; then
+          echo "Validating trace integration..."
+          python3 ../../../tooling/python/net_obs_validator.py validate-traces runs/network_traces.json
+        fi
+        
+        # Validate Prometheus endpoint
+        echo "Validating Prometheus endpoint..."
+        python3 ../../../tooling/python/net_obs_validator.py validate-prometheus --url http://localhost:9090 || echo "Prometheus validation completed"
+    
+    - name: Upload integration results
+      uses: actions/upload-artifact@v3
+      with:
+        name: metrics-tracing-integration-results
+        path: go/tooling/netctl/runs/
+        if-no-files-found: ignore
+
+  # TypeScript observability tests
+  typescript-observability:
+    name: TypeScript Observability Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: |
+        cd tooling/ts
+        npm install typescript @types/node
+    
+    - name: Compile TypeScript modules
+      run: |
+        cd tooling/ts
+        npx tsc net-chaos.ts
+    
+    - name: Run TypeScript observability tests
+      run: |
+        cd tooling/ts
+        
+        # Create results directory
+        mkdir -p runs
+        
+        # Run chaos test
+        echo "Running TypeScript chaos test..."
+        timeout 3m node net-chaos.js chaos --loss 0.02 --latency 100 --duration 60000 || true
+        
+        # Run metrics test
+        echo "Running TypeScript metrics test..."
+        timeout 3m node net-chaos.js metrics --port 9091 --json runs/ts_metrics.json || true
+    
+    - name: Validate TypeScript results
+      run: |
+        cd tooling/ts
+        
+        # Validate metrics if generated
+        if [ -f runs/ts_metrics.json ]; then
+          echo "Validating TypeScript metrics..."
+          python3 ../../tooling/python/net_obs_validator.py validate-metrics runs/ts_metrics.json
+        fi
+    
+    - name: Upload TypeScript results
+      uses: actions/upload-artifact@v3
+      with:
+        name: typescript-observability-results
+        path: tooling/ts/runs/
+        if-no-files-found: ignore
+
+  # Final status check
+  status-check:
+    name: Status Check
+    runs-on: ubuntu-latest
+    needs: [observability-tests, chaos-mini-tests, metrics-tracing-integration, typescript-observability]
+    if: always()
+    
+    steps:
+    - name: Check all jobs status
+      run: |
+        echo "Observability Tests: ${{ needs.observability-tests.result }}"
+        echo "Chaos Mini-Tests: ${{ needs.chaos-mini-tests.result }}"
+        echo "Metrics & Tracing Integration: ${{ needs.metrics-tracing-integration.result }}"
+        echo "TypeScript Observability: ${{ needs.typescript-observability.result }}"
+        
+        if [[ "${{ needs.observability-tests.result }}" != "success" || 
+              "${{ needs.chaos-mini-tests.result }}" != "success" || 
+              "${{ needs.metrics-tracing-integration.result }}" != "success" || 
+              "${{ needs.typescript-observability.result }}" != "success" ]]; then
+          echo "Some observability tests failed!"
+          exit 1
+        else
+          echo "All observability tests passed!"
+        fi

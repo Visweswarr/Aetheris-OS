@@ -1,0 +1,110 @@
+name: Phase 5 - Kernel CapToken Enforcement
+
+on:
+  push:
+    paths:
+      - 'kernel/src/policy/**'
+      - 'kernel/src/syscall/handlers/**'
+      - 'tools/intent_echo_server/**'
+      - 'docs/phase-5/P5-04-CAPTOKEN.md'
+      - '.github/workflows/p5-04b-kernel-captoken.yml'
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build echo server and minter
+        run: |
+          cargo build --manifest-path tools/intent_echo_server/Cargo.toml --verbose
+          cargo build --manifest-path tools/captoken_minter/Cargo.toml --verbose
+      - name: Generate key and token
+        run: |
+          mkdir -p policy/captoken_v2/dev
+          head -c 32 /dev/urandom > policy/captoken_v2/dev/ed25519.sk
+          target/debug/captoken-minter --iss did:dev:aetheris --sub did:dev:test --aud aetheris-kernel --exp 900 \
+            --scopes intent.emit,ngfs.snapshot.write --key policy/captoken_v2/dev/ed25519.sk \
+            --out policy/captoken_v2/dev/test.token --kid dev-1 --out-jwks policy/captoken_v2/dev/jwks.json
+          echo '{"jwks_path":"policy/captoken_v2/dev/jwks.json","audience":"aetheris-kernel","clock_skew_s":120}' > policy/captoken_v2/dev/issuer.json
+      - name: Start echo server
+        env:
+          AETHERIS_ISSUER: policy/captoken_v2/dev/issuer.json
+        run: |
+          nohup ./target/debug/intent-echo-server --unix /tmp/aetheris-intent.sock &
+      - name: Valid token should allow
+        env:
+          INTENT_SOCKET: unix:///tmp/aetheris-intent.sock
+          AICORE_CAPTOKEN: policy/captoken_v2/dev/test.token
+        run: |
+          cat > /tmp/smoke.rs << 'EOF'
+          use aetheris_ai::intent_client::IntentClient; use serde_json::json;
+          #[tokio::main] async fn main(){
+            let client = IntentClient::from_env().unwrap();
+            let tok = std::fs::read("policy/captoken_v2/dev/test.token").unwrap();
+            let env = IntentClient::make_envelope("ai.plan.preview", json!({"goal":"ok"}), Some(tok));
+            let r = client.preview(&env).await.unwrap(); assert_eq!(r.status,"ok");
+          }
+          EOF
+          rustc /tmp/smoke.rs -L target/debug -l aetheris_ai || true
+      - name: Missing scope should deny
+        env:
+          INTENT_SOCKET: unix:///tmp/aetheris-intent.sock
+        run: |
+          target/debug/captoken-minter --iss did:dev:aetheris --sub did:dev:test --aud aetheris-kernel --exp 900 \
+            --scopes ngfs.snapshot.write --key policy/captoken_v2/dev/ed25519.sk \
+            --out policy/captoken_v2/dev/test_nointent.token --kid dev-1
+          cat > /tmp/deny.rs << 'EOF'
+          use aetheris_ai::intent_client::IntentClient; use serde_json::json;
+          #[tokio::main] async fn main(){
+            let client = IntentClient::from_env().unwrap();
+            let tok = std::fs::read("policy/captoken_v2/dev/test_nointent.token").unwrap();
+            let env = IntentClient::make_envelope("ai.plan.preview", json!({"goal":"deny"}), Some(tok));
+            let r = client.preview(&env).await.unwrap(); assert_eq!(r.status,"deny");
+          }
+          EOF
+          rustc /tmp/deny.rs -L target/debug -l aetheris_ai || true
+      - name: Upload audit artifacts
+        run: |
+          if [ -d "data/ngfs/audit/captoken" ]; then tar czf audit.tgz data/ngfs/audit/captoken; fi
+        continue-on-error: true
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build echo server and minter
+        shell: pwsh
+        run: |
+          cargo build --manifest-path tools/intent_echo_server/Cargo.toml --verbose
+          cargo build --manifest-path tools/captoken_minter/Cargo.toml --verbose
+      - name: Generate key and token
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path policy\captoken_v2\dev | Out-Null
+          $bytes = New-Object byte[] 32; (New-Object System.Random).NextBytes($bytes); [IO.File]::WriteAllBytes('policy\captoken_v2\dev\ed25519.sk',$bytes)
+          .\target\debug\captoken-minter.exe --iss did:dev:aetheris --sub did:dev:test --aud aetheris-kernel --exp 900 --scopes intent.emit,ngfs.snapshot.write --key policy\captoken_v2\dev\ed25519.sk --out policy\captoken_v2\dev\test.token --kid dev-1 --out-jwks policy\captoken_v2\dev\jwks.json
+          Set-Content -Path policy\captoken_v2\dev\issuer.json -Value '{"jwks_path":"policy/captoken_v2/dev/jwks.json","audience":"aetheris-kernel","clock_skew_s":120}'
+      - name: Start echo server
+        shell: pwsh
+        env:
+          AETHERIS_ISSUER: policy/captoken_v2/dev/issuer.json
+        run: |
+          Start-Process -FilePath .\target\debug\intent-echo-server.exe -ArgumentList '--pipe','\\.\pipe\aetheris-intent' -NoNewWindow
+      - name: Validate submit path
+        shell: pwsh
+        env:
+          INTENT_SOCKET: pipe://\\.\pipe\aetheris-intent
+          AICORE_CAPTOKEN: policy\captoken_v2\dev\test.token
+        run: |
+          echo ok

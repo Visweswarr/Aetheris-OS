@@ -4,7 +4,8 @@
 //! including syscall entry/exit and exec load events. Events are rate-limited
 //! to prevent duplicates and use compact encoding to minimize overhead.
 
-use crate::{kprintln, klog};
+use crate::{kprintln, klog, format};
+use alloc::string::ToString;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::time::Duration;
@@ -65,6 +66,14 @@ pub enum AuditReason {
     IpcCapInvalid = 1603,
     IpcReplayDetected = 1604,
     
+    // Policy events (1700-1799)
+    PolicySimAllow = 1700,
+    PolicySimDeny = 1701,
+    PolicyBundleLoadOk = 1702,
+    PolicyBundleHashMismatch = 1703,
+    PolicyEvalAllow = 1704,
+    PolicyEvalDeny = 1705,
+    
     // World Model events (2100-2199)
     WorldModelPutOk = 2100,
     WorldModelPutEnospc = 2101,
@@ -119,14 +128,6 @@ pub enum AuditReason {
     EvPollDeny = 2307,
     EvAckOk = 2308,
     EvAckDeny = 2309,
-    
-    // Policy Guardrail events (2310-2315)
-    PolicyBundleLoadOk = 2310,
-    PolicyBundleHashMismatch = 2311,
-    PolicyEvalAllow = 2312,
-    PolicyEvalDeny = 2313,
-    PolicySimAllow = 2314,
-    PolicySimDeny = 2315,
     
     // LLM Adapter events (2316-2321)
     LlmSessionOpen = 2316,
@@ -720,6 +721,7 @@ pub enum AuditCategory {
     EventFabric,
     PolicyGuardrail,
     LlmAdapter,
+    Filesystem,
     Unknown,
 }
 
@@ -738,6 +740,7 @@ impl fmt::Display for AuditCategory {
             AuditCategory::EventFabric => write!(f, "EVENT_FABRIC"),
             AuditCategory::PolicyGuardrail => write!(f, "POLICY_GUARDRAIL"),
             AuditCategory::LlmAdapter => write!(f, "LLM_ADAPTER"),
+            AuditCategory::Filesystem => write!(f, "FILESYSTEM"),
             AuditCategory::Unknown => write!(f, "UNKNOWN"),
         }
     }
@@ -797,7 +800,12 @@ impl AuditEvent {
         self.context = Some(context);
         self
     }
-    
+
+    /// Get the current timestamp in nanoseconds.
+    pub fn get_timestamp_ns() -> u64 {
+        crate::time::get_current_time_ms().saturating_mul(1_000_000)
+    }
+
     /// Set the actor ID
     pub fn with_actor(mut self, actor_id: u64) -> Self {
         self.actor_id = Some(actor_id);
@@ -1054,9 +1062,97 @@ impl AuditPayload {
     }
 }
 
-/// Structured audit event
+/// Audit reason codes for boundary transitions
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[repr(u16)]
+pub enum AuditReasonCode {
+    /// Syscall entry boundary
+    SYSCALL_ENTRY = 100,
+    /// Syscall exit boundary
+    SYSCALL_EXIT = 101,
+    /// Exec load event
+    EXEC_LOAD = 102,
+    /// Task creation
+    TASK_CREATE = 103,
+    /// Task termination
+    TASK_EXIT = 104,
+    /// IPC send
+    IPC_SEND = 105,
+    /// IPC receive
+    IPC_RECV = 106,
+    /// Memory map
+    MMAP = 107,
+    /// Memory unmap
+    MUNMAP = 108,
+    /// Signal delivery
+    SIGNAL = 109,
+}
+
+impl AuditReasonCode {
+    /// Get the name of this reason code
+    pub fn name(&self) -> &'static str {
+        match self {
+            AuditReasonCode::SYSCALL_ENTRY => "SYSCALL_ENTRY",
+            AuditReasonCode::SYSCALL_EXIT => "SYSCALL_EXIT",
+            AuditReasonCode::EXEC_LOAD => "EXEC_LOAD",
+            AuditReasonCode::TASK_CREATE => "TASK_CREATE",
+            AuditReasonCode::TASK_EXIT => "TASK_EXIT",
+            AuditReasonCode::IPC_SEND => "IPC_SEND",
+            AuditReasonCode::IPC_RECV => "IPC_RECV",
+            AuditReasonCode::MMAP => "MMAP",
+            AuditReasonCode::MUNMAP => "MUNMAP",
+            AuditReasonCode::SIGNAL => "SIGNAL",
+        }
+    }
+    
+    /// Get the category of this reason code
+    pub fn category(&self) -> &'static str {
+        match self {
+            AuditReasonCode::SYSCALL_ENTRY | AuditReasonCode::SYSCALL_EXIT => "BOUNDARY",
+            AuditReasonCode::EXEC_LOAD => "EXEC",
+            AuditReasonCode::TASK_CREATE | AuditReasonCode::TASK_EXIT => "TASK",
+            AuditReasonCode::IPC_SEND | AuditReasonCode::IPC_RECV => "IPC",
+            AuditReasonCode::MMAP | AuditReasonCode::MUNMAP => "MEMORY",
+            AuditReasonCode::SIGNAL => "SIGNAL",
+        }
+    }
+    
+    /// Check if this is a boundary transition event
+    pub fn is_boundary_transition(&self) -> bool {
+        matches!(self, AuditReasonCode::SYSCALL_ENTRY | AuditReasonCode::SYSCALL_EXIT)
+    }
+    
+    /// Get the severity of this reason code
+    pub fn severity(&self) -> AuditReasonCodeSeverity {
+        match self {
+            AuditReasonCode::EXEC_LOAD => AuditReasonCodeSeverity::High,
+            AuditReasonCode::SYSCALL_ENTRY | AuditReasonCode::SYSCALL_EXIT => AuditReasonCodeSeverity::Low,
+            _ => AuditReasonCodeSeverity::Medium,
+        }
+    }
+}
+
+/// Severity levels for audit reason codes
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditReasonCodeSeverity {
+    Low,
+    Medium,
+    High,
+}
+
+impl AuditReasonCodeSeverity {
+    pub fn name(&self) -> &'static str {
+        match self {
+            AuditReasonCodeSeverity::Low => "LOW",
+            AuditReasonCodeSeverity::Medium => "MEDIUM",
+            AuditReasonCodeSeverity::High => "HIGH",
+        }
+    }
+}
+
+/// Structured boundary audit event (for syscall/exec transitions)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuditEvent {
+pub struct BoundaryAuditEvent {
     /// Unique event identifier
     pub id: u64,
     /// Timestamp in nanoseconds since epoch
@@ -1075,8 +1171,8 @@ pub struct AuditEvent {
     pub stack_depth: u8,
 }
 
-impl AuditEvent {
-    /// Create a new audit event
+impl BoundaryAuditEvent {
+    /// Create a new boundary audit event
     pub fn new(
         pid: u32,
         tid: u32,
@@ -1146,7 +1242,7 @@ impl AuditEvent {
 /// important event visibility.
 pub struct AuditRateLimiter {
     /// Event counters by reason code
-    counters: Mutex<alloc::collections::HashMap<AuditReasonCode, RateLimitCounter>>,
+    counters: Mutex<alloc::collections::BTreeMap<AuditReasonCode, RateLimitCounter>>,
     /// Rate limit configuration
     config: RateLimitConfig,
 }
@@ -1187,7 +1283,7 @@ impl AuditRateLimiter {
     /// Create a new rate limiter with default configuration
     pub fn new() -> Self {
         Self {
-            counters: Mutex::new(alloc::collections::HashMap::new()),
+            counters: Mutex::new(alloc::collections::BTreeMap::new()),
             config: RateLimitConfig::default(),
         }
     }
@@ -1195,7 +1291,7 @@ impl AuditRateLimiter {
     /// Create a new rate limiter with custom configuration
     pub fn with_config(config: RateLimitConfig) -> Self {
         Self {
-            counters: Mutex::new(alloc::collections::HashMap::new()),
+            counters: Mutex::new(alloc::collections::BTreeMap::new()),
             config,
         }
     }
@@ -1292,20 +1388,20 @@ pub fn should_rate_limit_audit(reason: AuditReasonCode) -> bool {
     }
 }
 
-/// Create and emit an audit event
+/// Create and emit a boundary audit event
 pub fn emit_audit_event(
     pid: u32,
     tid: u32,
     reason: AuditReasonCode,
     payload: AuditPayload,
-) -> Option<AuditEvent> {
+) -> Option<BoundaryAuditEvent> {
     // Check rate limiting
     if should_rate_limit_audit(reason) {
         return None;
     }
     
     // Create the event
-    let event = AuditEvent::new(pid, tid, reason, payload);
+    let event = BoundaryAuditEvent::new(pid, tid, reason, payload);
     
     // Log the event
     klog!(DEBUG, "{}", event.to_string());
@@ -1324,8 +1420,8 @@ macro_rules! audit_syscall_entry {
             $pid,
             $tid,
             $crate::secman::audit_codes::AuditReasonCode::SYSCALL_ENTRY,
-            $crate::secman::audit_codes::AuditPayload::new(&format!("syscall={}", $syscall_id))
-                .with_context("syscall_id", &$syscall_id.to_string())
+            $crate::secman::audit_codes::AuditPayload::new(&::alloc::format!("syscall={}", $syscall_id))
+                .with_context("syscall_id", &::alloc::string::ToString::to_string(&$syscall_id))
         );
     };
 }
@@ -1338,9 +1434,9 @@ macro_rules! audit_syscall_exit {
             $pid,
             $tid,
             $crate::secman::audit_codes::AuditReasonCode::SYSCALL_EXIT,
-            $crate::secman::audit_codes::AuditPayload::new(&format!("syscall={},result={}", $syscall_id, $result))
-                .with_context("syscall_id", &$syscall_id.to_string())
-                .with_context("result", &$result.to_string())
+            $crate::secman::audit_codes::AuditPayload::new(&::alloc::format!("syscall={},result={}", $syscall_id, $result))
+                .with_context("syscall_id", &::alloc::string::ToString::to_string(&$syscall_id))
+                .with_context("result", &::alloc::string::ToString::to_string(&$result))
                 .with_duration($duration_ns)
         );
     };
@@ -1356,7 +1452,7 @@ macro_rules! audit_exec_load {
             $crate::secman::audit_codes::AuditReasonCode::EXEC_LOAD,
             $crate::secman::audit_codes::AuditPayload::new(&format!("exec={},size={}", $image_path, $image_size))
                 .with_context("image_path", $image_path)
-                .with_context("image_size", &$image_size.to_string())
+                .with_context("image_size", &::alloc::string::ToString::to_string(&$image_size))
         );
     };
 }
@@ -1383,7 +1479,7 @@ pub fn test_audit_codes() {
     kprintln!("✓ Payload encoding: {}", payload.encode());
     
     // Test event creation
-    let event = AuditEvent::new(123, 456, reason, payload);
+    let event = BoundaryAuditEvent::new(123, 456, reason, payload);
     kprintln!("✓ Event created: {}", event.to_string());
     kprintln!("✓ Event encoding: {}", event.encode());
     
@@ -1455,7 +1551,7 @@ mod tests {
         assert_eq!(reason.name(), "SYSCALL_ENTRY");
         assert_eq!(reason.category(), "BOUNDARY");
         assert!(reason.is_boundary_transition());
-        assert_eq!(reason.severity(), AuditSeverity::LOW);
+        assert_eq!(reason.severity(), AuditReasonCodeSeverity::Low);
     }
     
     #[test]
@@ -1473,7 +1569,7 @@ mod tests {
     #[test]
     fn test_event_creation() {
         let payload = AuditPayload::new("test");
-        let event = AuditEvent::new(1, 2, AuditReasonCode::SYSCALL_ENTRY, payload);
+        let event = BoundaryAuditEvent::new(1, 2, AuditReasonCode::SYSCALL_ENTRY, payload);
         
         assert_eq!(event.pid, 1);
         assert_eq!(event.tid, 2);
@@ -1496,3 +1592,12 @@ mod tests {
     }
 }
 
+
+
+// Constant aliases for policy audit codes
+pub const POLICY_SIM_ALLOW: AuditReason = AuditReason::PolicySimAllow;
+pub const POLICY_SIM_DENY: AuditReason = AuditReason::PolicySimDeny;
+pub const POLICY_BUNDLE_LOAD_OK: AuditReason = AuditReason::PolicyBundleLoadOk;
+pub const POLICY_BUNDLE_HASH_MISMATCH: AuditReason = AuditReason::PolicyBundleHashMismatch;
+pub const POLICY_EVAL_ALLOW: AuditReason = AuditReason::PolicyEvalAllow;
+pub const POLICY_EVAL_DENY: AuditReason = AuditReason::PolicyEvalDeny;

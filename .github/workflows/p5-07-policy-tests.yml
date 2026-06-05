@@ -1,0 +1,48 @@
+name: Phase 5 — Policy Engine Tests
+
+on:
+  push:
+    paths:
+      - 'crates/policy_engine/**'
+      - 'tools/captoken_minter/**'
+      - '.github/workflows/p5-07-policy-tests.yml'
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build minter (for tests)
+        run: cargo build --manifest-path tools/captoken_minter/Cargo.toml
+      - name: policy_engine tests
+        run: cargo test -p policy_engine --all-features -- --nocapture
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: policy_engine tests
+        run: cargo test -p policy_engine --all-features -- --nocapture
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: policy_engine tests
+        run: cargo test -p policy_engine --all-features -- --nocapture

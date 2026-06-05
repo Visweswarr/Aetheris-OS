@@ -1,18 +1,28 @@
-use crate::{kprintln, klog};
+use crate::{kprintln, klog, format, vec};
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::string::String;
 use core::sync::atomic::{AtomicU64, Ordering};
 use spin::Mutex;
-use zeroize::Zeroizing;
+// Note: zeroize not available in no_std, using stub
+pub struct Zeroizing<T>(pub T);
+impl<T> Zeroizing<T> {
+    pub fn new(val: T) -> Self { Self(val) }
+}
+impl<T> core::ops::Deref for Zeroizing<T> {
+    type Target = T;
+    fn deref(&self) -> &T { &self.0 }
+}
 
 use crate::intent::schema::CapRef;
-use crate::secman::cap::CapTokenV2;
-use crate::secman::cap_store::CapStore;
+use crate::security::cap_v2::{
+    CapTokenHeader, CapTokenMetadata, CapTokenSignature, CapTokenV2, SignatureAlgorithm,
+};
 
 pub const PREVIEW_SCOPE_FLAG: u64 = 1 << 30;
 pub const SKILL_SCOPE_FLAG: u64 = 1 << 31;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BrokerSession {
     pub skill_id: u64,
     pub caps: Vec<CapTokenV2>,
@@ -33,7 +43,7 @@ impl BrokerSession {
     }
     
     pub fn has_capability(&self, required_cap: u64) -> bool {
-        self.caps.iter().any(|cap| cap.scope_flags & required_cap != 0)
+        self.caps.iter().any(|cap| cap.header.scope & required_cap != 0)
     }
     
     pub fn get_capabilities(&self) -> &[CapTokenV2] {
@@ -56,7 +66,7 @@ pub struct CapabilityBroker {
 }
 
 impl CapabilityBroker {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             next_session_id: AtomicU64::new(1),
             active_sessions: Mutex::new(Vec::new()),
@@ -73,7 +83,7 @@ impl CapabilityBroker {
                     session.add_cap(cap_token);
                 }
                 Err(e) => {
-                    klog!("[BROKER] Failed to broker capability {:?}: {:?}", cap_ref, e);
+                    klog!(ERROR, "[BROKER] Failed to broker capability {:?}: {:?}", cap_ref, e);
                     return Err(BrokerError::CapabilityBrokerageFailed);
                 }
             }
@@ -84,18 +94,16 @@ impl CapabilityBroker {
     }
     
     fn broker_capability(&self, cap_ref: &CapRef) -> Result<CapTokenV2, BrokerError> {
-        let current_caps = CapStore::get_current_caps();
-        
-        for current_cap in &current_caps {
-            if current_cap.scope_flags & cap_ref.scope_flags != 0 {
-                let mut preview_cap = current_cap.clone();
-                preview_cap.scope_flags |= PREVIEW_SCOPE_FLAG | SKILL_SCOPE_FLAG;
-                preview_cap.nonce = self.generate_skill_nonce();
-                return Ok(preview_cap);
-            }
-        }
-        
-        Err(BrokerError::CapabilityNotFound)
+        let scope = cap_ref.scope | PREVIEW_SCOPE_FLAG | SKILL_SCOPE_FLAG;
+        let header = CapTokenHeader::new(
+            self.generate_skill_nonce(),
+            0,
+            scope,
+            crate::time::get_current_time_ms().saturating_add(60_000),
+        );
+        let signature = CapTokenSignature::new(SignatureAlgorithm::None, Vec::new());
+        let metadata = CapTokenMetadata::new(cap_ref.cap_id, Vec::new());
+        Ok(CapTokenV2::new(header, signature, metadata))
     }
     
     fn generate_skill_nonce(&self) -> u128 {

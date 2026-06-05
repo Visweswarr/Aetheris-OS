@@ -117,6 +117,13 @@ impl core::fmt::Display for MessagePriority {
     }
 }
 
+impl MessagePriority {
+    /// Numeric priority used by policy and trace layers.
+    pub const fn as_u8(self) -> u8 {
+        self as u8
+    }
+}
+
 /// Message types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageType {
@@ -198,6 +205,23 @@ impl Default for MessageFlags {
 }
 
 impl MessageFlags {
+    pub const ACK_REQUIRED: u32 = 1 << 0;
+    pub const URGENT: u32 = 1 << 1;
+    pub const RELIABLE: u32 = 1 << 2;
+    pub const SECURE: u32 = 1 << 3;
+    pub const BROADCAST: u32 = 1 << 4;
+    pub const COMPRESSED: u32 = 1 << 5;
+
+    /// Compatibility alias used by authenticated IPC fast paths.
+    pub const REALTIME: Self = Self {
+        ack_required: false,
+        urgent: true,
+        reliable: false,
+        secure: false,
+        broadcast: false,
+        compressed: false,
+    };
+
     /// Create flags for a simple notification
     pub const fn notification() -> Self {
         Self {
@@ -244,6 +268,42 @@ impl MessageFlags {
             broadcast: false,
             compressed: false,
         }
+    }
+
+    pub fn bits(&self) -> u32 {
+        let mut bits = 0;
+        if self.ack_required { bits |= Self::ACK_REQUIRED; }
+        if self.urgent { bits |= Self::URGENT; }
+        if self.reliable { bits |= Self::RELIABLE; }
+        if self.secure { bits |= Self::SECURE; }
+        if self.broadcast { bits |= Self::BROADCAST; }
+        if self.compressed { bits |= Self::COMPRESSED; }
+        bits
+    }
+
+    pub fn from_bits(bits: u32) -> Option<Self> {
+        let known = Self::ACK_REQUIRED
+            | Self::URGENT
+            | Self::RELIABLE
+            | Self::SECURE
+            | Self::BROADCAST
+            | Self::COMPRESSED;
+        if bits & !known != 0 {
+            return None;
+        }
+
+        Some(Self {
+            ack_required: bits & Self::ACK_REQUIRED != 0,
+            urgent: bits & Self::URGENT != 0,
+            reliable: bits & Self::RELIABLE != 0,
+            secure: bits & Self::SECURE != 0,
+            broadcast: bits & Self::BROADCAST != 0,
+            compressed: bits & Self::COMPRESSED != 0,
+        })
+    }
+
+    pub fn contains(&self, required: Self) -> bool {
+        self.bits() & required.bits() == required.bits()
     }
 }
 
@@ -333,6 +393,58 @@ impl MessagePayload {
             MessagePayload::Signal { .. } => 12,
             MessagePayload::Error { message, .. } => 4 + message.len(),
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.size()
+    }
+
+    /// Deterministic byte representation used by authentication paths.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        match self {
+            MessagePayload::Empty => out.push(0),
+            MessagePayload::Data(data) => {
+                out.push(1);
+                out.extend_from_slice(data);
+            }
+            MessagePayload::Text(text) => {
+                out.push(2);
+                out.extend_from_slice(text);
+            }
+            MessagePayload::Structured(map) => {
+                out.push(3);
+                out.extend_from_slice(&(map.len() as u32).to_le_bytes());
+                for (key, value) in map {
+                    out.extend_from_slice(&(key.len() as u32).to_le_bytes());
+                    out.extend_from_slice(key);
+                    out.extend_from_slice(&(value.len() as u32).to_le_bytes());
+                    out.extend_from_slice(value);
+                }
+            }
+            MessagePayload::FileDescriptor(fd) => {
+                out.push(4);
+                out.extend_from_slice(&fd.to_le_bytes());
+            }
+            MessagePayload::MemoryRegion { start_addr, size, permissions } => {
+                out.push(5);
+                out.extend_from_slice(&start_addr.to_le_bytes());
+                out.extend_from_slice(&(*size as u64).to_le_bytes());
+                out.extend_from_slice(&permissions.to_le_bytes());
+            }
+            MessagePayload::Signal { signal, data } => {
+                out.push(6);
+                out.extend_from_slice(&signal.to_le_bytes());
+                out.extend_from_slice(&data.to_le_bytes());
+            }
+            MessagePayload::Error { code, message } => {
+                out.push(7);
+                out.extend_from_slice(&code.to_le_bytes());
+                out.extend_from_slice(&(message.len() as u32).to_le_bytes());
+                out.extend_from_slice(message);
+            }
+        }
+        out
     }
     
     /// Check if payload is empty

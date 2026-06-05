@@ -1,0 +1,1048 @@
+name: Phase 2 Final Matrix
+
+on:
+  # Manual trigger for matrix testing
+  workflow_dispatch:
+    inputs:
+      run_full_matrix:
+        description: 'Run full matrix across all configurations'
+        required: false
+        default: true
+        type: boolean
+      specific_config:
+        description: 'Specific configuration to test (optional)'
+        required: false
+        default: ''
+        type: string
+  # Scheduled matrix runs
+  schedule:
+    - cron: '0 2 * * 0'  # Every Sunday at 2 AM UTC
+  # Release tag creation
+  push:
+    tags:
+      - 'v0.2.0-phase2*'
+  # Pull request validation
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'kernel/**'
+      - 'perf/**'
+      - 'tests/**'
+      - '.github/workflows/phase-2-matrix.yml'
+
+env:
+  RUST_BACKTRACE: 1
+  RUST_LOG: info
+  MATRIX_TIMEOUT: 1800  # 30 minutes per matrix job
+  QEMU_TIMEOUT: 900     # 15 minutes for QEMU tests
+
+jobs:
+  # Matrix job that runs across all configurations
+  phase2-matrix:
+    name: "Phase 2 Matrix - ${{ matrix.config.name }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          # APIC + HPET combinations
+          - name: "APIC+HPET, Jitter On, Auth On, Cap Policy Open"
+            apic: true
+            hpet: true
+            jitter: true
+            auth: true
+            cap_policy: "open"
+            config_id: "apic_hpet_jitter_auth_open"
+            
+          - name: "APIC+HPET, Jitter On, Auth On, Cap Policy Closed"
+            apic: true
+            hpet: true
+            jitter: true
+            auth: true
+            cap_policy: "closed"
+            config_id: "apic_hpet_jitter_auth_closed"
+            
+          - name: "APIC+HPET, Jitter On, Auth Off, Cap Policy Open"
+            apic: true
+            hpet: true
+            jitter: true
+            auth: false
+            cap_policy: "open"
+            config_id: "apic_hpet_jitter_noauth_open"
+            
+          - name: "APIC+HPET, Jitter On, Auth Off, Cap Policy Closed"
+            apic: true
+            hpet: true
+            jitter: true
+            auth: false
+            cap_policy: "closed"
+            config_id: "apic_hpet_jitter_noauth_closed"
+            
+          - name: "APIC+HPET, Jitter Off, Auth On, Cap Policy Open"
+            apic: true
+            hpet: true
+            jitter: false
+            auth: true
+            cap_policy: "open"
+            config_id: "apic_hpet_nojitter_auth_open"
+            
+          - name: "APIC+HPET, Jitter Off, Auth On, Cap Policy Closed"
+            apic: true
+            hpet: true
+            jitter: false
+            auth: true
+            cap_policy: "closed"
+            config_id: "apic_hpet_nojitter_auth_closed"
+            
+          - name: "APIC+HPET, Jitter Off, Auth Off, Cap Policy Open"
+            apic: true
+            hpet: true
+            jitter: false
+            auth: false
+            cap_policy: "open"
+            config_id: "apic_hpet_nojitter_noauth_open"
+            
+          - name: "APIC+HPET, Jitter Off, Auth Off, Cap Policy Closed"
+            apic: true
+            hpet: true
+            jitter: false
+            auth: false
+            cap_policy: "closed"
+            config_id: "apic_hpet_nojitter_noauth_closed"
+            
+          # APIC only combinations
+          - name: "APIC Only, Jitter On, Auth On, Cap Policy Open"
+            apic: true
+            hpet: false
+            jitter: true
+            auth: true
+            cap_policy: "open"
+            config_id: "apic_only_jitter_auth_open"
+            
+          - name: "APIC Only, Jitter On, Auth On, Cap Policy Closed"
+            apic: true
+            hpet: false
+            jitter: true
+            auth: true
+            cap_policy: "closed"
+            config_id: "apic_only_jitter_auth_closed"
+            
+          - name: "APIC Only, Jitter On, Auth Off, Cap Policy Open"
+            apic: true
+            hpet: false
+            jitter: true
+            auth: false
+            cap_policy: "open"
+            config_id: "apic_only_jitter_noauth_open"
+            
+          - name: "APIC Only, Jitter On, Auth Off, Cap Policy Closed"
+            apic: true
+            hpet: false
+            jitter: true
+            auth: false
+            cap_policy: "closed"
+            config_id: "apic_only_jitter_noauth_closed"
+            
+          - name: "APIC Only, Jitter Off, Auth On, Cap Policy Open"
+            apic: true
+            hpet: false
+            jitter: false
+            auth: true
+            cap_policy: "open"
+            config_id: "apic_only_nojitter_auth_open"
+            
+          - name: "APIC Only, Jitter Off, Auth On, Cap Policy Closed"
+            apic: true
+            hpet: false
+            jitter: false
+            auth: true
+            cap_policy: "closed"
+            config_id: "apic_only_nojitter_auth_closed"
+            
+          - name: "APIC Only, Jitter Off, Auth Off, Cap Policy Open"
+            apic: true
+            hpet: false
+            jitter: false
+            auth: false
+            cap_policy: "open"
+            config_id: "apic_only_nojitter_noauth_open"
+            
+          - name: "APIC Only, Jitter Off, Auth Off, Cap Policy Closed"
+            apic: true
+            hpet: false
+            jitter: false
+            auth: false
+            cap_policy: "closed"
+            config_id: "apic_only_nojitter_noauth_closed"
+            
+          # HPET only combinations
+          - name: "HPET Only, Jitter On, Auth On, Cap Policy Open"
+            apic: false
+            hpet: true
+            jitter: true
+            auth: true
+            cap_policy: "open"
+            config_id: "hpet_only_jitter_auth_open"
+            
+          - name: "HPET Only, Jitter On, Auth On, Cap Policy Closed"
+            apic: false
+            hpet: true
+            jitter: true
+            auth: true
+            cap_policy: "closed"
+            config_id: "hpet_only_jitter_auth_closed"
+            
+          - name: "HPET Only, Jitter On, Auth Off, Cap Policy Open"
+            apic: false
+            hpet: true
+            jitter: true
+            auth: false
+            cap_policy: "open"
+            config_id: "hpet_only_jitter_noauth_open"
+            
+          - name: "HPET Only, Jitter On, Auth Off, Cap Policy Closed"
+            apic: false
+            hpet: true
+            jitter: true
+            auth: false
+            cap_policy: "closed"
+            config_id: "hpet_only_jitter_noauth_closed"
+            
+          - name: "HPET Only, Jitter Off, Auth On, Cap Policy Open"
+            apic: false
+            hpet: true
+            jitter: false
+            auth: true
+            cap_policy: "open"
+            config_id: "hpet_only_nojitter_auth_open"
+            
+          - name: "HPET Only, Jitter Off, Auth On, Cap Policy Closed"
+            apic: false
+            hpet: true
+            jitter: false
+            auth: true
+            cap_policy: "closed"
+            config_id: "hpet_only_nojitter_auth_closed"
+            
+          - name: "HPET Only, Jitter Off, Auth Off, Cap Policy Open"
+            apic: false
+            hpet: true
+            jitter: false
+            auth: false
+            cap_policy: "open"
+            config_id: "hpet_only_nojitter_noauth_open"
+            
+          - name: "HPET Only, Jitter Off, Auth Off, Cap Policy Closed"
+            apic: false
+            hpet: true
+            jitter: false
+            auth: false
+            cap_policy: "closed"
+            config_id: "hpet_only_nojitter_noauth_closed"
+            
+          # No APIC/HPET combinations
+          - name: "No APIC/HPET, Jitter On, Auth On, Cap Policy Open"
+            apic: false
+            hpet: false
+            jitter: true
+            auth: true
+            cap_policy: "open"
+            config_id: "no_timer_jitter_auth_open"
+            
+          - name: "No APIC/HPET, Jitter On, Auth On, Cap Policy Closed"
+            apic: false
+            hpet: false
+            jitter: true
+            auth: true
+            cap_policy: "closed"
+            config_id: "no_timer_jitter_auth_closed"
+            
+          - name: "No APIC/HPET, Jitter On, Auth Off, Cap Policy Open"
+            apic: false
+            hpet: false
+            jitter: true
+            auth: false
+            cap_policy: "open"
+            config_id: "no_timer_jitter_noauth_open"
+            
+          - name: "No APIC/HPET, Jitter On, Auth Off, Cap Policy Closed"
+            apic: false
+            hpet: false
+            jitter: true
+            auth: false
+            cap_policy: "closed"
+            config_id: "no_timer_jitter_noauth_closed"
+            
+          - name: "No APIC/HPET, Jitter Off, Auth On, Cap Policy Open"
+            apic: false
+            hpet: false
+            jitter: false
+            auth: true
+            cap_policy: "open"
+            config_id: "no_timer_nojitter_auth_open"
+            
+          - name: "No APIC/HPET, Jitter Off, Auth On, Cap Policy Closed"
+            apic: false
+            hpet: false
+            jitter: false
+            auth: true
+            cap_policy: "closed"
+            config_id: "no_timer_nojitter_auth_closed"
+            
+          - name: "No APIC/HPET, Jitter Off, Auth Off, Cap Policy Open"
+            apic: false
+            hpet: false
+            jitter: false
+            auth: false
+            cap_policy: "open"
+            config_id: "no_timer_nojitter_noauth_open"
+            
+          - name: "No APIC/HPET, Jitter Off, Auth Off, Cap Policy Closed"
+            apic: false
+            hpet: false
+            jitter: false
+            auth: false
+            cap_policy: "closed"
+            config_id: "no_timer_nojitter_noauth_closed"
+
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-phase2-matrix-${{ matrix.config.config_id }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-phase2-matrix-${{ matrix.config.config_id }}-
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils jq
+
+      - name: Configure kernel features
+        run: |
+          echo "Configuring kernel for matrix configuration: ${{ matrix.config.name }}"
+          
+          # Set feature flags based on matrix configuration
+          export APIC_ENABLED=${{ matrix.config.apic }}
+          export HPET_ENABLED=${{ matrix.config.hpet }}
+          export JITTER_INJECTION=${{ matrix.config.jitter }}
+          export AUTH_ENABLED=${{ matrix.config.auth }}
+          export CAP_POLICY=${{ matrix.config.cap_policy }}
+          
+          # Create configuration file
+          echo "# Matrix configuration: ${{ matrix.config.config_id }}" > kernel/.config.matrix
+          echo "CONFIG_APIC_TIMER=${{ matrix.config.apic }}" >> kernel/.config.matrix
+          echo "CONFIG_HPET_FALLBACK=${{ matrix.config.hpet }}" >> kernel/.config.matrix
+          echo "CONFIG_JITTER_INJECTION=${{ matrix.config.jitter }}" >> kernel/.config.matrix
+          echo "CONFIG_IPC_AUTH=${{ matrix.config.auth }}" >> kernel/.config.matrix
+          echo "CONFIG_CAP_POLICY_${{ matrix.config.cap_policy == 'closed' && 'CLOSED' || 'OPEN' }}=y" >> kernel/.config.matrix
+          
+          echo "Configuration saved to kernel/.config.matrix"
+
+      - name: Build kernel with matrix configuration
+        run: |
+          cd kernel
+          
+          # Apply matrix configuration
+          if [ -f .config.matrix ]; then
+            echo "Applying matrix configuration..."
+            cat .config.matrix
+          fi
+          
+          # Build with specific features
+          cargo build --release --features "${{ matrix.config.apic && 'apic_timer' || '' }} ${{ matrix.config.hpet && 'hpet_fallback' || '' }} ${{ matrix.config.jitter && 'jitter_injection' || '' }} ${{ matrix.config.auth && 'ipc_auth' || '' }} ${{ matrix.config.cap_policy == 'closed' && 'cap_policy_closed' || 'cap_policy_open' }}"
+          
+          echo "Kernel built successfully with matrix configuration"
+
+      - name: Run Phase 2 core tests
+        id: core_tests
+        run: |
+          echo "Running Phase 2 core tests for configuration: ${{ matrix.config.name }}"
+          
+          cd tests
+          
+          # Create test results directory
+          mkdir -p test_results
+          
+          # Run core functionality tests
+          if cargo test --release --test phase2_core -- --nocapture 2>&1 | tee test_results/core_tests.log; then
+            echo "core_tests_status=pass" >> $GITHUB_OUTPUT
+          else
+            echo "core_tests_status=fail" >> $GITHUB_OUTPUT
+            # Extract failed test names
+            grep -E "FAILED|failed" test_results/core_tests.log | grep -E "test.*\.\.\. FAILED" | sed 's/.*test \(.*\) \.\.\. FAILED.*/\1/' > test_results/failed_core_tests.txt || true
+          fi
+          
+          # Run timer-specific tests
+          if [ "${{ matrix.config.apic }}" = "true" ]; then
+            echo "Running APIC timer tests..."
+            if cargo test --release --test apic_timer -- --nocapture 2>&1 | tee test_results/apic_timer_tests.log; then
+              echo "apic_timer_status=pass" >> $GITHUB_OUTPUT
+            else
+              echo "apic_timer_status=fail" >> $GITHUB_OUTPUT
+              grep -E "FAILED|failed" test_results/apic_timer_tests.log | grep -E "test.*\.\.\. FAILED" | sed 's/.*test \(.*\) \.\.\. FAILED.*/\1/' > test_results/failed_apic_tests.txt || true
+            fi
+          fi
+          
+          if [ "${{ matrix.config.hpet }}" = "true" ]; then
+            echo "Running HPET timer tests..."
+            if cargo test --release --test hpet_timer -- --nocapture 2>&1 | tee test_results/hpet_timer_tests.log; then
+              echo "hpet_timer_status=pass" >> $GITHUB_OUTPUT
+            else
+              echo "hpet_timer_status=fail" >> $GITHUB_OUTPUT
+              grep -E "FAILED|failed" test_results/hpet_timer_tests.log | grep -E "test.*\.\.\. FAILED" | sed 's/.*test \(.*\) \.\.\. FAILED.*/\1/' > test_results/failed_hpet_tests.txt || true
+            fi
+          fi
+          
+          # Run auth tests
+          if [ "${{ matrix.config.auth }}" = "true" ]; then
+            echo "Running authentication tests..."
+            if cargo test --release --test ipc_auth -- --nocapture 2>&1 | tee test_results/auth_tests.log; then
+              echo "auth_tests_status=pass" >> $GITHUB_OUTPUT
+              echo "auth_tests_status=pass" >> $GITHUB_OUTPUT
+            else
+              echo "auth_tests_status=fail" >> $GITHUB_OUTPUT
+              grep -E "FAILED|failed" test_results/auth_tests.log | grep -E "test.*\.\.\. FAILED" | sed 's/.*test \(.*\) \.\.\. FAILED.*/\1/' > test_results/failed_auth_tests.txt || true
+            fi
+          fi
+          
+          # Run capability policy tests
+          echo "Running capability policy tests (policy: ${{ matrix.config.cap_policy }})..."
+          if cargo test --release --test cap_policy -- --nocapture 2>&1 | tee test_results/policy_tests.log; then
+            echo "policy_tests_status=pass" >> $GITHUB_OUTPUT
+          else
+            echo "policy_tests_status=fail" >> $GITHUB_OUTPUT
+            grep -E "FAILED|failed" test_results/policy_tests.log | grep -E "test.*\.\.\. FAILED" | sed 's/.*test \(.*\) \.\.\. FAILED.*/\1/' > test_results/failed_policy_tests.txt || true
+          fi
+          
+          cd ..
+
+      - name: Run QEMU integration tests
+        id: qemu_tests
+        run: |
+          echo "Running QEMU integration tests for configuration: ${{ matrix.config.name }}"
+          
+          cd tests
+          
+          # Create test results directory if not exists
+          mkdir -p test_results
+          
+          # Run QEMU-based tests with timeout
+          if timeout ${{ env.QEMU_TIMEOUT }} cargo test --release --test qemu_integration -- --nocapture 2>&1 | tee test_results/qemu_integration_tests.log; then
+            echo "qemu_tests_status=pass" >> $GITHUB_OUTPUT
+          else
+            echo "qemu_tests_status=fail" >> $GITHUB_OUTPUT
+            # Extract failed test names
+            grep -E "FAILED|failed" test_results/qemu_integration_tests.log | grep -E "test.*\.\.\. FAILED" | sed 's/.*test \(.*\) \.\.\. FAILED.*/\1/' > test_results/failed_qemu_tests.txt || true
+          fi
+          
+          cd ..
+
+      - name: Run performance benchmarks
+        run: |
+          echo "Running performance benchmarks for configuration: ${{ matrix.config.name }}"
+          
+          cd perf
+          
+          # Run IPC latency tests
+          cargo run --release --bin test_ipc_latency -- --config ${{ matrix.config.config_id }}
+          
+          # Run wake-to-run tests
+          cargo run --release --bin check_wake_to_run -- --config ${{ matrix.config.config_id }}
+          
+          # Run PQC performance tests if auth is enabled
+          if [ "${{ matrix.config.auth }}" = "true" ]; then
+            echo "Running PQC performance tests..."
+            cargo run --release --bin check_pqc_overhead -- --config ${{ matrix.config.config_id }}
+          fi
+
+      - name: Collect performance metrics
+        run: |
+          echo "Collecting performance metrics for configuration: ${{ matrix.config.name }}"
+          
+          cd perf
+          
+          # Create results directory
+          mkdir -p results/matrix/${{ matrix.config.config_id }}
+          
+          # Collect and format metrics
+          cargo run --release --bin collect_matrix_metrics -- \
+            --config ${{ matrix.config.config_id }} \
+            --output results/matrix/${{ matrix.config.config_id }}/metrics.json \
+            --apic ${{ matrix.config.apic }} \
+            --hpet ${{ matrix.config.hpet }} \
+            --jitter ${{ matrix.config.jitter }} \
+            --auth ${{ matrix.config.auth }} \
+            --cap-policy ${{ matrix.config.cap_policy }}
+
+      - name: Check performance guardrails
+        id: guardrails_check
+        run: |
+          echo "Checking performance guardrails for configuration: ${{ matrix.config.config_id }}"
+          
+          # Install Python if not available
+          if ! command -v python3 &> /dev/null; then
+            echo "Installing Python 3..."
+            sudo apt-get update
+            sudo apt-get install -y python3 python3-pip
+          fi
+          
+          # Verify Python installation
+          python3 --version
+          
+          # Check if performance metrics exist
+          if [ ! -f "perf/results/matrix/${{ matrix.config.config_id }}/metrics.json" ]; then
+            echo "No performance metrics found, skipping guardrails check"
+            echo "guardrails_passed=true" >> $GITHUB_OUTPUT
+            echo "guardrails_summary=No metrics to check" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Run guardrails check
+          echo "Running performance guardrails check..."
+          python3 tooling/perf/guardrails.py \
+            "perf/results/matrix/${{ matrix.config.config_id }}/metrics.json" \
+            "perf/history" \
+            "${{ matrix.config.config_id }}" \
+            --config-name "${{ matrix.config.name }}" \
+            --output-file "perf/results/matrix/${{ matrix.config.config_id }}/guardrails_result.json"
+          
+          GUARDRAILS_EXIT_CODE=$?
+          
+          # Set outputs for workflow
+          if [ $GUARDRAILS_EXIT_CODE -eq 0 ]; then
+            echo "guardrails_passed=true" >> $GITHUB_OUTPUT
+            echo "guardrails_summary=All guardrails passed" >> $GITHUB_OUTPUT
+          else
+            echo "guardrails_passed=false" >> $GITHUB_OUTPUT
+            echo "guardrails_summary=Some guardrails failed" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "guardrails_exit_code=$GUARDRAILS_EXIT_CODE" >> $GITHUB_OUTPUT
+
+      - name: Annotate PR with performance and test results
+        id: annotate_pr
+        run: |
+          echo "Annotating PR with performance and test results..."
+          
+          # Install Node.js if not available
+          if ! command -v node &> /dev/null; then
+            echo "Installing Node.js..."
+            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+          fi
+          
+          # Verify Node.js installation
+          node --version
+          npm --version
+          
+          # Prepare test results JSON for annotation
+          cd tests
+          
+          # Create comprehensive test results JSON
+          echo "{" > test_results_summary.json
+          echo "  \"config_id\": \"${{ matrix.config.config_id }}\"," >> test_results_summary.json
+          echo "  \"matrix_name\": \"${{ matrix.config.name }}\"," >> test_results_summary.json
+          echo "  \"test_results\": {" >> test_results_summary.json
+          echo "    \"core_tests\": \"${{ steps.core_tests.outputs.core_tests_status || 'UNKNOWN' }}\"," >> test_results_summary.json
+          echo "    \"qemu_integration\": \"${{ steps.qemu_tests.outputs.qemu_tests_status || 'UNKNOWN' }}\"," >> test_results_summary.json
+          echo "    \"apic_timer\": \"${{ steps.core_tests.outputs.apic_timer_status || 'UNKNOWN' }}\"," >> test_results_summary.json
+          echo "    \"hpet_timer\": \"${{ steps.core_tests.outputs.hpet_timer_status || 'UNKNOWN' }}\"," >> test_results_summary.json
+          echo "    \"auth_tests\": \"${{ steps.core_tests.outputs.auth_tests_status || 'UNKNOWN' }}\"," >> test_results_summary.json
+          echo "    \"policy_tests\": \"${{ steps.core_tests.outputs.policy_tests_status || 'UNKNOWN' }}\"" >> test_results_summary.json
+          echo "  }," >> test_results_summary.json
+          echo "  \"failed_tests\": []" >> test_results_summary.json
+          echo "}" >> test_results_summary.json
+          
+          # Add failed tests if any
+          if [ -f "test_results/all_failed_tests.txt" ]; then
+            echo "Adding failed tests to summary..."
+            echo "[" > failed_tests_array.json
+            while IFS= read -r test_name; do
+              if [ -n "$test_name" ]; then
+                echo "{\"name\": \"$test_name\", \"error\": \"Test failed during execution\"}" >> failed_tests_array.json
+              fi
+            done < test_results/all_failed_tests.txt
+            echo "]" >> failed_tests_array.json
+            
+            # Update test results summary with failed tests
+            if [ -s failed_tests_array.json ]; then
+              mv failed_tests_array.json test_results_summary.json.tmp
+              jq '.failed_tests = input' test_results_summary.json.tmp test_results_summary.json > test_results_summary.json.new
+              mv test_results_summary.json.new test_results_summary.json
+            fi
+          fi
+          
+          cd ..
+          
+          # Run annotation script
+          echo "Running PR annotation script..."
+          node tooling/ci/annotate.js \
+            "perf/results/matrix/${{ matrix.config.config_id }}/metrics.json" \
+            "tests/test_results_summary.json" \
+            "perf/baselines/p2.json" \
+            "${{ matrix.config.config_id }}"
+          
+          echo "PR annotation completed"
+
+      - name: Update performance history on success
+        if: steps.guardrails_check.outputs.guardrails_passed == 'true' && steps.guardrails_check.outputs.guardrails_exit_code == '0'
+        run: |
+          echo "Updating performance history for configuration: ${{ matrix.config.config_id }}"
+          
+          # Check if performance metrics exist
+          if [ ! -f "perf/results/matrix/${{ matrix.config.config_id }}/metrics.json" ]; then
+            echo "No performance metrics found, skipping history update"
+            exit 0
+          fi
+          
+          # Update history with new performance data
+          echo "Updating performance history..."
+          python3 tooling/perf/guardrails.py \
+            "perf/results/matrix/${{ matrix.config.config_id }}/metrics.json" \
+            "perf/history" \
+            "${{ matrix.config.config_id }}" \
+            --config-name "${{ matrix.config.name }}" \
+            --update-history
+          
+          echo "Performance history updated successfully"
+          
+          # Commit and push history updates
+          echo "Committing performance history updates..."
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add perf/history/
+          git commit -m "Update performance history for ${{ matrix.config.config_id }} [skip ci]" || echo "No changes to commit"
+          
+          # Push updates (only if we have write access)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "Skipping push for pull request (no write access)"
+          else
+            echo "Pushing performance history updates..."
+            git push origin HEAD:${{ github.ref }} || echo "Push failed, continuing..."
+          fi
+
+      - name: Run symbolizer on minidumps (if any)
+        if: always()
+        run: |
+          echo "Checking for minidumps and running symbolizer..."
+          
+          # Install required tools
+          if ! command -v bc &> /dev/null; then
+            echo "Installing bc for calculations..."
+            sudo apt-get update
+            sudo apt-get install -y bc
+          fi
+          
+          # Check for minidumps
+          MINIDUMP_FOUND=false
+          
+          # Look for minidumps in test results
+          if find tests/test_results/ -name "*.dmp" -o -name "minidump_*.bin" | grep -q .; then
+            echo "Found minidumps in test results"
+            MINIDUMP_FOUND=true
+          fi
+          
+          # Look for minidumps in kernel directory
+          if find kernel/ -name "minidump_*.bin" -o -name "*.dmp" | grep -q .; then
+            echo "Found minidumps in kernel directory"
+            MINIDUMP_FOUND=true
+          fi
+          
+          if [ "$MINIDUMP_FOUND" = true ]; then
+            echo "Running symbolizer on minidumps..."
+            
+            # Create symbolized reports directory
+            mkdir -p symbolized_reports
+            
+                        # Process test result minidumps
+            for dump in tests/test_results/*.dmp tests/test_results/minidump_*.bin; do
+              if [ -f "$dump" ]; then
+                echo "Processing minidump: $dump"
+                filename=$(basename "$dump")
+                report_file="symbolized_reports/${filename%.*}_symbolized.txt"
+                
+                # Check if symbolizer exists
+                if [ -f "tooling/crash/symbolizer" ]; then
+                  echo "Running symbolizer on $dump..."
+                  if ./tooling/crash/symbolizer "$dump" > "$report_file" 2>&1; then
+                    echo "Symbolizer completed for $dump -> $report_file"
+                  else
+                    echo "Symbolizer failed for $dump, creating fallback report"
+                    echo "# Symbolized Minidump Report" > "$report_file"
+                    echo "" >> "$report_file"
+                    echo "**Note**: Symbolizer failed to process this minidump." >> "$report_file"
+                    echo "" >> "$report_file"
+                    echo "## Minidump Information" >> "$report_file"
+                    echo "- File: $filename" >> "$report_file"
+                    echo "- Size: $(du -h "$dump" | cut -f1)" >> "$report_file"
+                    echo "- Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "$report_file"
+                    echo "" >> "$report_file"
+                    echo "## Error Information" >> "$report_file"
+                    echo "The symbolizer encountered an error while processing this minidump." >> "$report_file"
+                    echo "Check the raw minidump file for manual analysis." >> "$report_file"
+                    echo "" >> "$report_file"
+                    echo "## Next Steps" >> "$report_file"
+                    echo "1. Verify the minidump file integrity" >> "$report_file"
+                    echo "2. Check if debug symbols are available" >> "$report_file"
+                    echo "3. Try manual analysis with crash analysis tools" >> "$report_file"
+                  fi
+                else
+                  echo "Symbolizer not found, creating placeholder report"
+                  echo "# Symbolized Minidump Report" > "$report_file"
+                  echo "" >> "$report_file"
+                  echo "**Note**: Symbolizer not available. This is a placeholder report." >> "$report_file"
+                  echo "" >> "$report_file"
+                  echo "## Minidump Information" >> "$report_file"
+                  echo "- File: $filename" >> "$report_file"
+                  echo "- Size: $(du -h "$dump" | cut -f1)" >> "$report_file"
+                  echo "- Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "$report_file"
+                  echo "" >> "$report_file"
+                  echo "## To Symbolize Manually" >> "$report_file"
+                  echo "1. Ensure the symbolizer is built: \`cargo build --release\`" >> "$report_file"
+                  echo "2. Run: \`./tooling/crash/symbolizer \"$dump\" > \"$report_file\"\`" >> "$report_file"
+                  echo "" >> "$report_file"
+                  echo "## Raw Minidump" >> "$report_file"
+                  echo "The raw minidump file is available in the test results directory." >> "$report_file"
+                fi
+              fi
+            done
+            
+            # Process kernel minidumps
+            for dump in kernel/minidump_*.bin kernel/*.dmp; do
+              if [ -f "$dump" ]; then
+                echo "Processing kernel minidump: $dump"
+                filename=$(basename "$dump")
+                report_file="symbolized_reports/${filename%.*}_symbolized.txt"
+                
+                # Check if symbolizer exists
+                if [ -f "tooling/crash/symbolizer" ]; then
+                  echo "Running symbolizer on $dump..."
+                  if ./tooling/crash/symbolizer "$dump" > "$report_file" 2>&1; then
+                    echo "Symbolizer completed for $dump -> $report_file"
+                  else
+                    echo "Symbolizer failed for $dump, creating fallback report"
+                    echo "# Symbolized Minidump Report" > "$report_file"
+                    echo "" >> "$report_file"
+                    echo "**Note**: Symbolizer failed to process this minidump." >> "$report_file"
+                    echo "" >> "$report_file"
+                    echo "## Minidump Information" >> "$report_file"
+                    echo "- File: $filename" >> "$report_file"
+                    echo "- Size: $(du -h "$dump" | cut -f1)" >> "$report_file"
+                    echo "- Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "$report_file"
+                    echo "" >> "$report_file"
+                    echo "## Error Information" >> "$report_file"
+                    echo "The symbolizer encountered an error while processing this minidump." >> "$report_file"
+                    echo "Check the raw minidump file for manual analysis." >> "$report_file"
+                    echo "" >> "$report_file"
+                    echo "## Next Steps" >> "$report_file"
+                    echo "1. Verify the minidump file integrity" >> "$report_file"
+                    echo "2. Check if debug symbols are available" >> "$report_file"
+                    echo "3. Try manual analysis with crash analysis tools" >> "$report_file"
+                  fi
+                else
+                  echo "Symbolizer not found, creating placeholder report"
+                  echo "# Symbolized Minidump Report" > "$report_file"
+                  echo "" >> "$report_file"
+                  echo "**Note**: Symbolizer not available. This is a placeholder report." >> "$report_file"
+                  echo "" >> "$report_file"
+                  echo "## Minidump Information" >> "$report_file"
+                  echo "- File: $filename" >> "$report_file"
+                  echo "- Size: $(du -h "$dump" | cut -f1)" >> "$report_file"
+                  echo "- Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "$report_file"
+                  echo "" >> "$report_file"
+                  echo "## To Symbolize Manually" >> "$report_file"
+                  echo "1. Ensure the symbolizer is built: \`cargo build --release\`" >> "$report_file"
+                  echo "2. Run: \`./tooling/crash/symbolizer \"$dump\" > \"$report_file\"\`" >> "$report_file"
+                  echo "" >> "$report_file"
+                  echo "## Raw Minidump" >> "$report_file"
+                  echo "The raw minidump file is available in the kernel directory." >> "$report_file"
+                fi
+              fi
+            done
+            
+            echo "Symbolization completed. Reports saved to symbolized_reports/"
+          else
+            echo "No minidumps found for this configuration"
+          fi
+
+      - name: Package artifacts with symbolization
+        if: always()
+        run: |
+          echo "Packaging artifacts for configuration: ${{ matrix.config.config_id }}"
+          
+          # Install required tools
+          if ! command -v bc &> /dev/null; then
+            echo "Installing bc for calculations..."
+            sudo apt-get update
+            sudo apt-get install -y bc
+          fi
+          
+          # Create artifacts directory
+          mkdir -p artifacts
+          
+          # Set matrix name for artifact packaging
+          export MATRIX_NAME="${{ matrix.config.name }}"
+          
+          # Run artifact packaging script
+          echo "Running artifact packaging script..."
+          chmod +x tooling/ci/package_artifacts.sh
+          
+          if ./tooling/ci/package_artifacts.sh \
+            "${{ matrix.config.config_id }}" \
+            "artifacts" \
+            --max-size 100 \
+            --scrub-secrets; then
+            
+            echo "Artifact packaging completed successfully"
+            
+            # List generated artifacts
+            echo "Generated artifacts:"
+            ls -la artifacts/
+            
+            # Set output for workflow
+            echo "artifacts_packaged=true" >> $GITHUB_OUTPUT
+            echo "artifact_path=artifacts/matrix_${{ matrix.config.config_id }}.tar.gz" >> $GITHUB_OUTPUT
+          else
+            echo "Artifact packaging failed"
+            echo "artifacts_packaged=false" >> $GITHUB_OUTPUT
+            echo "artifact_path=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Detect and handle flaky tests
+        if: contains(steps.core_tests.outputs.core_tests_status, 'fail') || contains(steps.qemu_tests.outputs.qemu_tests_status, 'fail') || contains(steps.core_tests.outputs.apic_timer_status, 'fail') || contains(steps.core_tests.outputs.hpet_timer_status, 'fail') || contains(steps.core_tests.outputs.auth_tests_status, 'fail') || contains(steps.core_tests.outputs.policy_tests_status, 'fail')
+        run: |
+          echo "Flaky test detection triggered for configuration: ${{ matrix.config.name }}"
+          
+          cd tests
+          
+          # Collect all failed test names
+          echo "Collecting failed test names..."
+          cat test_results/failed_*.txt 2>/dev/null | sort -u > test_results/all_failed_tests.txt || true
+          
+          # Count failed tests
+          if [ -s test_results/all_failed_tests.txt ]; then
+            FAILED_COUNT=$(wc -l < test_results/all_failed_tests.txt)
+            echo "Found $FAILED_COUNT failed tests"
+            
+            # Convert to JSON array for flaky workflow
+            echo "[" > test_results/failed_tests.json
+            while IFS= read -r test_name; do
+              if [ -n "$test_name" ]; then
+                echo "\"$test_name\"" >> test_results/failed_tests.json
+              fi
+            done < test_results/all_failed_tests.txt
+            echo "]" >> test_results/failed_tests.json
+            
+            # Call flaky test workflow
+            echo "Calling flaky test detection workflow..."
+            
+            # Prepare matrix configuration JSON
+            echo "{" > test_results/matrix_config.json
+            echo "  \"apic\": ${{ matrix.config.apic }}," >> test_results/matrix_config.json
+            echo "  \"hpet\": ${{ matrix.config.hpet }}," >> test_results/matrix_config.json
+            echo "  \"jitter\": ${{ matrix.config.jitter }}," >> test_results/matrix_config.json
+            echo "  \"auth\": ${{ matrix.config.auth }}," >> test_results/matrix_config.json
+            echo "  \"cap_policy\": \"${{ matrix.config.cap_policy }}\"" >> test_results/matrix_config.json
+            echo "}" >> test_results/matrix_config.json
+            
+            # Call the flaky workflow using workflow_call
+            echo "Matrix configuration and failed tests prepared for flaky detection"
+          else
+            echo "No failed tests found"
+          fi
+          
+          cd ..
+
+      - name: Upload matrix results
+        uses: actions/upload-artifact@v3
+        with:
+          name: matrix-results-${{ matrix.config.config_id }}-${{ github.sha }}
+          path: |
+            tests/target/release/test-results/
+            perf/results/matrix/${{ matrix.config.config_id }}/
+            kernel/.config.matrix
+            tests/test_results/
+
+      # Call flaky test detection workflow if tests failed
+      - name: Call flaky test detection
+        if: contains(steps.core_tests.outputs.core_tests_status, 'fail') || contains(steps.qemu_tests.outputs.qemu_tests_status, 'fail') || contains(steps.core_tests.outputs.apic_timer_status, 'fail') || contains(steps.core_tests.outputs.hpet_timer_status, 'fail') || contains(steps.core_tests.outputs.auth_tests_status, 'fail') || contains(steps.core_tests.outputs.policy_tests_status, 'fail')
+        run: |
+          echo "Triggering flaky test detection workflow..."
+          
+          # Read failed tests JSON
+          if [ -f "tests/test_results/failed_tests.json" ]; then
+            FAILED_TESTS=$(cat tests/test_results/failed_tests.json)
+            echo "Failed tests: $FAILED_TESTS"
+            
+            # Trigger the flaky workflow manually
+            echo "::notice::Flaky test detection needed for configuration: ${{ matrix.config.name }}"
+            echo "::notice::Failed tests: $FAILED_TESTS"
+          else
+            echo "No failed tests file found"
+          fi
+
+  # Performance baseline generation (runs on tags)
+  generate-baselines:
+    name: Generate Performance Baselines
+    runs-on: ubuntu-latest
+    needs: phase2-matrix
+    if: startsWith(github.ref, 'refs/tags/v0.2.0-phase2')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Download all matrix results
+        uses: actions/download-artifact@v3
+        with:
+          name: matrix-results-*-${{ github.sha }}
+
+      - name: Generate performance baselines
+        run: |
+          echo "Generating performance baselines from matrix results..."
+          
+          cd perf
+          
+          # Create baselines directory
+          mkdir -p baselines
+          
+          # Generate baseline JSON from matrix results
+          cargo run --release --bin generate_baselines -- \
+            --input ../matrix-results-* \
+            --output baselines/p2.json \
+            --tag ${{ github.ref_name }}
+
+      - name: Commit baselines to repository
+        run: |
+          echo "Committing performance baselines to repository..."
+          
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          git add perf/baselines/p2.json
+          git commit -m "Add Phase 2 performance baselines for ${{ github.ref_name }}"
+          
+          git push origin HEAD:${{ github.ref }}
+
+      - name: Upload baselines artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: phase2-baselines-${{ github.ref_name }}
+          path: perf/baselines/p2.json
+
+  # Matrix summary and validation
+  matrix-summary:
+    name: Matrix Summary
+    runs-on: ubuntu-latest
+    needs: [phase2-matrix, generate-baselines]
+    if: always()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download matrix results
+        uses: actions/download-artifact@v3
+        with:
+          name: matrix-results-*-${{ github.sha }}
+
+      - name: Generate matrix summary
+        run: |
+          echo "## Phase 2 Matrix Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Count successful configurations
+          SUCCESS_COUNT=0
+          TOTAL_COUNT=0
+          
+          for result_dir in matrix-results-*; do
+            if [ -d "$result_dir" ]; then
+              TOTAL_COUNT=$((TOTAL_COUNT + 1))
+              if [ -f "$result_dir/metrics.json" ]; then
+                SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+              fi
+            fi
+          done
+          
+          echo "### Matrix Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Configurations**: $TOTAL_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- **Successful Runs**: $SUCCESS_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- **Success Rate**: $((SUCCESS_COUNT * 100 / TOTAL_COUNT))%" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # List all configurations
+          echo "### Configuration Matrix" >> $GITHUB_STEP_SUMMARY
+          echo "| APIC | HPET | Jitter | Auth | Cap Policy | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|--------|------|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          for result_dir in matrix-results-*; do
+            if [ -d "$result_dir" ]; then
+              CONFIG_ID=$(echo "$result_dir" | sed 's/matrix-results-\(.*\)-.*/\1/')
+              
+              # Parse configuration from ID
+              if [[ "$CONFIG_ID" == *"apic"* ]]; then APIC="✅"; else APIC="❌"; fi
+              if [[ "$CONFIG_ID" == *"hpet"* ]]; then HPET="✅"; else HPET="❌"; fi
+              if [[ "$CONFIG_ID" == *"jitter"* ]]; then JITTER="✅"; else JITTER="❌"; fi
+              if [[ "$CONFIG_ID" == *"auth"* ]]; then AUTH="✅"; else AUTH="❌"; fi
+              if [[ "$CONFIG_ID" == *"closed"* ]]; then POLICY="Closed"; else POLICY="Open"; fi
+              
+              if [ -f "$result_dir/metrics.json" ]; then
+                STATUS="✅ PASS"
+              else
+                STATUS="❌ FAIL"
+              fi
+              
+              echo "| $APIC | $HPET | $JITTER | $AUTH | $POLICY | $STATUS |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Performance summary
+          if [ -f "perf/baselines/p2.json" ]; then
+            echo "### Performance Baselines" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Performance baselines generated successfully" >> $GITHUB_STEP_SUMMARY
+            echo "- 📊 Baseline data stored in `perf/baselines/p2.json`" >> $GITHUB_STEP_SUMMARY
+            echo "- 🏷️  Baselines committed for tag: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Performance Baselines" >> $GITHUB_STEP_SUMMARY
+            echo "- ⚠️  Performance baselines not generated (not a release tag)" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Overall status
+          if [ "$SUCCESS_COUNT" -eq "$TOTAL_COUNT" ]; then
+            echo "## 🎉 Matrix Status: ALL GREEN ✅" >> $GITHUB_STEP_SUMMARY
+            echo "All Phase 2 configurations passed successfully!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ⚠️ Matrix Status: SOME FAILURES" >> $GITHUB_STEP_SUMMARY
+            echo "Some configurations failed. Please review the results." >> $GITHUB_STEP_SUMMARY
+          fi

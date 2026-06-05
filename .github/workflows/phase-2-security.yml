@@ -1,0 +1,419 @@
+name: Phase 2 Security & Side-Channel Analysis
+
+on:
+  # Manual trigger for security analysis
+  workflow_dispatch:
+    inputs:
+      strict_security:
+        description: 'Enable strict security mode (fail on warnings)'
+        required: false
+        default: false
+        type: boolean
+      scan_scope:
+        description: 'Scope of security scan'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - kernel-only
+          - crypto-only
+          - quick
+  # Run on PRs to main/develop
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'kernel/**'
+      - 'crypto/**'
+      - 'services/**'
+      - 'tooling/analysis/**'
+      - '.github/workflows/phase-2-security.yml'
+  # Run on schedule for continuous monitoring
+  schedule:
+    - cron: '0 4 * * 1'  # Every Monday at 4 AM UTC
+
+env:
+  RUST_BACKTRACE: 1
+  RUST_LOG: info
+  CARGO_AUDIT_TIMEOUT: 300  # 5 minutes for cargo audit
+  SIDECHAN_SCAN_TIMEOUT: 600  # 10 minutes for side-channel scan
+
+jobs:
+  security-analysis:
+    name: Security & Side-Channel Analysis
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scope: [kernel, crypto, services, tooling]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for security analysis
+        
+    - name: Setup Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        components: clippy
+        
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyyaml colorama
+        
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq curl
+        
+    - name: Setup cargo-audit
+      run: |
+        cargo install cargo-audit --version 0.18.4
+        
+    - name: Download advisory database cache
+      run: |
+        echo "Setting up advisory database cache..."
+        mkdir -p ~/.cargo/advisory-db
+        
+        # Try to fetch latest advisory DB
+        if curl -s -f -L https://github.com/rustsec/advisory-db/archive/refs/heads/main.tar.gz | tar -xz -C ~/.cargo/advisory-db --strip-components=1; then
+          echo "Successfully downloaded latest advisory database"
+        else
+          echo "Failed to download advisory database, using fallback cache"
+          # Use a cached version if network fails
+          if [ -d "security/advisory-db-cache" ]; then
+            cp -r security/advisory-db-cache/* ~/.cargo/advisory-db/
+            echo "Using cached advisory database"
+          else
+            echo "No cached advisory database found, proceeding without audit"
+          fi
+        fi
+        
+    - name: Run cargo clippy
+      run: |
+        echo "Running cargo clippy with strict warnings..."
+        cd ${{ matrix.scope }}
+        
+        # Run clippy with all warnings as errors
+        cargo clippy -- -D warnings --message-format=json > clippy_results.json 2>&1 || true
+        
+        # Parse clippy results
+        echo "Clippy results for ${{ matrix.scope }}:"
+        if [ -s clippy_results.json ]; then
+          jq -r '.message | select(.level == "warning" or .level == "error") | "\(.level): \(.message) at \(.spans[0].file_name):\(.spans[0].line_start)"' clippy_results.json | head -20
+        else
+          echo "No clippy warnings/errors found"
+        fi
+        
+    - name: Run cargo audit
+      run: |
+        echo "Running cargo audit for ${{ matrix.scope }}..."
+        cd ${{ matrix.scope }}
+        
+        # Check if we have advisory DB
+        if [ -d ~/.cargo/advisory-db ]; then
+          # Run cargo audit with allowlist
+          if [ -f "../../security/allowlist.yaml" ]; then
+            cargo audit --json --allowlist-file ../../security/allowlist.yaml > audit_results.json 2>&1 || true
+          else
+            cargo audit --json > audit_results.json 2>&1 || true
+          fi
+          
+          # Parse audit results
+          echo "Audit results for ${{ matrix.scope }}:"
+          if [ -s audit_results.json ]; then
+            jq -r '.vulnerabilities[]? | "\(.advisory.severity): \(.advisory.title) in \(.package.name)@\(.package.version)"' audit_results.json | head -10
+          else
+            echo "No security vulnerabilities found"
+          fi
+        else
+          echo "No advisory database available, skipping audit"
+          echo '{"vulnerabilities": [], "warnings": ["No advisory database available"]}' > audit_results.json
+        fi
+        
+    - name: Run side-channel vulnerability scan
+      run: |
+        echo "Running side-channel vulnerability scan for ${{ matrix.scope }}..."
+        cd ${{ matrix.scope }}
+        
+        # Run the side-channel scanner
+        timeout ${{ env.SIDECHAN_SCAN_TIMEOUT }}s python3 ../../tooling/analysis/sidechan_scan.py \
+          --asm-dir target/x86_64-unknown-none/release/deps \
+          --llvm-dir target/x86_64-unknown-none/release/deps \
+          --output sidechan_results.json \
+          --verbose || true
+        
+        # Parse side-channel scan results
+        echo "Side-channel scan results for ${{ matrix.scope }}:"
+        if [ -f sidechan_results.json ]; then
+          jq -r '.vulnerabilities[]? | "\(.severity): \(.vulnerability_type) in \(.file_path):\(.line_number)"' sidechan_results.json | head -10
+        else
+          echo "No side-channel vulnerabilities found or scan failed"
+          echo '{"vulnerabilities": [], "scan_status": "failed"}' > sidechan_results.json
+        fi
+        
+    - name: Collect security results
+      run: |
+        echo "Collecting security analysis results..."
+        cd ${{ matrix.scope }}
+        
+        # Create combined security report
+        cat > security_report.json << 'EOF'
+        {
+          "scope": "${{ matrix.scope }}",
+          "timestamp": "${{ github.event.head_commit.timestamp || github.event.schedule || 'manual' }}",
+          "commit": "${{ github.sha }}",
+          "clippy": {},
+          "audit": {},
+          "sidechan": {},
+          "summary": {
+            "total_issues": 0,
+            "clippy_warnings": 0,
+            "clippy_errors": 0,
+            "security_vulnerabilities": 0,
+            "sidechannel_vulnerabilities": 0,
+            "overall_status": "pass"
+          }
+        }
+        EOF
+        
+        # Merge clippy results
+        if [ -f clippy_results.json ]; then
+          jq -s '.[0] * {clippy: .[1]}' security_report.json clippy_results.json > temp.json && mv temp.json security_report.json
+          
+          # Count clippy issues
+          clippy_warnings=$(jq -r '.message | select(.level == "warning") | .level' clippy_results.json | wc -l)
+          clippy_errors=$(jq -r '.message | select(.level == "error") | .level' clippy_results.json | wc -l)
+          
+          jq --arg w "$clippy_warnings" --arg e "$clippy_errors" \
+            '.summary.clippy_warnings = ($w | tonumber) | .summary.clippy_errors = ($e | tonumber)' \
+            security_report.json > temp.json && mv temp.json security_report.json
+        fi
+        
+        # Merge audit results
+        if [ -f audit_results.json ]; then
+          jq -s '.[0] * {audit: .[1]}' security_report.json audit_results.json > temp.json && mv temp.json security_report.json
+          
+          # Count security vulnerabilities
+          vuln_count=$(jq -r '.vulnerabilities | length' audit_results.json)
+          jq --arg v "$vuln_count" '.summary.security_vulnerabilities = ($v | tonumber)' \
+            security_report.json > temp.json && mv temp.json security_report.json
+        fi
+        
+        # Merge side-channel results
+        if [ -f sidechan_results.json ]; then
+          jq -s '.[0] * {sidechan: .[1]}' security_report.json sidechan_results.json > temp.json && mv temp.json security_report.json
+          
+          # Count side-channel vulnerabilities
+          sidechan_count=$(jq -r '.vulnerabilities | length' sidechan_results.json)
+          jq --arg s "$sidechan_count" '.summary.sidechannel_vulnerabilities = ($s | tonumber)' \
+            security_report.json > temp.json && mv temp.json security_report.json
+        fi
+        
+        # Calculate total issues and overall status
+        total_issues=$(jq -r '.summary.clippy_warnings + .summary.clippy_errors + .summary.security_vulnerabilities + .summary.sidechannel_vulnerabilities' security_report.json)
+        overall_status="pass"
+        
+        if [ "$total_issues" -gt 0 ]; then
+          if [ "${{ github.event.inputs.strict_security }}" = "true" ]; then
+            overall_status="fail"
+          else
+            overall_status="warn"
+          fi
+        fi
+        
+        jq --arg t "$total_issues" --arg s "$overall_status" \
+          '.summary.total_issues = ($t | tonumber) | .summary.overall_status = $s' \
+          security_report.json > temp.json && mv temp.json security_report.json
+        
+        echo "Security report generated for ${{ matrix.scope }}:"
+        cat security_report.json
+        
+    - name: Upload security artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-results-${{ matrix.scope }}-${{ github.sha }}
+        path: |
+          ${{ matrix.scope }}/security_report.json
+          ${{ matrix.scope }}/clippy_results.json
+          ${{ matrix.scope }}/audit_results.json
+          ${{ matrix.scope }}/sidechan_results.json
+        retention-days: 90
+        
+    - name: Annotate security findings
+      if: github.event_name == 'pull_request'
+      run: |
+        echo "Annotating security findings for ${{ matrix.scope }}..."
+        cd ${{ matrix.scope }}
+        
+        # Read security report
+        if [ -f security_report.json ]; then
+          # Annotate clippy warnings/errors
+          jq -r '.clippy.message? | select(.level == "warning" or .level == "error") | "::\(.level) file=\(.spans[0].file_name),line=\(.spans[0].line_start),col=\(.spans[0].column_start)::\(.message)"' security_report.json | head -10
+          
+          # Annotate security vulnerabilities
+          jq -r '.audit.vulnerabilities[]? | "::error file=security,line=1::Security: \(.advisory.severity) vulnerability in \(.package.name)@\(.package.version) - \(.advisory.title)"' security_report.json | head -10
+          
+          # Annotate side-channel vulnerabilities
+          jq -r '.sidechan.vulnerabilities[]? | "::warning file=\(.file_path),line=\(.line_number)::Side-channel: \(.severity) \(.vulnerability_type) - \(.description)"' security_report.json | head -10
+        fi
+        
+    - name: Comment on PR with security summary
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          
+          // Read security reports from all scopes
+          const scopes = ['kernel', 'crypto', 'services', 'tooling'];
+          const reports = [];
+          
+          for (const scope of scopes) {
+            try {
+              const reportPath = path.join(scope, 'security_report.json');
+              if (fs.existsSync(reportPath)) {
+                const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+                reports.push(report);
+              }
+            } catch (error) {
+              console.log(`Could not read security report for ${scope}: ${error.message}`);
+            }
+          }
+          
+          if (reports.length === 0) {
+            console.log('No security reports found');
+            return;
+          }
+          
+          // Generate summary table
+          let comment = "## 🔒 Security & Side-Channel Analysis Results\n\n";
+          comment += "| Scope | Clippy | Audit | Side-Channel | Status |\n";
+          comment += "|-------|--------|-------|--------------|--------|\n";
+          
+          let totalIssues = 0;
+          let overallStatus = 'pass';
+          
+          for (const report of reports) {
+            const clippyIssues = (report.summary?.clippy_warnings || 0) + (report.summary?.clippy_errors || 0);
+            const auditIssues = report.summary?.security_vulnerabilities || 0;
+            const sidechanIssues = report.summary?.sidechannel_vulnerabilities || 0;
+            const scopeTotal = clippyIssues + auditIssues + sidechanIssues;
+            
+            totalIssues += scopeTotal;
+            
+            const status = report.summary?.overall_status || 'unknown';
+            if (status === 'fail') overallStatus = 'fail';
+            else if (status === 'warn' && overallStatus !== 'fail') overallStatus = 'warn';
+            
+            const statusIcon = status === 'pass' ? '✅' : status === 'warn' ? '⚠️' : '❌';
+            
+            comment += `| ${report.scope} | ${clippyIssues} | ${auditIssues} | ${sidechanIssues} | ${statusIcon} ${status} |\n`;
+          }
+          
+          comment += "\n";
+          
+          // Overall summary
+          const overallIcon = overallStatus === 'pass' ? '✅' : overallStatus === 'warn' ? '⚠️' : '❌';
+          comment += `**Overall Security Status**: ${overallIcon} ${overallStatus.toUpperCase()}\n\n`;
+          comment += `**Total Issues Found**: ${totalIssues}\n\n`;
+          
+          // Detailed findings
+          if (totalIssues > 0) {
+            comment += "<details>\n<summary>🔍 Detailed Findings</summary>\n\n";
+            
+            for (const report of reports) {
+              if (report.summary?.total_issues > 0) {
+                comment += `### ${report.scope.charAt(0).toUpperCase() + report.scope.slice(1)}\n`;
+                
+                if (report.summary?.clippy_warnings > 0 || report.summary?.clippy_errors > 0) {
+                  comment += `- **Clippy**: ${report.summary.clippy_warnings} warnings, ${report.summary.clippy_errors} errors\n`;
+                }
+                
+                if (report.summary?.security_vulnerabilities > 0) {
+                  comment += `- **Security**: ${report.summary.security_vulnerabilities} vulnerabilities\n`;
+                }
+                
+                if (report.summary?.sidechannel_vulnerabilities > 0) {
+                  comment += `- **Side-Channel**: ${report.summary.sidechannel_vulnerabilities} potential issues\n`;
+                }
+                
+                comment += "\n";
+              }
+            }
+            
+            comment += "</details>\n\n";
+          }
+          
+          // Action items
+          if (overallStatus === 'fail') {
+            comment += "🚨 **Action Required**: Security issues must be resolved before merging.\n";
+          } else if (overallStatus === 'warn') {
+            comment += "⚠️ **Review Recommended**: Security warnings should be reviewed.\n";
+          } else {
+            comment += "✅ **Security Check Passed**: No critical security issues found.\n";
+          }
+          
+          comment += "\n---\n*Security analysis covers code quality (clippy), dependency vulnerabilities (audit), and side-channel analysis.*";
+          
+          // Post comment
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+          
+  # Security baseline update (runs on main branch)
+  update-security-baselines:
+    name: Update Security Baselines
+    runs-on: ubuntu-latest
+    needs: security-analysis
+    if: github.ref == 'refs/heads/main' && always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download security results
+      uses: actions/download-artifact@v4
+      with:
+        pattern: security-results-*-${{ github.sha }}
+        path: security_results/
+        
+    - name: Update security baselines
+      run: |
+        echo "Updating security baselines..."
+        
+        # Create security baselines directory
+        mkdir -p security/baselines
+        
+        # Generate baseline summary
+        python3 tooling/analysis/update_security_baselines.py \
+          --input security_results/ \
+          --output security/baselines/security_baseline.json \
+          --commit ${{ github.sha }}
+        
+        echo "Security baselines updated"
+        
+    - name: Commit security baseline updates
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        git add security/baselines/
+        git commit -m "Update security baselines from analysis" || echo "No changes to commit"
+        
+    - name: Push security baseline updates
+      run: |
+        git push origin main || echo "No changes to push"

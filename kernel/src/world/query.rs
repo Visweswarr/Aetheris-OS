@@ -2,8 +2,8 @@ use alloc::vec::Vec;
 use alloc::collections::BTreeMap;
 use serde::{Serialize, Deserialize};
 
-use super::schema::{FactV1, EntityId, PredId, ValueAtom};
-use super::store::{ReadView, IndexEntry};
+use super::schema::{FactV1, EntityId, PredId, ValueAtom, IndexEntry};
+use super::store::ReadView;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Pattern {
@@ -22,6 +22,18 @@ pub struct Range {
 pub struct Rows {
     pub facts: Vec<FactV1>,
     pub next_offset: Option<u32>,
+}
+
+/// In-memory fact index used by `ReadView` queries.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Index {
+    pub entries: Vec<IndexEntry>,
+}
+
+impl Index {
+    pub fn new() -> Self {
+        Self { entries: Vec::new() }
+    }
 }
 
 impl Pattern {

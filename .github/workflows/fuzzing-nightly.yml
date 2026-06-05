@@ -1,0 +1,221 @@
+name: Nightly Fuzzing
+
+on:
+  schedule:
+    # Run every day at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  fuzz-inbox:
+    name: Fuzz Inbox Operations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: x86_64-unknown-linux-gnu
+        override: true
+        
+    - name: Install cargo-fuzz
+      run: |
+        cargo install cargo-fuzz
+        cargo fuzz --version
+        
+    - name: Build fuzz targets
+      run: |
+        cd kernel/fuzz
+        cargo fuzz build fuzz_inbox
+        
+    - name: Run fuzzing (120 seconds)
+      run: |
+        cd kernel/fuzz
+        timeout 120s cargo fuzz run fuzz_inbox -- -max_len=1024 -timeout=10 -runs=10000 || true
+        
+    - name: Collect crashes
+      if: failure()
+      run: |
+        cd kernel/fuzz
+        mkdir -p crashes/inbox
+        find . -name "crash-*" -exec cp {} crashes/inbox/ \;
+        
+    - name: Upload crash artifacts
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: inbox-crashes
+        path: kernel/fuzz/crashes/inbox/
+        retention-days: 30
+        
+    - name: Upload corpus
+      uses: actions/upload-artifact@v4
+      with:
+        name: inbox-corpus
+        path: kernel/fuzz/corpus/fuzz_inbox/
+        retention-days: 7
+
+  fuzz-caps:
+    name: Fuzz Capabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: x86_64-unknown-linux-gnu
+        override: true
+        
+    - name: Install cargo-fuzz
+      run: |
+        cargo install cargo-fuzz
+        cargo fuzz --version
+        
+    - name: Build fuzz targets
+      run: |
+        cd kernel/fuzz
+        cargo fuzz build fuzz_caps
+        
+    - name: Run fuzzing (120 seconds)
+      run: |
+        cd kernel/fuzz
+        timeout 120s cargo fuzz run fuzz_caps -- -max_len=256 -timeout=10 -runs=10000 || true
+        
+    - name: Collect crashes
+      if: failure()
+      run: |
+        cd kernel/fuzz
+        mkdir -p crashes/caps
+        find . -name "crash-*" -exec cp {} crashes/caps/ \;
+        
+    - name: Upload crash artifacts
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: caps-crashes
+        path: kernel/fuzz/crashes/caps/
+        retention-days: 30
+        
+    - name: Upload corpus
+      uses: actions/upload-artifact@v4
+      with:
+        name: caps-corpus
+        path: kernel/fuzz/corpus/fuzz_caps/
+        retention-days: 7
+
+  fuzz-vm:
+    name: Fuzz Virtual Memory
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: x86_64-unknown-linux-gnu
+        override: true
+        
+    - name: Install cargo-fuzz
+      run: |
+        cargo install cargo-fuzz
+        cargo fuzz --version
+        
+    - name: Build fuzz targets
+      run: |
+        cd kernel/fuzz
+        cargo fuzz build fuzz_vm
+        
+    - name: Run fuzzing (120 seconds)
+      run: |
+        cd kernel/fuzz
+        timeout 120s cargo fuzz run fuzz_vm -- -max_len=512 -timeout=10 -runs=10000 || true
+        
+    - name: Collect crashes
+      if: failure()
+      run: |
+        cd kernel/fuzz
+        mkdir -p crashes/vm
+        find . -name "crash-*" -exec cp {} crashes/vm/ \;
+        
+    - name: Upload crash artifacts
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: vm-crashes
+        path: kernel/fuzz/crashes/vm/
+        retention-days: 30
+        
+    - name: Upload corpus
+      uses: actions/upload-artifact@v4
+      with:
+        name: vm-corpus
+        path: kernel/fuzz/corpus/fuzz_vm/
+        retention-days: 7
+
+  fuzz-summary:
+    name: Fuzzing Summary
+    runs-on: ubuntu-latest
+    needs: [fuzz-inbox, fuzz-caps, fuzz-vm]
+    if: always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Generate fuzzing report
+      run: |
+        echo "# Nightly Fuzzing Report" > fuzzing-report.md
+        echo "Generated: $(date -u)" >> fuzzing-report.md
+        echo "" >> fuzzing-report.md
+        
+        echo "## Job Results" >> fuzzing-report.md
+        echo "- Inbox Fuzzing: ${{ needs.fuzz-inbox.result }}" >> fuzzing-report.md
+        echo "- Capabilities Fuzzing: ${{ needs.fuzz-caps.result }}" >> fuzzing-report.md
+        echo "- Virtual Memory Fuzzing: ${{ needs.fuzz-vm.result }}" >> fuzzing-report.md
+        echo "" >> fuzzing-report.md
+        
+        echo "## Corpus Status" >> fuzzing-report.md
+        echo "- Inbox Corpus: $(find kernel/fuzz/corpus/fuzz_inbox -type f | wc -l) seeds" >> fuzzing-report.md
+        echo "- Capabilities Corpus: $(find kernel/fuzz/corpus/fuzz_caps -type f | wc -l) seeds" >> fuzzing-report.md
+        echo "- VM Corpus: $(find kernel/fuzz/corpus/fuzz_vm -type f | wc -l) seeds" >> fuzzing-report.md
+        
+    - name: Upload fuzzing report
+      uses: actions/upload-artifact@v4
+      with:
+        name: fuzzing-report
+        path: fuzzing-report.md
+        retention-days: 7
+        
+    - name: Comment on issues
+      if: failure()
+      run: |
+        echo "## 🚨 Fuzzing Failures Detected" >> fuzzing-report.md
+        echo "" >> fuzzing-report.md
+        echo "The following fuzzing targets encountered crashes:" >> fuzzing-report.md
+        echo "" >> fuzzing-report.md
+        if [ "${{ needs.fuzz-inbox.result }}" = "failure" ]; then
+          echo "- **Inbox Fuzzing**: Crashes detected, check artifacts for details" >> fuzzing-report.md
+        fi
+        if [ "${{ needs.fuzz-caps.result }}" = "failure" ]; then
+          echo "- **Capabilities Fuzzing**: Crashes detected, check artifacts for details" >> fuzzing-report.md
+        fi
+        if [ "${{ needs.fuzz-vm.result }}" = "failure" ]; then
+          echo "- **Virtual Memory Fuzzing**: Crashes detected, check artifacts for details" >> fuzzing-report.md
+        fi
+        echo "" >> fuzzing-report.md
+        echo "**Action Required**: Investigate crashes and fix underlying issues."
+

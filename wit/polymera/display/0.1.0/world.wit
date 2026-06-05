@@ -1,0 +1,29 @@
+package polymera:display@0.1.0;
+
+interface display {
+    record window-config {
+        width: u32,
+        height: u32,
+        title: string,
+    }
+
+    enum display-error {
+        no-such-window,
+        invalid-buffer-size,
+        compositor-unavailable,
+        permission-denied,
+    }
+
+    /// Create a window in the compositor and return a window handle.
+    create-window: func(config: window-config) -> result<u32, display-error>;
+
+    /// Push a frame (raw RGBA8 buffer) into the window's surface.
+    render-frame: func(window-id: u32, buffer: list<u8>) -> result<_, display-error>;
+
+    /// Destroy a window. Idempotent.
+    destroy-window: func(window-id: u32) -> result<_, display-error>;
+}
+
+world display-host {
+    export display;
+}

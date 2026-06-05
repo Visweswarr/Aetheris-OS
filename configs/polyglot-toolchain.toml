@@ -1,0 +1,24 @@
+# Polymera OS polyglot toolchain pins.
+#
+# Tools are installed under .polymera-tools/ by scripts/bootstrap-polyglot-tools.*
+# and must not require global developer-machine installs.
+
+[paths]
+tool_root = ".polymera-tools"
+cargo_bin = ".polymera-tools/bin"
+node_prefix = ".polymera-tools/node"
+python_venv = ".polymera-tools/python"
+
+[versions]
+wasm_tools = "1.249.0"
+wit_bindgen_cli = "0.57.1"
+cargo_component = "0.21.1"
+jco = "1.19.0"
+componentize_py = "0.23.0"
+zig = "0.15.2"
+fstar = "2025.10.06"
+
+[policy]
+# Zig and F* are pinned here but not installed by default. They are roadmap
+# tracks until the WIT/AI/supervisor foundation is stable in CI.
+install_roadmap_tools_by_default = false

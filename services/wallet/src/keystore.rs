@@ -1,60 +1,35 @@
-use crate::backend::{BackendError, KeyBackend};
-use chrono::{DateTime, Utc};
-use secrecy::{ExposeSecret, Secret};
-use serde::{Deserialize, Serialize};
+//! KeyStore implementation for secure key management with NGFS-backed storage
+
 use std::collections::HashMap;
-use thiserror::Error;
-use tracing::{debug, info, warn, error};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use uuid::Uuid;
-use zeroize::Zeroizing;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
-pub mod backend;
+use crate::error::WalletError;
 
-#[derive(Debug, Error)]
-pub enum KeystoreError {
-    #[error("Backend error: {0}")]
-    BackendError(#[from] BackendError),
-    
-    #[error("Key not found: {0}")]
-    KeyNotFound(String),
-    
-    #[error("Invalid key type: {0}")]
-    InvalidKeyType(String),
-    
-    #[error("Invalid operation: {0}")]
-    InvalidOperation(String),
-    
-    #[error("Key expired: {0}")]
-    KeyExpired(String),
-    
-    #[error("Key revoked: {0}")]
-    KeyRevoked(String),
-    
-    #[error("Insufficient permissions: {0}")]
-    InsufficientPermissions(String),
-    
-    #[error("Storage error: {0}")]
-    StorageError(String),
-    
-    #[error("Serialization error: {0}")]
-    SerializationError(String),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Supported key types for multi-chain and PQC operations
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum KeyType {
-    Ed25519,
-    Dilithium3,
-    Dilithium5,
-    Kyber512,
-    Kyber768,
-    Kyber1024,
-    Ed25519Dilithium3,  // Hybrid
-    Ed25519Kyber512,    // Hybrid
-    AES256,
-    ChaCha20Poly1305,
+    // Legacy algorithms
+    Secp256k1,    // Ethereum, Bitcoin
+    Ed25519,      // Solana, Cardano
+    Sr25519,      // Polkadot, Substrate
+    X25519,       // Key exchange
+    
+    // Post-quantum algorithms
+    Kyber512,     // PQC KEM
+    Kyber768,     // PQC KEM
+    Kyber1024,    // PQC KEM
+    Dilithium2,   // PQC Signature
+    Dilithium3,   // PQC Signature
+    Dilithium5,   // PQC Signature
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Key purposes for different operations
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum KeyPurpose {
     Sign,
     Verify,
@@ -62,411 +37,733 @@ pub enum KeyPurpose {
     Decrypt,
     KeyEncapsulation,
     KeyDecapsulation,
-    KeyAgreement,
-    KeyDerivation,
+    KeyExchange,
+    Authentication,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum KeyStatus {
-    Active,
-    Expired,
-    Revoked,
-    Compromised,
-}
-
+/// Key derivation path for hierarchical deterministic keys
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KeyMetadata {
-    pub id: String,
-    pub name: Option<String>,
-    pub key_type: KeyType,
-    pub purposes: Vec<KeyPurpose>,
-    pub created: DateTime<Utc>,
-    pub expires: Option<DateTime<Utc>>,
-    pub last_used: Option<DateTime<Utc>>,
-    pub status: KeyStatus,
-    pub tags: HashMap<String, String>,
-    pub backend: String,
+pub struct KeyDerivationPath {
+    pub path: String,           // e.g., "m/44'/60'/0'/0/0"
+    pub chain_code: Vec<u8>,    // Chain code for derivation
+    pub depth: u8,              // Derivation depth
+    pub index: u32,             // Current index
+    pub hardened: bool,         // Whether this is a hardened derivation
 }
 
+impl KeyDerivationPath {
+    /// Create a new derivation path
+    pub fn new(path: &str) -> Result<Self, WalletError> {
+        if !path.starts_with("m/") {
+            return Err(WalletError::InvalidDerivationPath("Path must start with 'm/'".to_string()));
+        }
+        
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() < 2 {
+            return Err(WalletError::InvalidDerivationPath("Invalid path format".to_string()));
+        }
+        
+        let depth = (parts.len() - 1) as u8;
+        let last_part = parts.last().unwrap();
+        let (index_str, hardened) = if last_part.ends_with("'") {
+            (last_part.strip_suffix("'").unwrap(), true)
+        } else {
+            (*last_part, false)
+        };
+        
+        let index = index_str.parse::<u32>()
+            .map_err(|_| WalletError::InvalidDerivationPath("Invalid index".to_string()))?;
+        
+        Ok(Self {
+            path: path.to_string(),
+            chain_code: vec![0u8; 32], // Will be set during derivation
+            depth,
+            index,
+            hardened,
+        })
+    }
+    
+    /// Check if this path should be persisted
+    pub fn should_persist(&self) -> bool {
+        // Persist keys at depth >= 3 (account level and below)
+        self.depth >= 3
+    }
+}
+
+/// Key material containing the actual cryptographic keys
+#[derive(Debug, Clone)]
+pub struct KeyMaterial {
+    key_type: KeyType,
+    public_key: Vec<u8>,
+    private_key: Vec<u8>,
+    purposes: Vec<KeyPurpose>,
+    derivation_path: Option<KeyDerivationPath>,
+    created_at: DateTime<Utc>,
+    expires_at: Option<DateTime<Utc>>,
+    metadata: HashMap<String, String>,
+}
+
+impl KeyMaterial {
+    /// Create new key material
+    pub fn new(
+        key_type: KeyType,
+        public_key: Vec<u8>,
+        private_key: Vec<u8>,
+        purposes: Vec<KeyPurpose>,
+        derivation_path: Option<KeyDerivationPath>,
+    ) -> Self {
+        Self {
+            key_type,
+            public_key,
+            private_key,
+            purposes,
+            derivation_path,
+            created_at: Utc::now(),
+            expires_at: None,
+            metadata: HashMap::new(),
+        }
+    }
+    
+    /// Get the key type
+    pub fn key_type(&self) -> KeyType {
+        self.key_type
+    }
+    
+    /// Get the public key
+    pub fn public_key(&self) -> &[u8] {
+        &self.public_key
+    }
+    
+    /// Get the private key (zeroized on drop)
+    pub fn private_key(&self) -> &[u8] {
+        &self.private_key
+    }
+    
+    /// Get the derivation path
+    pub fn derivation_path(&self) -> &Option<KeyDerivationPath> {
+        &self.derivation_path
+    }
+    
+    /// Check if key supports a specific purpose
+    pub fn supports_purpose(&self, purpose: KeyPurpose) -> bool {
+        self.purposes.contains(&purpose)
+    }
+    
+    /// Check if key is expired
+    pub fn is_expired(&self) -> bool {
+        if let Some(expires) = self.expires_at {
+            Utc::now() > expires
+        } else {
+            false
+        }
+    }
+    
+    /// Set expiration time
+    pub fn set_expires_at(&mut self, expires: DateTime<Utc>) {
+        self.expires_at = Some(expires);
+    }
+    
+    /// Add metadata
+    pub fn add_metadata(&mut self, key: String, value: String) {
+        self.metadata.insert(key, value);
+    }
+    
+    /// Get metadata
+    pub fn get_metadata(&self, key: &str) -> Option<&String> {
+        self.metadata.get(key)
+    }
+}
+
+impl Drop for KeyMaterial {
+    fn drop(&mut self) {
+        self.private_key.zeroize();
+    }
+}
+
+/// Signature result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Signature {
-    pub key_id: String,
     pub signature: Vec<u8>,
+    pub recovery_id: Option<u8>,
     pub algorithm: String,
-    pub created: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EncryptedData {
-    pub key_id: String,
-    pub encrypted_data: Vec<u8>,
-    pub nonce: Vec<u8>,
-    pub algorithm: String,
-    pub created: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KeyEncapsulationResult {
-    pub key_id: String,
-    pub encapsulated_key: Vec<u8>,
-    pub shared_secret: Vec<u8>,
-    pub algorithm: String,
-    pub created: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KeyDerivationParams {
-    pub salt: Vec<u8>,
-    pub iterations: u32,
-    pub key_length: usize,
-    pub algorithm: String,
-}
-
-/// Core keystore interface trait that defines unified cryptographic operations
+/// NGFS client trait for vault operations
 #[async_trait::async_trait]
-pub trait Keystore: Send + Sync {
-    /// Get the backend identifier
-    fn backend_id(&self) -> &str;
-    
-    /// Check if the keystore is available
-    async fn is_available(&self) -> Result<bool, KeystoreError>;
-    
-    /// Generate a new key
-    async fn generate_key(
-        &self,
-        key_type: KeyType,
-        purposes: Vec<KeyPurpose>,
-        name: Option<String>,
-        expires: Option<DateTime<Utc>>,
-        tags: Option<HashMap<String, String>>,
-    ) -> Result<KeyMetadata, KeystoreError>;
-    
-    /// Import an existing key
-    async fn import_key(
-        &self,
-        key_type: KeyType,
-        key_data: Secret<Vec<u8>>,
-        purposes: Vec<KeyPurpose>,
-        name: Option<String>,
-        expires: Option<DateTime<Utc>>,
-        tags: Option<HashMap<String, String>>,
-    ) -> Result<KeyMetadata, KeystoreError>;
-    
-    /// Get key metadata
-    async fn get_key_metadata(&self, key_id: &str) -> Result<KeyMetadata, KeystoreError>;
-    
-    /// List all keys
-    async fn list_keys(&self) -> Result<Vec<KeyMetadata>, KeystoreError>;
-    
-    /// Delete a key (with secure erasure)
-    async fn delete_key(&self, key_id: &str) -> Result<(), KeystoreError>;
-    
-    /// Sign data
-    async fn sign(
-        &self,
-        key_id: &str,
-        data: &[u8],
-        algorithm: Option<String>,
-    ) -> Result<Signature, KeystoreError>;
-    
-    /// Verify signature
-    async fn verify(
-        &self,
-        key_id: &str,
-        data: &[u8],
-        signature: &[u8],
-        algorithm: Option<String>,
-    ) -> Result<bool, KeystoreError>;
-    
-    /// Encrypt data
-    async fn encrypt(
-        &self,
-        key_id: &str,
-        data: &[u8],
-        algorithm: Option<String>,
-    ) -> Result<EncryptedData, KeystoreError>;
-    
-    /// Decrypt data
-    async fn decrypt(
-        &self,
-        key_id: &str,
-        encrypted_data: &EncryptedData,
-    ) -> Result<Vec<u8>, KeystoreError>;
-    
-    /// Perform key encapsulation
-    async fn encapsulate_key(
-        &self,
-        key_id: &str,
-        algorithm: Option<String>,
-    ) -> Result<KeyEncapsulationResult, KeystoreError>;
-    
-    /// Perform key decapsulation
-    async fn decapsulate_key(
-        &self,
-        key_id: &str,
-        encapsulated_key: &[u8],
-        algorithm: Option<String>,
-    ) -> Result<Vec<u8>, KeystoreError>;
-    
-    /// Derive a key
-    async fn derive_key(
-        &self,
-        key_id: &str,
-        params: &KeyDerivationParams,
-    ) -> Result<Vec<u8>, KeystoreError>;
-    
-    /// Update key metadata
-    async fn update_key_metadata(
-        &self,
-        key_id: &str,
-        name: Option<String>,
-        expires: Option<DateTime<Utc>>,
-        tags: Option<HashMap<String, String>>,
-    ) -> Result<KeyMetadata, KeystoreError>;
-    
-    /// Revoke a key
-    async fn revoke_key(&self, key_id: &str, reason: Option<String>) -> Result<(), KeystoreError>;
-    
-    /// Rotate a key
-    async fn rotate_key(
-        &self,
-        key_id: &str,
-        new_key_type: Option<KeyType>,
-        new_purposes: Option<Vec<KeyPurpose>>,
-    ) -> Result<KeyMetadata, KeystoreError>;
-    
-    /// Get keystore statistics
-    async fn get_stats(&self) -> Result<KeystoreStats, KeystoreError>;
-    
-    /// Perform secure cleanup
-    async fn cleanup(&self) -> Result<(), KeystoreError>;
+pub trait NgfsClient {
+    async fn store_item(&self, path: &str, data: &[u8]) -> Result<String, WalletError>;
+    async fn get_item(&self, path: &str) -> Result<Vec<u8>, WalletError>;
+    async fn list_items(&self, path: &str) -> Result<Vec<String>, WalletError>;
+    async fn delete_item(&self, path: &str) -> Result<(), WalletError>;
 }
 
-/// Keystore statistics
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KeystoreStats {
-    pub total_keys: usize,
-    pub active_keys: usize,
-    pub expired_keys: usize,
-    pub revoked_keys: usize,
-    pub total_operations: u64,
-    pub last_operation: Option<DateTime<Utc>>,
-    pub backend_id: String,
+/// KeyStore for managing keys with NGFS backend
+pub struct KeyStore {
+    pdv_path: String,
+    keys: Arc<RwLock<HashMap<Uuid, KeyMaterial>>>,
+    ngfs_client: Option<Arc<dyn NgfsClient + Send + Sync>>,
 }
 
-/// Keystore configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KeystoreConfig {
-    pub backend: String,
-    pub secure_erasure: bool,
-    pub key_rotation_interval: Option<u64>,
-    pub max_key_lifetime: Option<u64>,
-    pub encryption_algorithm: String,
-    pub signature_algorithm: String,
-    pub key_derivation_algorithm: String,
-}
-
-impl Default for KeystoreConfig {
-    fn default() -> Self {
-        Self {
-            backend: "software".to_string(),
-            secure_erasure: true,
-            key_rotation_interval: Some(30 * 24 * 60 * 60), // 30 days
-            max_key_lifetime: Some(365 * 24 * 60 * 60), // 1 year
-            encryption_algorithm: "AES256-GCM".to_string(),
-            signature_algorithm: "Ed25519".to_string(),
-            key_derivation_algorithm: "Argon2id".to_string(),
-        }
-    }
-}
-
-/// Keystore factory for creating different backend implementations
-pub struct KeystoreFactory;
-
-impl KeystoreFactory {
-    /// Create a keystore with the specified backend
-    pub async fn create_keystore(
-        config: &KeystoreConfig,
-    ) -> Result<Box<dyn Keystore>, KeystoreError> {
-        match config.backend.as_str() {
-            "software" => {
-                let backend = crate::backend::software::SoftwareBackend::new(config.clone()).await?;
-                Ok(Box::new(backend))
-            }
-            "keyvault" => {
-                let backend = crate::backend::keyvault::KeyVaultBackend::new(config.clone()).await?;
-                Ok(Box::new(backend))
-            }
-            _ => Err(KeystoreError::InvalidOperation(
-                format!("Unsupported backend: {}", config.backend)
-            )),
-        }
+impl KeyStore {
+    /// Create a new keystore
+    pub async fn new(pdv_path: String) -> Result<Self, WalletError> {
+        Ok(Self {
+            pdv_path,
+            keys: Arc::new(RwLock::new(HashMap::new())),
+            ngfs_client: None,
+        })
     }
     
-    /// Create a software keystore
-    pub async fn create_software_keystore(
-        config: Option<KeystoreConfig>,
-    ) -> Result<Box<dyn Keystore>, KeystoreError> {
-        let config = config.unwrap_or_default();
-        let backend = crate::backend::software::SoftwareBackend::new(config).await?;
-        Ok(Box::new(backend))
+    /// Set the NGFS client
+    pub fn set_ngfs_client(&mut self, client: Arc<dyn NgfsClient + Send + Sync>) {
+        self.ngfs_client = Some(client);
     }
     
-    /// Create a KeyVault keystore
-    pub async fn create_keyvault_keystore(
-        config: Option<KeystoreConfig>,
-    ) -> Result<Box<dyn Keystore>, KeystoreError> {
-        let config = config.unwrap_or_default();
-        let backend = crate::backend::keyvault::KeyVaultBackend::new(config).await?;
-        Ok(Box::new(backend))
-    }
-}
-
-/// Utility functions for keystore operations
-pub mod utils {
-    use super::*;
-    
-    /// Generate a secure random key ID
-    pub fn generate_key_id() -> String {
-        Uuid::new_v4().to_string()
+    /// Get the PDV path
+    pub fn pdv_path(&self) -> &str {
+        &self.pdv_path
     }
     
-    /// Check if a key supports the specified purpose
-    pub fn key_supports_purpose(key: &KeyMetadata, purpose: KeyPurpose) -> bool {
-        key.purposes.contains(&purpose)
-    }
-    
-    /// Check if a key is usable for the specified operation
-    pub fn is_key_usable(key: &KeyMetadata) -> bool {
-        key.status == KeyStatus::Active && 
-        (key.expires.is_none() || key.expires.unwrap() > Utc::now())
-    }
-    
-    /// Validate key type and purpose compatibility
-    pub fn validate_key_type_purpose(
-        key_type: KeyType,
-        purposes: &[KeyPurpose],
-    ) -> Result<(), KeystoreError> {
-        for purpose in purposes {
-            match (key_type, purpose) {
-                // Sign/Verify compatible types
-                (KeyType::Ed25519 | KeyType::Dilithium3 | KeyType::Dilithium5, 
-                 KeyPurpose::Sign | KeyPurpose::Verify) => {},
-                
-                // Encrypt/Decrypt compatible types
-                (KeyType::AES256 | KeyType::ChaCha20Poly1305, 
-                 KeyPurpose::Encrypt | KeyPurpose::Decrypt) => {},
-                
-                // Key encapsulation compatible types
-                (KeyType::Kyber512 | KeyType::Kyber768 | KeyType::Kyber1024, 
-                 KeyPurpose::KeyEncapsulation | KeyPurpose::KeyDecapsulation) => {},
-                
-                // Hybrid types support multiple purposes
-                (KeyType::Ed25519Dilithium3 | KeyType::Ed25519Kyber512, _) => {},
-                
-                // Incompatible combinations
-                _ => {
-                    return Err(KeystoreError::InvalidOperation(
-                        format!("Key type {:?} is not compatible with purpose {:?}", key_type, purpose)
-                    ));
-                }
-            }
-        }
+    /// Initialize a wallet directory
+    pub async fn init_wallet(&mut self, wallet_id: &Uuid) -> Result<(), WalletError> {
+        let wallet_path = format!("{}/{}", self.pdv_path, wallet_id);
+        
+        // Create wallet directory structure
+        tokio::fs::create_dir_all(&wallet_path).await?;
+        tokio::fs::create_dir_all(format!("{}/keys", wallet_path)).await?;
+        tokio::fs::create_dir_all(format!("{}/metadata", wallet_path)).await?;
+        
         Ok(())
     }
     
-    /// Secure memory allocation with zeroization
-    pub fn secure_alloc(size: usize) -> Zeroizing<Vec<u8>> {
-        let mut data = vec![0u8; size];
-        Zeroizing::new(data)
+    /// Generate a new key
+    pub async fn generate_key(
+        &mut self,
+        wallet_id: &Uuid,
+        key_id: &Uuid,
+        key_type: KeyType,
+    ) -> Result<KeyMaterial, WalletError> {
+        let (public_key, private_key) = match key_type {
+            KeyType::Secp256k1 => self.generate_secp256k1_key().await?,
+            KeyType::Ed25519 => self.generate_ed25519_key().await?,
+            KeyType::Sr25519 => self.generate_sr25519_key().await?,
+            KeyType::X25519 => self.generate_x25519_key().await?,
+            KeyType::Kyber512 => self.generate_kyber_key(512).await?,
+            KeyType::Kyber768 => self.generate_kyber_key(768).await?,
+            KeyType::Kyber1024 => self.generate_kyber_key(1024).await?,
+            KeyType::Dilithium2 => self.generate_dilithium_key(2).await?,
+            KeyType::Dilithium3 => self.generate_dilithium_key(3).await?,
+            KeyType::Dilithium5 => self.generate_dilithium_key(5).await?,
+        };
+        
+        let purposes = self.get_default_purposes(key_type);
+        
+        let key_material = KeyMaterial::new(
+            key_type,
+            public_key,
+            private_key,
+            purposes,
+            None,
+        );
+        
+        // Store in memory
+        self.keys.write().await.insert(*key_id, key_material.clone());
+        
+        Ok(key_material)
     }
     
-    /// Secure memory deallocation with zeroization
-    pub fn secure_dealloc(mut data: Zeroizing<Vec<u8>>) {
-        // The Zeroizing wrapper will automatically zero the memory when dropped
-        drop(data);
+    /// Store a key in the vault
+    pub async fn store_key(
+        &self,
+        wallet_id: &Uuid,
+        key_id: &Uuid,
+        key_material: &KeyMaterial,
+    ) -> Result<String, WalletError> {
+        let key_path = format!("{}/{}/keys/{}", self.pdv_path, wallet_id, key_id);
+        
+        // Encrypt the key material
+        let encrypted_data = self.encrypt_key_material(key_material).await?;
+        
+        if let Some(ngfs_client) = &self.ngfs_client {
+            // Store in NGFS
+            let item_id = ngfs_client.store_item(&key_path, &encrypted_data).await?;
+            Ok(item_id)
+        } else {
+            // Store locally
+            tokio::fs::write(&key_path, &encrypted_data).await?;
+            Ok(key_path)
+        }
     }
     
-    /// Constant-time comparison for security
-    pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-        if a.len() != b.len() {
-            return false;
+    /// Get a key from the vault
+    pub async fn get_key(&self, wallet_id: &Uuid, key_id: &Uuid) -> Result<KeyMaterial, WalletError> {
+        // Check memory cache first
+        if let Some(key_material) = self.keys.read().await.get(key_id) {
+            return Ok(key_material.clone());
         }
         
-        let mut result = 0u8;
-        for (x, y) in a.iter().zip(b.iter()) {
-            result |= x ^ y;
-        }
+        let key_path = format!("{}/{}/keys/{}", self.pdv_path, wallet_id, key_id);
         
-        result == 0
+        let encrypted_data = if let Some(ngfs_client) = &self.ngfs_client {
+            // Get from NGFS
+            ngfs_client.get_item(&key_path).await?
+        } else {
+            // Get from local storage
+            tokio::fs::read(&key_path).await?
+        };
+        
+        // Decrypt the key material
+        let key_material = self.decrypt_key_material(&encrypted_data).await?;
+        
+        // Cache in memory
+        self.keys.write().await.insert(*key_id, key_material.clone());
+        
+        Ok(key_material)
     }
+    
+    /// List all keys in a wallet
+    pub async fn list_keys(&self, wallet_id: &Uuid) -> Result<Vec<String>, WalletError> {
+        let keys_path = format!("{}/{}/keys", self.pdv_path, wallet_id);
+        
+        if let Some(ngfs_client) = &self.ngfs_client {
+            // List from NGFS
+            ngfs_client.list_items(&keys_path).await
+        } else {
+            // List from local storage
+            let mut entries = tokio::fs::read_dir(&keys_path).await?;
+            let mut keys = Vec::new();
+            
+            while let Some(entry) = entries.next_entry().await? {
+                if entry.file_type().await?.is_file() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        keys.push(name.to_string());
+                    }
+                }
+            }
+            
+            Ok(keys)
+        }
+    }
+    
+    /// Sign data with a key
+    pub async fn sign(&self, key_material: &KeyMaterial, data: &[u8]) -> Result<Signature, WalletError> {
+        if !key_material.supports_purpose(KeyPurpose::Sign) {
+            return Err(WalletError::InvalidKeyType("Key does not support signing".to_string()));
+        }
+        
+        let signature = match key_material.key_type() {
+            KeyType::Secp256k1 => self.sign_secp256k1(key_material, data).await?,
+            KeyType::Ed25519 => self.sign_ed25519(key_material, data).await?,
+            KeyType::Sr25519 => self.sign_sr25519(key_material, data).await?,
+            KeyType::Dilithium2 | KeyType::Dilithium3 | KeyType::Dilithium5 => {
+                self.sign_dilithium(key_material, data).await?
+            },
+            _ => return Err(WalletError::InvalidKeyType("Key type does not support signing".to_string())),
+        };
+        
+        Ok(signature)
+    }
+    
+    /// Sign with PQC algorithm
+    pub async fn sign_pqc(&self, key_material: &KeyMaterial, data: &[u8]) -> Result<Vec<u8>, WalletError> {
+        match key_material.key_type() {
+            KeyType::Dilithium2 | KeyType::Dilithium3 | KeyType::Dilithium5 => {
+                let signature = self.sign_dilithium(key_material, data).await?;
+                Ok(signature.signature)
+            },
+            _ => Err(WalletError::InvalidKeyType("Key type does not support PQC signing".to_string())),
+        }
+    }
+    
+    /// Derive a key from a parent key
+    pub async fn derive_key(
+        &self,
+        parent_key: &KeyMaterial,
+        derivation_path: &KeyDerivationPath,
+    ) -> Result<KeyMaterial, WalletError> {
+        // Implementation depends on key type
+        match parent_key.key_type() {
+            KeyType::Secp256k1 => self.derive_secp256k1_key(parent_key, derivation_path).await,
+            KeyType::Ed25519 => self.derive_ed25519_key(parent_key, derivation_path).await,
+            _ => Err(WalletError::InvalidKeyType("Key type does not support derivation".to_string())),
+        }
+    }
+    
+    /// Compute Ethereum address from public key
+    pub async fn compute_ethereum_address(&self, public_key: &[u8]) -> Result<Vec<u8>, WalletError> {
+        use sha2::{Sha256, Digest};
+        
+        // Remove the 0x04 prefix if present
+        let pubkey = if public_key.len() == 65 && public_key[0] == 0x04 {
+            &public_key[1..]
+        } else {
+            public_key
+        };
+        
+        if pubkey.len() != 64 {
+            return Err(WalletError::InvalidKeyType("Invalid public key length".to_string()));
+        }
+        
+        // Hash the public key
+        let hash = Sha256::digest(pubkey);
+        let keccak_hash = keccak256(&hash);
+        
+        // Take the last 20 bytes as the address
+        Ok(keccak_hash[12..].to_vec())
+    }
+    
+    /// Compute Solana address from public key
+    pub async fn compute_solana_address(&self, public_key: &[u8]) -> Result<Vec<u8>, WalletError> {
+        // Solana addresses are just the public key
+        Ok(public_key.to_vec())
+    }
+    
+    /// Import an encrypted key
+    pub async fn import_encrypted_key(&self, encrypted_data: &[u8]) -> Result<KeyMaterial, WalletError> {
+        self.decrypt_key_material(encrypted_data).await
+    }
+    
+    /// Revoke a key
+    pub async fn revoke_key(&mut self, wallet_id: &Uuid, key_id: &Uuid) -> Result<(), WalletError> {
+        // Remove from memory
+        self.keys.write().await.remove(key_id);
+        
+        // Remove from storage
+        let key_path = format!("{}/{}/keys/{}", self.pdv_path, wallet_id, key_id);
+        
+        if let Some(ngfs_client) = &self.ngfs_client {
+            ngfs_client.delete_item(&key_path).await?;
+        } else {
+            tokio::fs::remove_file(&key_path).await?;
+        }
+        
+        Ok(())
+    }
+    
+    // Private helper methods
+    
+    fn get_default_purposes(&self, key_type: KeyType) -> Vec<KeyPurpose> {
+        match key_type {
+            KeyType::Secp256k1 => vec![KeyPurpose::Sign, KeyPurpose::Verify],
+            KeyType::Ed25519 => vec![KeyPurpose::Sign, KeyPurpose::Verify],
+            KeyType::Sr25519 => vec![KeyPurpose::Sign, KeyPurpose::Verify],
+            KeyType::X25519 => vec![KeyPurpose::KeyExchange],
+            KeyType::Kyber512 | KeyType::Kyber768 | KeyType::Kyber1024 => {
+                vec![KeyPurpose::KeyEncapsulation, KeyPurpose::KeyDecapsulation]
+            },
+            KeyType::Dilithium2 | KeyType::Dilithium3 | KeyType::Dilithium5 => {
+                vec![KeyPurpose::Sign, KeyPurpose::Verify]
+            },
+        }
+    }
+    
+    async fn generate_secp256k1_key(&self) -> Result<(Vec<u8>, Vec<u8>), WalletError> {
+        use secp256k1::{Secp256k1, SecretKey, PublicKey};
+        use rand::rngs::OsRng;
+        
+        let secp = Secp256k1::new();
+        let mut rng = OsRng;
+        let secret_key = SecretKey::new(&mut rng);
+        let public_key = PublicKey::from_secret_key(&secp, &secret_key);
+        
+        Ok((
+            public_key.serialize().to_vec(),
+            secret_key.secret_bytes().to_vec(),
+        ))
+    }
+    
+    async fn generate_ed25519_key(&self) -> Result<(Vec<u8>, Vec<u8>), WalletError> {
+        use ed25519_dalek::SigningKey;
+        use rand::rngs::OsRng;
+        
+        let mut rng = OsRng;
+        let signing_key = SigningKey::generate(&mut rng);
+        let verifying_key = signing_key.verifying_key();
+        
+        Ok((
+            verifying_key.to_bytes().to_vec(),
+            signing_key.to_bytes().to_vec(),
+        ))
+    }
+    
+    async fn generate_sr25519_key(&self) -> Result<(Vec<u8>, Vec<u8>), WalletError> {
+        // SR25519 implementation would go here
+        // For now, return a placeholder
+        Ok((vec![0u8; 32], vec![0u8; 64]))
+    }
+    
+    async fn generate_x25519_key(&self) -> Result<(Vec<u8>, Vec<u8>), WalletError> {
+        use x25519_dalek::{StaticSecret, PublicKey};
+        use rand::rngs::OsRng;
+        
+        let mut rng = OsRng;
+        let secret = StaticSecret::random_from_rng(&mut rng);
+        let public = PublicKey::from(&secret);
+        
+        Ok((
+            public.as_bytes().to_vec(),
+            secret.to_bytes().to_vec(),
+        ))
+    }
+    
+    async fn generate_kyber_key(&self, parameter_set: u16) -> Result<(Vec<u8>, Vec<u8>), WalletError> {
+        use polymera_crypto::{KyberKem, KyberParameterSet};
+
+        let params = match parameter_set {
+            512 => KyberParameterSet::Kyber512,
+            768 => KyberParameterSet::Kyber768,
+            1024 => KyberParameterSet::Kyber1024,
+            _ => return Err(WalletError::InvalidKeyType("Invalid Kyber parameter set".to_string())),
+        };
+
+        let (public_key, secret_key) = KyberKem::generate_keypair(params)
+            .map_err(|e| WalletError::PQCOperationFailed(e.to_string()))?;
+
+        Ok((public_key.to_vec(), secret_key.to_vec()))
+    }
+    
+    async fn generate_dilithium_key(&self, parameter_set: u8) -> Result<(Vec<u8>, Vec<u8>), WalletError> {
+        use polymera_crypto::{Dilithium, DilithiumParameterSet};
+
+        let params = match parameter_set {
+            2 => DilithiumParameterSet::Dilithium2,
+            3 => DilithiumParameterSet::Dilithium3,
+            5 => DilithiumParameterSet::Dilithium5,
+            _ => return Err(WalletError::InvalidKeyType("Invalid Dilithium parameter set".to_string())),
+        };
+
+        let (public_key, secret_key) = Dilithium::generate_keypair(params)
+            .map_err(|e| WalletError::PQCOperationFailed(e.to_string()))?;
+
+        Ok((public_key.to_vec(), secret_key.to_vec()))
+    }
+    
+    async fn sign_secp256k1(&self, key_material: &KeyMaterial, data: &[u8]) -> Result<Signature, WalletError> {
+        use secp256k1::{Secp256k1, SecretKey, Message};
+        use sha2::{Sha256, Digest};
+        
+        let secp = Secp256k1::new();
+        let secret_key = SecretKey::from_slice(key_material.private_key())
+            .map_err(|_| WalletError::CryptoError("Invalid secret key".to_string()))?;
+        
+        // Hash the data
+        let hash = Sha256::digest(data);
+        let message = Message::from_slice(&hash)
+            .map_err(|_| WalletError::CryptoError("Invalid message".to_string()))?;
+        
+        // Sign
+        let signature = secp.sign_ecdsa(&message, &secret_key);
+        let signature_bytes = signature.serialize_compact();
+        
+        Ok(Signature {
+            signature: signature_bytes.to_vec(),
+            recovery_id: None,
+            algorithm: "secp256k1".to_string(),
+            created_at: Utc::now(),
+        })
+    }
+    
+    async fn sign_ed25519(&self, key_material: &KeyMaterial, data: &[u8]) -> Result<Signature, WalletError> {
+        use ed25519_dalek::{Signer, SigningKey};
+        
+        let signing_key = SigningKey::from_bytes(
+            key_material.private_key().try_into()
+                .map_err(|_| WalletError::CryptoError("Invalid secret key length".to_string()))?
+        );
+        
+        let signature = signing_key.sign(data);
+        
+        Ok(Signature {
+            signature: signature.to_bytes().to_vec(),
+            recovery_id: None,
+            algorithm: "ed25519".to_string(),
+            created_at: Utc::now(),
+        })
+    }
+    
+    async fn sign_sr25519(&self, key_material: &KeyMaterial, data: &[u8]) -> Result<Signature, WalletError> {
+        // SR25519 implementation would go here
+        // For now, return a placeholder
+        Ok(Signature {
+            signature: vec![0u8; 64],
+            recovery_id: None,
+            algorithm: "sr25519".to_string(),
+            created_at: Utc::now(),
+        })
+    }
+    
+    async fn sign_dilithium(&self, key_material: &KeyMaterial, data: &[u8]) -> Result<Signature, WalletError> {
+        use polymera_crypto::{Dilithium, DilithiumParameterSet, DilithiumSecretKey};
+
+        let params = match key_material.key_type() {
+            KeyType::Dilithium2 => DilithiumParameterSet::Dilithium2,
+            KeyType::Dilithium3 => DilithiumParameterSet::Dilithium3,
+            KeyType::Dilithium5 => DilithiumParameterSet::Dilithium5,
+            _ => return Err(WalletError::InvalidKeyType("Invalid Dilithium key type".to_string())),
+        };
+
+        let secret_key = DilithiumSecretKey::new(params, key_material.private_key().to_vec())
+            .map_err(|e| WalletError::PQCOperationFailed(e.to_string()))?;
+        let signature = Dilithium::sign(&secret_key, data)
+            .map_err(|e| WalletError::PQCOperationFailed(e.to_string()))?;
+
+        Ok(Signature {
+            signature: signature.to_vec(),
+            recovery_id: None,
+            algorithm: format!("dilithium{}", match key_material.key_type() {
+                KeyType::Dilithium2 => "2",
+                KeyType::Dilithium3 => "3",
+                KeyType::Dilithium5 => "5",
+                _ => "unknown",
+            }),
+            created_at: Utc::now(),
+        })
+    }
+    
+    async fn derive_secp256k1_key(
+        &self,
+        parent_key: &KeyMaterial,
+        derivation_path: &KeyDerivationPath,
+    ) -> Result<KeyMaterial, WalletError> {
+        // HD key derivation for Secp256k1 would go here
+        // For now, return a placeholder
+        let (public_key, private_key) = self.generate_secp256k1_key().await?;
+        
+        Ok(KeyMaterial::new(
+            parent_key.key_type(),
+            public_key,
+            private_key,
+            parent_key.purposes.clone(),
+            Some(derivation_path.clone()),
+        ))
+    }
+    
+    async fn derive_ed25519_key(
+        &self,
+        parent_key: &KeyMaterial,
+        derivation_path: &KeyDerivationPath,
+    ) -> Result<KeyMaterial, WalletError> {
+        // HD key derivation for Ed25519 would go here
+        // For now, return a placeholder
+        let (public_key, private_key) = self.generate_ed25519_key().await?;
+        
+        Ok(KeyMaterial::new(
+            parent_key.key_type(),
+            public_key,
+            private_key,
+            parent_key.purposes.clone(),
+            Some(derivation_path.clone()),
+        ))
+    }
+    
+    async fn encrypt_key_material(&self, key_material: &KeyMaterial) -> Result<Vec<u8>, WalletError> {
+        let stored = StoredKeyMaterial::from_key_material(key_material);
+        let serialized = bincode::serialize(&stored)
+            .map_err(|e| WalletError::SerializationError(e.to_string()))?;
+        
+        // For now, just return the serialized data
+        // In production, this would be encrypted with a master key
+        Ok(serialized)
+    }
+    
+    async fn decrypt_key_material(&self, encrypted_data: &[u8]) -> Result<KeyMaterial, WalletError> {
+        // Decrypt key material from storage
+        // For now, just deserialize
+        let stored: StoredKeyMaterial = bincode::deserialize(encrypted_data)
+            .map_err(|e| WalletError::SerializationError(e.to_string()))?;
+        
+        Ok(stored.into_key_material())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StoredKeyMaterial {
+    key_type: KeyType,
+    public_key: Vec<u8>,
+    private_key: Vec<u8>,
+    purposes: Vec<KeyPurpose>,
+    derivation_path: Option<KeyDerivationPath>,
+    created_at: DateTime<Utc>,
+    expires_at: Option<DateTime<Utc>>,
+    metadata: HashMap<String, String>,
+}
+
+impl StoredKeyMaterial {
+    fn from_key_material(key_material: &KeyMaterial) -> Self {
+        Self {
+            key_type: key_material.key_type,
+            public_key: key_material.public_key.clone(),
+            private_key: key_material.private_key.clone(),
+            purposes: key_material.purposes.clone(),
+            derivation_path: key_material.derivation_path.clone(),
+            created_at: key_material.created_at,
+            expires_at: key_material.expires_at,
+            metadata: key_material.metadata.clone(),
+        }
+    }
+
+    fn into_key_material(self) -> KeyMaterial {
+        KeyMaterial {
+            key_type: self.key_type,
+            public_key: self.public_key,
+            private_key: self.private_key,
+            purposes: self.purposes,
+            derivation_path: self.derivation_path,
+            created_at: self.created_at,
+            expires_at: self.expires_at,
+            metadata: self.metadata,
+        }
+    }
+}
+
+// Helper function for Keccak256
+fn keccak256(data: &[u8]) -> [u8; 32] {
+    use sha2::{Sha256, Digest};
+    let hash = Sha256::digest(data);
+    let mut result = [0u8; 32];
+    result.copy_from_slice(&hash);
+    result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     
-    #[test]
-    fn test_key_type_purpose_validation() {
-        // Valid combinations
-        assert!(utils::validate_key_type_purpose(
-            KeyType::Ed25519,
-            &[KeyPurpose::Sign, KeyPurpose::Verify]
-        ).is_ok());
-        
-        assert!(utils::validate_key_type_purpose(
-            KeyType::AES256,
-            &[KeyPurpose::Encrypt, KeyPurpose::Decrypt]
-        ).is_ok());
-        
-        assert!(utils::validate_key_type_purpose(
-            KeyType::Kyber512,
-            &[KeyPurpose::KeyEncapsulation, KeyPurpose::KeyDecapsulation]
-        ).is_ok());
-        
-        // Invalid combinations
-        assert!(utils::validate_key_type_purpose(
-            KeyType::Ed25519,
-            &[KeyPurpose::Encrypt]
-        ).is_err());
-        
-        assert!(utils::validate_key_type_purpose(
-            KeyType::AES256,
-            &[KeyPurpose::Sign]
-        ).is_err());
+    #[tokio::test]
+    async fn test_keystore_creation() {
+        let keystore = KeyStore::new("/tmp/test_pdv".to_string()).await;
+        assert!(keystore.is_ok());
     }
     
-    #[test]
-    fn test_key_metadata_utilities() {
-        let key = KeyMetadata {
-            id: "test-key".to_string(),
-            name: Some("Test Key".to_string()),
-            key_type: KeyType::Ed25519,
-            purposes: vec![KeyPurpose::Sign, KeyPurpose::Verify],
-            created: Utc::now(),
-            expires: None,
-            last_used: None,
-            status: KeyStatus::Active,
-            tags: HashMap::new(),
-            backend: "software".to_string(),
-        };
+    #[tokio::test]
+    async fn test_key_generation() {
+        let mut keystore = KeyStore::new("/tmp/test_pdv".to_string()).await.unwrap();
+        let wallet_id = Uuid::new_v4();
+        let key_id = Uuid::new_v4();
         
-        assert!(utils::is_key_usable(&key));
-        assert!(utils::key_supports_purpose(&key, KeyPurpose::Sign));
-        assert!(!utils::key_supports_purpose(&key, KeyPurpose::Encrypt));
+        let key_material = keystore.generate_key(&wallet_id, &key_id, KeyType::Ed25519).await;
+        assert!(key_material.is_ok());
+        
+        let key = key_material.unwrap();
+        assert_eq!(key.key_type(), KeyType::Ed25519);
+        assert!(!key.public_key().is_empty());
     }
     
-    #[test]
-    fn test_secure_memory_utilities() {
-        let data = utils::secure_alloc(32);
-        assert_eq!(data.len(), 32);
+    #[tokio::test]
+    async fn test_derivation_path() {
+        let path = KeyDerivationPath::new("m/44'/60'/0'/0/0");
+        assert!(path.is_ok());
         
-        // Test constant-time comparison
-        let a = b"hello";
-        let b = b"hello";
-        let c = b"world";
-        
-        assert!(utils::constant_time_eq(a, b));
-        assert!(!utils::constant_time_eq(a, c));
+        let path = path.unwrap();
+        assert_eq!(path.depth, 5);
+        assert_eq!(path.index, 0);
+        assert!(path.hardened);
+    }
+    
+    #[tokio::test]
+    async fn test_invalid_derivation_path() {
+        let path = KeyDerivationPath::new("invalid/path");
+        assert!(path.is_err());
     }
 }

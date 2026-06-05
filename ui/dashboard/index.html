@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Polymera OS — Real-time kernel dashboard visualizing process management, IPC, memory, PQC crypto, and system health.">
+    <title>Polymera OS — Kernel Dashboard (Simulated)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚛️</text></svg>">
+</head>
+<body>
+    <!-- ─── Top Navigation Bar ─── -->
+    <nav class="navbar" id="navbar">
+        <div class="nav-brand">
+            <div class="logo-glow">
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="14" stroke="url(#logo-grad)" stroke-width="2.5"/>
+                    <circle cx="16" cy="16" r="6" fill="url(#logo-grad)" opacity="0.8"/>
+                    <path d="M16 2 L16 30 M2 16 L30 16" stroke="url(#logo-grad)" stroke-width="1" opacity="0.4"/>
+                    <defs>
+                        <linearGradient id="logo-grad" x1="0" y1="0" x2="32" y2="32">
+                            <stop offset="0%" stop-color="#06b6d4"/>
+                            <stop offset="100%" stop-color="#a855f7"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+            </div>
+            <div class="brand-text">
+                <span class="brand-name">Polymera OS</span>
+                <span class="brand-version">v0.5.0 · Kernel Dashboard · <em style="color:#f59e0b">Simulated Data</em></span>
+            </div>
+        </div>
+        <div class="nav-status">
+            <div class="status-pill status-online" id="kernel-status">
+                <span class="status-dot"></span>
+                <span>Kernel Active</span>
+            </div>
+            <div class="status-pill">
+                <span class="status-icon">🔐</span>
+                <span>PQC Secured</span>
+            </div>
+            <div class="uptime-display" id="uptime">00:00:00</div>
+        </div>
+    </nav>
+
+    <!-- ─── Main Dashboard Grid ─── -->
+    <main class="dashboard" id="dashboard">
+
+        <!-- ─── Row 1: System Overview Cards ─── -->
+        <section class="overview-row">
+            <div class="metric-card" id="card-processes">
+                <div class="metric-icon">⚙️</div>
+                <div class="metric-body">
+                    <div class="metric-value" id="metric-processes">0</div>
+                    <div class="metric-label">Active Processes <span class="real-metric">Real</span></div>
+                </div>
+                <div class="metric-sparkline" id="spark-processes"></div>
+            </div>
+            <div class="metric-card" id="card-syscalls">
+                <div class="metric-icon">📡</div>
+                <div class="metric-body">
+                    <div class="metric-value" id="metric-syscalls">0</div>
+                    <div class="metric-label">Kernel Syscalls <span class="real-metric">Real</span></div>
+                </div>
+                <div class="metric-sparkline" id="spark-syscalls"></div>
+            </div>
+            <div class="metric-card" id="card-ipc">
+                <div class="metric-icon">💬</div>
+                <div class="metric-body">
+                    <div class="metric-value" id="metric-ipc">0</div>
+                    <div class="metric-label">Kernel IPC <span class="real-metric">Real</span></div>
+                </div>
+                <div class="metric-sparkline" id="spark-ipc"></div>
+            </div>
+            <div class="metric-card" id="card-memory">
+                <div class="metric-icon">🧠</div>
+                <div class="metric-body">
+                    <div class="metric-value" id="metric-memory">0 MB</div>
+                    <div class="metric-label">Context Switches <span class="real-metric">Real</span></div>
+                </div>
+                <div class="metric-sparkline" id="spark-memory"></div>
+            </div>
+            <div class="metric-card" id="card-crypto">
+                <div class="metric-icon">🔐</div>
+                <div class="metric-body">
+                    <div class="metric-value" id="metric-crypto">0</div>
+                    <div class="metric-label">Security Checks <span class="real-metric">Real</span></div>
+                </div>
+                <div class="metric-sparkline" id="spark-crypto"></div>
+            </div>
+            <div class="metric-card" id="card-ai-log-summaries">
+                <div class="metric-icon">AI</div>
+                <div class="metric-body">
+                    <div class="metric-value" id="metric-ticks">0</div>
+                    <div class="metric-label">Kernel Ticks <span class="real-metric">Real</span></div>
+                </div>
+                <div class="metric-sparkline" id="spark-ticks"></div>
+            </div>
+        </section>
+
+        <!-- ─── Row 2: Process Monitor + IPC Visualizer ─── -->
+        <section class="main-panels">
+            <div class="panel panel-large" id="panel-processes">
+                <div class="panel-header">
+                    <h2>Process Monitor</h2>
+                    <div class="panel-actions">
+                        <button class="btn-icon" id="btn-spawn" title="Spawn Process">
+                            <span>+ Spawn</span>
+                        </button>
+                        <button class="btn-icon" id="btn-kill" title="Kill Selected">
+                            <span>✕ Kill</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table class="process-table" id="process-table">
+                        <thead>
+                            <tr>
+                                <th>PID</th>
+                                <th>Name</th>
+                                <th>State</th>
+                                <th>Priority</th>
+                                <th>CPU %</th>
+                                <th>Memory</th>
+                                <th>IPC Sent</th>
+                                <th>Syscalls</th>
+                            </tr>
+                        </thead>
+                        <tbody id="process-tbody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="panel panel-medium" id="panel-ipc">
+                <div class="panel-header">
+                    <h2>IPC Channel Flow</h2>
+                    <div class="panel-badge" id="ipc-channel-count">0 channels</div>
+                </div>
+                <canvas id="ipc-canvas" width="500" height="350"></canvas>
+                <div class="ipc-stats-row" id="ipc-stats-row">
+                    <div class="ipc-stat">
+                        <span class="ipc-stat-value" id="ipc-sent">0</span>
+                        <span class="ipc-stat-label">Sent</span>
+                    </div>
+                    <div class="ipc-stat">
+                        <span class="ipc-stat-value" id="ipc-received">0</span>
+                        <span class="ipc-stat-label">Received</span>
+                    </div>
+                    <div class="ipc-stat">
+                        <span class="ipc-stat-value" id="ipc-queued">0</span>
+                        <span class="ipc-stat-label">Queued</span>
+                    </div>
+                    <div class="ipc-stat">
+                        <span class="ipc-stat-value" id="ipc-throughput">0 KB/s</span>
+                        <span class="ipc-stat-label">Throughput</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ─── Row 3: Memory Map + Crypto + Scheduler ─── -->
+        <section class="bottom-panels">
+            <div class="panel" id="panel-memory">
+                <div class="panel-header">
+                    <h2>Memory Map</h2>
+                    <div class="panel-badge" id="mem-total">256 MB Total</div>
+                </div>
+                <div class="memory-map" id="memory-map">
+                    <div class="mem-region mem-kernel" id="mem-kernel-region">
+                        <span class="mem-label">Kernel</span>
+                        <span class="mem-size">32 MB</span>
+                    </div>
+                    <div class="mem-region mem-services" id="mem-services-region">
+                        <span class="mem-label">Services</span>
+                        <span class="mem-size">64 MB</span>
+                    </div>
+                    <div class="mem-region mem-user" id="mem-user-region">
+                        <span class="mem-label">User Space</span>
+                        <span class="mem-size">96 MB</span>
+                    </div>
+                    <div class="mem-region mem-free" id="mem-free-region">
+                        <span class="mem-label">Free</span>
+                        <span class="mem-size">64 MB</span>
+                    </div>
+                </div>
+                <div class="mem-details" id="mem-details">
+                    <div class="mem-detail-item">
+                        <span>Pages Allocated</span>
+                        <span id="mem-pages">12,288</span>
+                    </div>
+                    <div class="mem-detail-item">
+                        <span>Page Faults</span>
+                        <span id="mem-faults">42</span>
+                    </div>
+                    <div class="mem-detail-item">
+                        <span>LZ4 Compressed</span>
+                        <span id="mem-compressed">18 MB saved</span>
+                    </div>
+                    <div class="mem-detail-item">
+                        <span>Huge Pages</span>
+                        <span id="mem-huge">8 active</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel" id="panel-crypto">
+                <div class="panel-header">
+                    <h2>PQC Crypto Status</h2>
+                    <div class="panel-badge status-secure">✓ All Tests Pass</div>
+                </div>
+                <div class="crypto-grid">
+                    <div class="crypto-card" id="crypto-dilithium">
+                        <div class="crypto-name">CRYSTALS-Dilithium</div>
+                        <div class="crypto-type">Digital Signatures</div>
+                        <div class="crypto-stats">
+                            <div class="crypto-stat">
+                                <span class="crypto-stat-value" id="dil-signs">0</span>
+                                <span>Signatures</span>
+                            </div>
+                            <div class="crypto-stat">
+                                <span class="crypto-stat-value" id="dil-verifies">0</span>
+                                <span>Verified</span>
+                            </div>
+                            <div class="crypto-stat">
+                                <span class="crypto-stat-value" id="dil-latency">< 1ms</span>
+                                <span>Latency</span>
+                            </div>
+                        </div>
+                        <div class="crypto-params">
+                            <span class="param-badge">Dilithium2</span>
+                            <span class="param-badge">Dilithium3</span>
+                            <span class="param-badge">Dilithium5</span>
+                        </div>
+                    </div>
+                    <div class="crypto-card" id="crypto-kyber">
+                        <div class="crypto-name">CRYSTALS-Kyber</div>
+                        <div class="crypto-type">Key Encapsulation (KEM)</div>
+                        <div class="crypto-stats">
+                            <div class="crypto-stat">
+                                <span class="crypto-stat-value" id="kyber-encaps">0</span>
+                                <span>Encapsulations</span>
+                            </div>
+                            <div class="crypto-stat">
+                                <span class="crypto-stat-value" id="kyber-decaps">0</span>
+                                <span>Decapsulations</span>
+                            </div>
+                            <div class="crypto-stat">
+                                <span class="crypto-stat-value" id="kyber-latency">< 2ms</span>
+                                <span>Latency</span>
+                            </div>
+                        </div>
+                        <div class="crypto-params">
+                            <span class="param-badge">Kyber512</span>
+                            <span class="param-badge active">Kyber768</span>
+                            <span class="param-badge">Kyber1024</span>
+                        </div>
+                    </div>
+                    <div class="crypto-card" id="crypto-blake3">
+                        <div class="crypto-name">BLAKE3</div>
+                        <div class="crypto-type">Cryptographic Hashing</div>
+                        <div class="crypto-stats">
+                            <div class="crypto-stat">
+                                <span class="crypto-stat-value" id="blake3-hashes">0</span>
+                                <span>Hashes</span>
+                            </div>
+                            <div class="crypto-stat">
+                                <span class="crypto-stat-value" id="blake3-throughput">0 MB/s</span>
+                                <span>Throughput</span>
+                            </div>
+                            <div class="crypto-stat">
+                                <span class="crypto-stat-value" id="blake3-latency">< 1μs</span>
+                                <span>Latency</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel" id="panel-supervisor">
+                <div class="panel-header">
+                    <h2>Supervisor Tree</h2>
+                    <div class="panel-badge">OTP-Style</div>
+                </div>
+                <div class="supervisor-tree" id="supervisor-tree">
+                    <!-- Populated by JS -->
+                </div>
+                <div class="supervisor-legend">
+                    <span class="legend-item"><span class="legend-dot running"></span> Running</span>
+                    <span class="legend-item"><span class="legend-dot restarting"></span> Restarting</span>
+                    <span class="legend-item"><span class="legend-dot stopped"></span> Stopped</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ─── Row 4: Performance SLO Gauges ─── -->
+        <section class="slo-section">
+            <div class="panel panel-full" id="panel-slo">
+                <div class="panel-header">
+                    <h2>Performance SLO Compliance</h2>
+                    <div class="panel-badge slo-pass" id="slo-overall">100% Compliant</div>
+                </div>
+                <div class="slo-gauges" id="slo-gauges">
+                    <div class="slo-gauge" id="slo-kernel">
+                        <canvas class="gauge-canvas" width="120" height="120"></canvas>
+                        <div class="gauge-label">Kernel Ops</div>
+                        <div class="gauge-target">< 100μs</div>
+                    </div>
+                    <div class="slo-gauge" id="slo-ipc">
+                        <canvas class="gauge-canvas" width="120" height="120"></canvas>
+                        <div class="gauge-label">IPC Latency</div>
+                        <div class="gauge-target">< 1ms</div>
+                    </div>
+                    <div class="slo-gauge" id="slo-startup">
+                        <canvas class="gauge-canvas" width="120" height="120"></canvas>
+                        <div class="gauge-label">App Startup</div>
+                        <div class="gauge-target">< 10ms</div>
+                    </div>
+                    <div class="slo-gauge" id="slo-memory">
+                        <canvas class="gauge-canvas" width="120" height="120"></canvas>
+                        <div class="gauge-label">Memory Alloc</div>
+                        <div class="gauge-target">< 50μs</div>
+                    </div>
+                    <div class="slo-gauge" id="slo-crypto">
+                        <canvas class="gauge-canvas" width="120" height="120"></canvas>
+                        <div class="gauge-label">PQC Keygen</div>
+                        <div class="gauge-target">< 10ms</div>
+                    </div>
+                    <div class="slo-gauge" id="slo-zk">
+                        <canvas class="gauge-canvas" width="120" height="120"></canvas>
+                        <div class="gauge-label">ZK Proof</div>
+                        <div class="gauge-target">< 100ms</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ─── Kernel Log Console (collapsible) ─── -->
+    <div class="kernel-log" id="kernel-log">
+        <div class="log-header" id="log-toggle">
+            <span>📜 Kernel Log</span>
+            <span class="log-count" id="log-count">0 entries</span>
+            <span class="log-toggle-icon">▲</span>
+        </div>
+        <div class="log-body" id="log-body">
+            <pre id="log-content"></pre>
+        </div>
+    </div>
+
+    <script src="kernel_metrics.js"></script>
+    <script src="ai_metrics.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

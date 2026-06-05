@@ -480,14 +480,14 @@ impl Inbox {
     pub fn deliver_with_overflow_policy(&mut self, message: Message) -> IpcResult<Option<Message>> {
         // Check for fault injection - simulate inbox overflow every Nth push
         if crate::fault_injection::should_force_inbox_overflow() {
-            crate::log::klog!(crate::log::Level::WARN, [crate::log::tags::FAULT_INJECTION], 
+            crate::klog!(WARN, [crate::log::tags::FAULT_INJECTION],
                 "FAULT INJECTION: Simulating inbox overflow for message from {} to {} (len={}, prio={:?})",
-                message.header.sender.0, message.header.receiver.0, 
+                message.header.sender.0, message.header.receiver.0,
                 message.payload.size(), message.header.priority);
             
             // Simulate inbox overflow by treating this as a full inbox
             // This will trigger the normal overflow policy logic
-            if message.header.priority == Priority::Low {
+            if message.header.priority == MessagePriority::Low {
                 // For Low priority messages, audit the drop and return success
                 self.audit_dropped_message(&message);
                 self.stats.messages_expired += 1;
@@ -505,12 +505,15 @@ impl Inbox {
         }
         
         self.stats.messages_received += 1;
-        
+
         // Use the queue's overflow policy implementation
+        let mut dropped_for_audit = None;
         let result = self.queue.enqueue_with_overflow_policy(message, |dropped_msg| {
-            // Audit the dropped message
-            self.audit_dropped_message(dropped_msg);
+            dropped_for_audit = Some(dropped_msg.clone());
         });
+        if let Some(dropped_msg) = dropped_for_audit.as_ref() {
+            self.audit_dropped_message(dropped_msg);
+        }
         
         // Update statistics based on result
         match &result {
@@ -912,7 +915,7 @@ impl ChannelManagerStats {
 }
 
 /// Global channel manager instance
-static CHANNEL_MANAGER: Mutex<Option<ChannelManager>> = Mutex::new(None);
+pub static CHANNEL_MANAGER: Mutex<Option<ChannelManager>> = Mutex::new(None);
 
 /// Initialize the channel manager
 pub fn init_channel_manager() {

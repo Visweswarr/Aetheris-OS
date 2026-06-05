@@ -1,4 +1,5 @@
 use alloc::collections::VecDeque;
+use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 /// Event priority lanes
@@ -242,14 +243,15 @@ pub struct InboxStats {
     pub seen_id: u64,
 }
 
+/// Global event ID counter
+static EVENT_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
+
 /// Global event ID generator
 struct EventIdGenerator;
 
 impl EventIdGenerator {
-    static ID_COUNTER: AtomicU64 = AtomicU64::new(1);
-    
     pub fn next() -> u64 {
-        EventIdGenerator::ID_COUNTER.fetch_add(1, Ordering::SeqCst)
+        EVENT_ID_COUNTER.fetch_add(1, Ordering::SeqCst)
     }
 }
 

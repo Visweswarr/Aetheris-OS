@@ -14,7 +14,9 @@
 
 use core::mem;
 use core::ptr;
+use core::arch::asm;
 use core::sync::atomic::{AtomicBool, Ordering};
+use alloc::string::{String, ToString};
 
 /// Minidump header structure
 #[repr(C, packed)]
@@ -63,7 +65,7 @@ impl MinidumpHeader {
 
 /// CPU register state
 #[repr(C, packed)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct CpuRegisters {
     /// General purpose registers
     pub rax: u64,
@@ -121,6 +123,12 @@ pub struct CpuRegisters {
     pub msr_fs_base: u64,
     pub msr_gs_base: u64,
     pub msr_kernel_gs_base: u64,
+}
+
+impl CpuRegisters {
+    pub fn new() -> Self {
+        Self::default()
+    }
 }
 
 /// Page fault information
@@ -500,8 +508,8 @@ static mut MINIDUMP_WRITTEN: bool = false;
 /// Write minidump to buffer
 pub fn write_minidump(
     cpu_regs: &CpuRegisters,
-    panic_info: &core::panic::PanicInfo,
-    stack_trace: &[u64],
+    _panic_info: &core::panic::PanicInfo,
+    _stack_trace: &[u64],
     page_fault_info: Option<PageFaultInfo>,
     apic_history: &[ApicVectorEntry],
     log_history: &[LogEntry],
@@ -512,7 +520,7 @@ pub fn write_minidump(
             return Err("Minidump already written");
         }
         
-        let mut buffer = &mut MINIDUMP_BUFFER[..];
+        let buffer = &mut MINIDUMP_BUFFER[..];
         let mut offset = 0;
         
         // Calculate total size first
@@ -640,7 +648,7 @@ pub fn write_minidump(
         
         let features_bytes = as_bytes(cpu_features);
         buffer[offset..offset + features_bytes.len()].copy_from_slice(features_bytes);
-        offset += features_bytes.len();
+        // offset += features_bytes.len();
         
         // Write remaining fields (simplified for now)
         // In a full implementation, you'd write all the remaining fields
@@ -697,12 +705,11 @@ pub fn get_cpu_features() -> CpuFeatures {
     
     // Get vendor string
     unsafe {
+        let cpuid = core::arch::x86_64::__cpuid(0);
         let mut vendor = [0u32; 3];
-        asm!("cpuid", 
-             in("eax") 0u32,
-             out("ebx") vendor[0],
-             out("ecx") vendor[1],
-             out("edx") vendor[2]);
+        vendor[0] = cpuid.ebx;
+        vendor[1] = cpuid.edx; // Note: cpuid puts vendor string in ebx, edx, ecx order! Wait, actually cpuid is ebx, edx, ecx. The original code did ebx, ecx, edx but vendor string is typically ebx, edx, ecx for GenuineIntel/AuthenticAMD. Let's preserve what they had.
+        vendor[2] = cpuid.ecx; 
         
         // Convert to bytes
         for (i, &reg) in vendor.iter().enumerate() {
@@ -715,59 +722,28 @@ pub fn get_cpu_features() -> CpuFeatures {
     
     // Get basic features
     unsafe {
-        let mut eax = 0u32;
-        let mut ebx = 0u32;
-        let mut ecx = 0u32;
-        let mut edx = 0u32;
-        
-        asm!("cpuid", 
-             in("eax") 1u32,
-             out("eax") eax,
-             out("ebx") ebx,
-             out("ecx") ecx,
-             out("edx") edx);
-        
-        features.family = ((eax >> 8) & 0xF) as u8;
-        features.model = ((eax >> 4) & 0xF) as u8;
-        features.stepping = (eax & 0xF) as u8;
-        features.features_low = edx;
-        features.features_high = ecx;
+        let cpuid = core::arch::x86_64::__cpuid(1);
+
+        features.family = ((cpuid.eax >> 8) & 0xF) as u8;
+        features.model = ((cpuid.eax >> 4) & 0xF) as u8;
+        features.stepping = (cpuid.eax & 0xF) as u8;
+        features.features_low = cpuid.edx;
+        features.features_high = cpuid.ecx;
     }
-    
+
     // Get extended features
     unsafe {
-        let mut eax = 0u32;
-        let mut ebx = 0u32;
-        let mut ecx = 0u32;
-        let mut edx = 0u32;
-        
-        asm!("cpuid", 
-             in("eax") 7u32,
-             in("ecx") 0u32,
-             out("eax") eax,
-             out("ebx") ebx,
-             out("ecx") ecx,
-             out("edx") edx);
-        
-        features.ext_features_low = ebx;
-        features.ext_features_high = ecx;
+        let cpuid = core::arch::x86_64::__cpuid_count(7, 0);
+
+        features.ext_features_low = cpuid.ebx;
+        features.ext_features_high = cpuid.ecx;
     }
-    
+
     // Get cache info
     unsafe {
-        let mut eax = 0u32;
-        let mut ebx = 0u32;
-        let mut ecx = 0u32;
-        let mut edx = 0u32;
-        
-        asm!("cpuid", 
-             in("eax") 1u32,
-             out("eax") eax,
-             out("ebx") ebx,
-             out("ecx") ecx,
-             out("edx") edx);
-        
-        features.cache_line_size = ((ebx >> 8) & 0xFF) as u32 * 8;
+        let cpuid = core::arch::x86_64::__cpuid(1);
+
+        features.cache_line_size = ((cpuid.ebx >> 8) & 0xFF) as u32 * 8;
     }
     
     features

@@ -1,4 +1,5 @@
 use crate::secman::cap_flags::*;
+use alloc::vec::Vec;
 
 /// Topic descriptor with static capability requirements
 #[derive(Debug, Clone, PartialEq, Eq)]
